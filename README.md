@@ -88,7 +88,7 @@ java -jar node-metrics-agent-0.8.0-all.jar init-kafka-config \
 The recommended way to scrape this agent with Prometheus is to run the
 [Prometheus JMX exporter](https://github.com/prometheus/jmx_exporter) alongside your JVM process.
 For Java agent usage details, see the
-[JMX exporter Java agent documentation](https://prometheus.github.io/jmx_exporter/1.1.0/java-agent/).
+[JMX exporter Java agent documentation](https://prometheus.github.io/jmx_exporter/deployment/java-agent).
 
 One common launch shape is:
 

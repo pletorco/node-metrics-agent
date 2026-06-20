@@ -18,7 +18,7 @@ JMX-to-Prometheus bridge.
 ```
 
 4. For Prometheus scraping, also attach the
-   [Prometheus JMX exporter Java agent](https://prometheus.github.io/jmx_exporter/1.1.0/java-agent/):
+   [Prometheus JMX exporter Java agent](https://prometheus.github.io/jmx_exporter/deployment/java-agent):
 
 ```bash
 -javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=9404:/opt/jmx-exporter/pletor-node-metrics.yml
