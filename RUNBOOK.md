@@ -2,6 +2,11 @@
 
 This runbook covers production deployment and first-response checks for `node-metrics-agent`.
 
+The agent registers metrics as JMX MBeans. It does not expose an HTTP scrape endpoint by itself.
+For Prometheus, run the
+[Prometheus JMX exporter](https://github.com/prometheus/jmx_exporter) in the same JVM or use another
+JMX-to-Prometheus bridge.
+
 ## Deployment
 
 1. Build or download the shaded JAR.
@@ -12,8 +17,18 @@ This runbook covers production deployment and first-response checks for `node-me
 -javaagent:/opt/pletor/node-metrics-agent-0.8.0-all.jar=/opt/pletor/node-metrics.yml
 ```
 
-4. Restart the JVM.
-5. Check startup logs for:
+4. For Prometheus scraping, also attach the
+   [Prometheus JMX exporter Java agent](https://prometheus.github.io/jmx_exporter/1.1.0/java-agent/):
+
+```bash
+-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=9404:/opt/jmx-exporter/pletor-node-metrics.yml
+```
+
+Use `src/main/resources/jmx_exporter_rules_example.yml` as the starting exporter configuration.
+It maps JMX attributes to `pletor_*` Prometheus metrics.
+
+5. Restart the JVM.
+6. Check startup logs for:
 
 ```text
 [node-metrics-agent] started
@@ -38,6 +53,12 @@ Confirm these MBeans exist:
 - `co.pletor.node:type=FsMetrics,path=<configured path>`
 
 `TelemetryMode.Mode` should normally be `NORMAL`.
+
+If the JMX exporter is attached, confirm the scrape endpoint responds:
+
+```bash
+curl -s http://localhost:9404/metrics | grep '^pletor_' | head
+```
 
 ## Configuration Reload
 

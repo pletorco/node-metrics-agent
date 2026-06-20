@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- Clarified that the agent registers JMX MBeans and does not expose an HTTP metrics endpoint by
+  itself.
+- Added Prometheus JMX exporter usage guidance.
+
 ## [0.8.0] - 2026-06-20
 
 ### Changed

@@ -1,7 +1,11 @@
 # node-metrics-agent
 
-`node-metrics-agent` is a lightweight JVM agent from Pletor Co., Ltd. that exposes host and
-container node metrics through JMX.
+`node-metrics-agent` is a lightweight JVM agent from Pletor Co., Ltd. that registers host and
+container node metrics as JMX MBeans.
+
+The agent does not open an HTTP metrics endpoint by itself. You can inspect metrics through a JMX
+connection, and the recommended Prometheus integration is the
+[Prometheus JMX exporter](https://github.com/prometheus/jmx_exporter).
 
 The agent is designed to run inside production JVMs with a fail-open posture:
 
@@ -81,8 +85,22 @@ java -jar node-metrics-agent-0.8.0-all.jar init-kafka-config \
 
 ## Prometheus
 
-Use `src/main/resources/jmx_exporter_rules_example.yml` as a starting point for the Prometheus
-JMX exporter. Exported metric names use the `pletor_*` prefix, for example:
+The recommended way to scrape this agent with Prometheus is to run the
+[Prometheus JMX exporter](https://github.com/prometheus/jmx_exporter) alongside your JVM process.
+For Java agent usage details, see the
+[JMX exporter Java agent documentation](https://prometheus.github.io/jmx_exporter/1.1.0/java-agent/).
+
+One common launch shape is:
+
+```bash
+java \
+  -javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=9404:/opt/jmx-exporter/pletor-node-metrics.yml \
+  -javaagent:/opt/pletor/node-metrics-agent-0.8.0-all.jar=/opt/pletor/node-metrics.yml \
+  -jar your-app.jar
+```
+
+Use `src/main/resources/jmx_exporter_rules_example.yml` as the exporter config starting point.
+Exported Prometheus metric names use the `pletor_*` prefix, for example:
 
 - `pletor_node_cpumetrics_systemcpuload`
 - `pletor_node_memmetrics_availablememorybytes`
