@@ -1,0 +1,4 @@
+fsmetrics_max_partitions: 32
+fsmetrics_paths:
+  - /data/kafka-logs
+  - /boot

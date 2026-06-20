@@ -1,0 +1,100 @@
+lowercaseOutputName: true
+
+includeObjectNames:
+  - co.pletor.cgroup:*
+  - co.pletor.node:*
+  - co.pletor.proc:*
+  - co.pletor.agent:*
+
+metricCustomizers:
+  # add static node metadata labels to OsInfoMetrics
+  - mbeanFilter:
+      domain: co.pletor.node
+      properties:
+        type: OsInfoMetrics
+    attributesAsLabels:
+      - OsRelease
+      - KernelVersion
+      - OsName
+      - OsArch
+      - EnvironmentType
+      - AgentVersion
+      - AgentCommitId
+
+  # add cgroup metadata labels to cgroup memory metrics
+  - mbeanFilter:
+      domain: co.pletor.cgroup
+      properties:
+        type: MemMetrics
+    attributesAsLabels:
+      - CgroupVersion
+      - CgroupPath
+
+rules:
+  # ============================================================================
+  # Node Metrics Agent
+  # Consolidated rules for metrics exposed by node-metrics-agent.
+  # Subsections: cgroup, node, proc.
+  # ============================================================================
+
+  # ----------------------------------------------------------------------------
+  # [cgroup] co.pletor.cgroup
+  # Exports cgroup counters/gauges.
+  # Note: CgroupVersion/CgroupPath labels are appended by metricCustomizers.
+  # ============================================================================
+  - pattern: 'co.pletor.cgroup<type=(.+?)(?:,(.+))?><>(CgroupCpuThrottledCount|Count):'
+    name: pletor_cgroup_$1_$3
+    type: COUNTER
+    cache: true
+
+  - pattern: 'co.pletor.cgroup<type=(.+?)(?:,(.+))?><>(.+):'
+    name: pletor_cgroup_$1_$3
+    type: GAUGE
+    cache: true
+
+
+  # ----------------------------------------------------------------------------
+  # [node] co.pletor.node
+  # Exports node counters/gauges.
+  # Note: OsInfoMetrics labels are appended by metricCustomizers.
+  # ============================================================================
+  - pattern: 'co.pletor.node<type=(.+?)(?:,(.+))?><>(CgroupCpuThrottledCount|ProcessCpuTimeNanos|UptimeSeconds|Count):'
+    name: pletor_node_$1_$3
+    type: COUNTER
+    cache: true
+
+  - pattern: 'co.pletor.node<type=FsMetrics, path=(.+)><>(.+):'
+    name: pletor_node_fsmetrics_$2
+    type: GAUGE
+    labels:
+      path: '$1'
+    cache: true
+
+  - pattern: 'co.pletor.node<type=(.+?)(?:,(.+))?><>(.+):'
+    name: pletor_node_$1_$3
+    type: GAUGE
+    cache: true
+
+  # ----------------------------------------------------------------------------
+  # [proc] co.pletor.proc
+  # Exports process gauges.
+  # ============================================================================
+  - pattern: 'co.pletor.proc<type=(.+?)(?:,(.+))?><>(.+):'
+    name: pletor_proc_$1_$3
+    type: GAUGE
+    cache: true
+
+  # ----------------------------------------------------------------------------
+  # [agent] co.pletor.agent
+  # Exports internal telemetry pipeline counters/gauges.
+  # Note: string attributes (for example, Mode) are intentionally excluded here.
+  # ============================================================================
+  - pattern: 'co.pletor.agent<type=(.+?)(?:,(.+))?><>(ProcessedCount|EnqueueCount|DequeueCount|DroppedCount|ErrorCount|SinkSuccessCount|SinkFailureCount|SinkRetryCount|ModeTransitionCount|ThrottledLoggerOverflowCount):'
+    name: pletor_agent_$1_$3
+    type: COUNTER
+    cache: true
+
+  - pattern: 'co.pletor.agent<type=(.+?)(?:,(.+))?><>(QueueDepth|QueueFillRatio|EndToEndLatencyMillis|MaxTaskStalenessMs):'
+    name: pletor_agent_$1_$3
+    type: GAUGE
+    cache: true

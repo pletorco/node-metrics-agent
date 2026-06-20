@@ -1,0 +1,37 @@
+Node Metrics Agent CLI
+
+Usage:
+  java -jar node-metrics-agent.jar <command> [options]
+
+Commands:
+  init-config          Generate node-metrics.yml from CLI options.
+  init-kafka-config    Generate node-metrics.yml from Kafka server.properties.
+  help                 Show this help message.
+
+Options for init-config:
+  --output <path>              Output path for node-metrics.yml.
+                               Default: ./config/node-metrics.yml
+  --fs-path <path[,path2]>     Filesystem path(s) to monitor.
+                               Can be repeated and/or comma-separated.
+                               Default (no --fs-path): /
+
+Options for init-kafka-config:
+  --server-properties <path>   Path to Kafka server.properties file.
+                               Default: ./config/server.properties
+  --output <path>              Output path for node-metrics.yml.
+                               Default: ./config/node-metrics.yml
+
+Examples:
+  # Use defaults: fsmetrics_max_partitions=32, fsmetrics_paths=[/]
+  java -jar node-metrics-agent.jar init-config
+
+  # Custom filesystem paths (comma-separated and repeated)
+  java -jar node-metrics-agent.jar init-config \
+    --output ./config/node-metrics.yml \
+    --fs-path /data/kafka-logs,/data/extra-logs \
+    --fs-path /var
+
+  # Generate from Kafka server.properties
+  java -jar node-metrics-agent.jar init-kafka-config \
+    --server-properties /opt/kafka/config/server.properties \
+    --output ./config/node-metrics.yml

@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Build distribution
+        run: ./gradlew --no-daemon clean shadowJar cyclonedxBom
+
+      - name: Verify tag matches project version
+        run: |
+          VERSION="$(./gradlew -q printVersion | tr -d '\r')"
+          test "v${VERSION}" = "${GITHUB_REF_NAME}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/libs/*.jar
+            build/reports/bom.json
