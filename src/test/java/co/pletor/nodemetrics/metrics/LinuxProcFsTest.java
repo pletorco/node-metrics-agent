@@ -523,4 +523,95 @@ class LinuxProcFsTest {
        fail(e);
     }
   }
+
+  // ------------------------------------------------------------------------
+  // readNetTotals interface selection
+  // ------------------------------------------------------------------------
+
+  private void writeNetDev(Path proc, String... ifaceRxTx) throws IOException {
+    StringBuilder sb = new StringBuilder(
+        "Inter-|   Receive |  Transmit\n face |bytes packets errs drop fifo frame compressed multicast"
+            + "|bytes packets errs drop fifo colls carrier compressed\n");
+    for (String entry : ifaceRxTx) {
+      String[] parts = entry.split(",");
+      sb.append(String.format("  %s: %s 1 0 0 0 0 0 0 %s 1 0 0 0 0 0 0%n", parts[0], parts[1], parts[2]));
+    }
+    Files.createDirectories(proc.resolve("net"));
+    Files.writeString(proc.resolve("net/dev"), sb.toString());
+  }
+
+  private void markPhysical(Path sys, String... ifaces) throws IOException {
+    for (String iface : ifaces) {
+      Files.createDirectories(sys.resolve("class/net").resolve(iface).resolve("device"));
+    }
+  }
+
+  private void markVirtual(Path sys, String... ifaces) throws IOException {
+    for (String iface : ifaces) {
+      Files.createDirectories(sys.resolve("class/net").resolve(iface));
+    }
+  }
+
+  private LinuxProcFs.NetTotals readNetTotalsFrom(Path proc, Path sys) throws IOException {
+    LinuxProcFs.setProcRoot(proc);
+    LinuxProcFs.setSysRoot(sys);
+    try {
+      return LinuxProcFs.readNetTotals();
+    } finally {
+      LinuxProcFs.setProcRoot(java.nio.file.Paths.get("/proc"));
+      LinuxProcFs.setSysRoot(java.nio.file.Paths.get("/sys"));
+    }
+  }
+
+  @Test
+  void readNetTotals_shouldCountOnlyPhysicalInterfacesOnContainerHost() throws Exception {
+    Path proc = tempDir.resolve("host-proc");
+    Path sys = tempDir.resolve("host-sys");
+    writeNetDev(proc, "lo,999,999", "eth0,1000,2000", "docker0,900,1900", "veth1a2b,800,1800", "br-abc,700,1700");
+    markPhysical(sys, "eth0");
+    markVirtual(sys, "lo", "docker0", "veth1a2b", "br-abc");
+
+    LinuxProcFs.NetTotals totals = readNetTotalsFrom(proc, sys);
+
+    assertEquals(1000L, totals.rxBytes, "Bridges and veth pairs must not be double counted");
+    assertEquals(2000L, totals.txBytes);
+  }
+
+  @Test
+  void readNetTotals_shouldSumSlavesButNotBondOrVlan() throws Exception {
+    Path proc = tempDir.resolve("bond-proc");
+    Path sys = tempDir.resolve("bond-sys");
+    writeNetDev(proc, "eth0,100,10", "eth1,200,20", "bond0,300,30", "bond0.100,300,30");
+    markPhysical(sys, "eth0", "eth1");
+    markVirtual(sys, "bond0", "bond0.100");
+
+    LinuxProcFs.NetTotals totals = readNetTotalsFrom(proc, sys);
+
+    assertEquals(300L, totals.rxBytes);
+    assertEquals(30L, totals.txBytes);
+  }
+
+  @Test
+  void readNetTotals_shouldSumAllNonLoopbackInterfacesInsideContainerNamespace() throws Exception {
+    Path proc = tempDir.resolve("pod-proc");
+    Path sys = tempDir.resolve("pod-sys");
+    writeNetDev(proc, "lo,50,50", "eth0,1000,2000");
+    markVirtual(sys, "lo", "eth0"); // veth peer: no backing device
+
+    LinuxProcFs.NetTotals totals = readNetTotalsFrom(proc, sys);
+
+    assertEquals(1000L, totals.rxBytes, "A container's only (virtual) interface must still be counted");
+    assertEquals(2000L, totals.txBytes);
+  }
+
+  @Test
+  void readNetTotals_shouldSumAllNonLoopbackInterfacesWhenSysfsIsUnavailable() throws Exception {
+    Path proc = tempDir.resolve("nosys-proc");
+    writeNetDev(proc, "lo,50,50", "eth0,1000,2000", "eth1,10,20");
+
+    LinuxProcFs.NetTotals totals = readNetTotalsFrom(proc, tempDir.resolve("nosys-sys"));
+
+    assertEquals(1010L, totals.rxBytes);
+    assertEquals(2020L, totals.txBytes);
+  }
 }

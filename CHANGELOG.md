@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Network throughput is no longer inflated on container hosts: only interfaces backed by a real
+  device are summed (bridges, veth pairs, VLANs and bond masters are skipped). Inside a container
+  network namespace, where the only interface is virtual, all non-loopback interfaces are summed.
 - Config reloader no longer re-parses and re-applies the configuration that was already applied at
   startup.
 - Config file is read once per load, so the parsed content and its checksum always match.
