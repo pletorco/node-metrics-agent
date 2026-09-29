@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Cumulative counters so rates can be computed over any time range with Prometheus `rate()`:
+  `SystemCpuTotalTicks`, `SystemCpuIoWaitTicks`, `SystemCpuStealTicks`,
+  `CgroupCpuThrottledPeriodsTotal`, `CgroupCpuThrottledTimeNanosTotal`, `CgroupCpuUsageNanosTotal`
+  on `co.pletor.node:type=CpuMetrics`, and `DiskReadBytesTotal`, `DiskWriteBytesTotal`,
+  `NetRxBytesTotal`, `NetTxBytesTotal` on `co.pletor.node:type=IoRates`. The existing ratio and
+  per-second gauges are unchanged, but they only describe the last ~500 ms window.
+
+### Fixed
+
+- `CgroupCpuThrottledCount` is a per-window delta but was declared and exported as a counter. It is
+  now a gauge (metric type only; the value is unchanged).
+
+### Added
+
 - `MemoryWorkingSetBytes` on `co.pletor.cgroup:type=MemMetrics` (exported as
   `pletor_cgroup_memmetrics_memoryworkingsetbytes`): cgroup usage minus inactive file cache, from
   `memory.stat` (`inactive_file` on v2, `total_inactive_file` on v1). `MemoryUsageBytes` includes

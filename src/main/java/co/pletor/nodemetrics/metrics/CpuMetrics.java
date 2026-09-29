@@ -106,6 +106,14 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
    */
   private volatile long cgroupThrottledCount = 0L;
 
+  // Cumulative counters (monotonic; -1 when unavailable)
+  private volatile long cpuTotalTicks = -1L;
+  private volatile long cpuIoWaitTicks = -1L;
+  private volatile long cpuStealTicks = -1L;
+  private volatile long cgroupThrottledPeriodsTotal = -1L;
+  private volatile long cgroupThrottledTimeNanosTotal = -1L;
+  private volatile long cgroupUsageNanosTotal = -1L;
+
   // Snapshot state for delta-based CPU time calculations
   private long prevCpuUser;
   private long prevCpuNice;
@@ -352,6 +360,10 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     long totalCurrent =
         current.user + current.nice + current.system + current.idle +
             current.iowait + current.irq + current.softirq + current.steal;
+
+    cpuTotalTicks = totalCurrent;
+    cpuIoWaitTicks = current.iowait;
+    cpuStealTicks = current.steal;
 
     if (!cpuTimesInitialized) {
       // First snapshot: just initialize and return without computing ratios.
@@ -779,6 +791,10 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
    * Compute throttling ratio and count for the last polling window.
    */
   private void computeCgroupRatios(CgroupCpuStats current) {
+    cgroupUsageNanosTotal = current.usageNs;
+    cgroupThrottledTimeNanosTotal = current.throttledNs;
+    cgroupThrottledPeriodsTotal = current.throttledPeriods;
+
     if (!cgroupCpuInitialized) {
       prevCgroupUsageNs = current.usageNs;
       prevCgroupThrottledNs = current.throttledNs;
@@ -894,5 +910,41 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   public long getCgroupCpuThrottledCount() {
     refreshOnRead();
     return cgroupThrottledCount;
+  }
+
+  @Override
+  public long getSystemCpuTotalTicks() {
+    refreshOnRead();
+    return cpuTotalTicks;
+  }
+
+  @Override
+  public long getSystemCpuIoWaitTicks() {
+    refreshOnRead();
+    return cpuIoWaitTicks;
+  }
+
+  @Override
+  public long getSystemCpuStealTicks() {
+    refreshOnRead();
+    return cpuStealTicks;
+  }
+
+  @Override
+  public long getCgroupCpuThrottledPeriodsTotal() {
+    refreshOnRead();
+    return cgroupThrottledPeriodsTotal;
+  }
+
+  @Override
+  public long getCgroupCpuThrottledTimeNanosTotal() {
+    refreshOnRead();
+    return cgroupThrottledTimeNanosTotal;
+  }
+
+  @Override
+  public long getCgroupCpuUsageNanosTotal() {
+    refreshOnRead();
+    return cgroupUsageNanosTotal;
   }
 }

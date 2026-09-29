@@ -95,10 +95,76 @@ public interface CpuMetricsMBean {
   double getCgroupCpuThrottledRatio();
 
   /**
-   * Returns the number of times the cgroup was throttled.
+   * Returns the number of times the cgroup was throttled during the last polling window.
+   * <p>
+   * This is a per-window delta, not a monotonic counter; use
+   * {@link #getCgroupCpuThrottledPeriodsTotal()} with {@code rate()} for alerting.
    *
-   * @return the cgroup cpu throttled count
+   * @return the cgroup cpu throttled count in the last window
+   */
+  @JmxMetricHint("gauge")
+  long getCgroupCpuThrottledCount();
+
+  /**
+   * Returns the cumulative CPU time of all states since boot, in clock ticks ({@code USER_HZ},
+   * normally 100 per second), from the aggregate line of {@code /proc/stat}.
+   * <p>
+   * Divide the {@code rate()} of {@link #getSystemCpuIoWaitTicks()} or
+   * {@link #getSystemCpuStealTicks()} by the {@code rate()} of this value to get a ratio over any
+   * time range. {@code -1} when unavailable.
+   *
+   * @return total CPU ticks
    */
   @JmxMetricHint("counter")
-  long getCgroupCpuThrottledCount();
+  @JmxMetricUnit("ticks")
+  long getSystemCpuTotalTicks();
+
+  /**
+   * Returns the cumulative time CPUs spent waiting for I/O, in clock ticks. {@code -1} when
+   * unavailable.
+   *
+   * @return I/O wait ticks
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("ticks")
+  long getSystemCpuIoWaitTicks();
+
+  /**
+   * Returns the cumulative time stolen by the hypervisor, in clock ticks. {@code -1} when
+   * unavailable.
+   *
+   * @return steal ticks
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("ticks")
+  long getSystemCpuStealTicks();
+
+  /**
+   * Returns the cumulative number of periods in which the cgroup was throttled
+   * ({@code nr_throttled}). {@code -1} when unavailable.
+   *
+   * @return throttled periods since the cgroup was created
+   */
+  @JmxMetricHint("counter")
+  long getCgroupCpuThrottledPeriodsTotal();
+
+  /**
+   * Returns the cumulative time the cgroup spent throttled, in nanoseconds. {@code -1} when
+   * unavailable.
+   *
+   * @return throttled time since the cgroup was created
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("nanoseconds")
+  long getCgroupCpuThrottledTimeNanosTotal();
+
+  /**
+   * Returns the cumulative CPU time used by the cgroup, in nanoseconds. {@code -1} when
+   * unavailable.
+   *
+   * @return cgroup CPU usage since the cgroup was created
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("nanoseconds")
+  long getCgroupCpuUsageNanosTotal();
 }

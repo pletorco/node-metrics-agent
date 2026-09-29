@@ -40,4 +40,45 @@ public interface IoRatesMBean {
   @JmxMetricHint("gauge")
   @JmxMetricUnit("bytes/sec")
   double getNetTxBytesPerSec();
+
+  /**
+   * Returns the cumulative bytes read from the counted block devices. Monotonic; use
+   * {@code rate()} over any time range instead of the point-in-time per-second gauges above.
+   * {@code -1} until the first successful read.
+   *
+   * @return total disk bytes read
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("bytes")
+  long getDiskReadBytesTotal();
+
+  /**
+   * Returns the cumulative bytes written to the counted block devices. {@code -1} until the first
+   * successful read.
+   *
+   * @return total disk bytes written
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("bytes")
+  long getDiskWriteBytesTotal();
+
+  /**
+   * Returns the cumulative bytes received on the counted network interfaces. {@code -1} until the
+   * first successful read.
+   *
+   * @return total network bytes received
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("bytes")
+  long getNetRxBytesTotal();
+
+  /**
+   * Returns the cumulative bytes sent on the counted network interfaces. {@code -1} until the
+   * first successful read.
+   *
+   * @return total network bytes sent
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("bytes")
+  long getNetTxBytesTotal();
 }
