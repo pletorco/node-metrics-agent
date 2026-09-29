@@ -138,4 +138,29 @@ class AgentObservabilityMetricsTest {
       engine.stop();
     }
   }
+
+  @Test
+  void observabilityMetrics_shouldReportStuckTasks() {
+    MetricsRefreshEngineTest.HangingMetric hung = new MetricsRefreshEngineTest.HangingMetric();
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setStuckThresholdMs(50L);
+    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("fs:/dead-nfs", hung, true)));
+    AgentObservabilityMetrics metrics = new AgentObservabilityMetrics(
+        () -> engine, () -> TelemetryMode.NORMAL, () -> 0L);
+    assertEquals(0, metrics.getStuckTaskCount());
+    assertEquals("", metrics.getStuckTasks());
+
+    try {
+      engine.start();
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (metrics.getStuckTaskCount() == 0 && System.nanoTime() < deadline) {
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10L));
+      }
+      assertEquals(1, metrics.getStuckTaskCount());
+      assertEquals("fs:/dead-nfs", metrics.getStuckTasks());
+    } finally {
+      hung.release();
+      engine.stop();
+    }
+  }
 }

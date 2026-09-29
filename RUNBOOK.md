@@ -78,6 +78,7 @@ If reload fails, the previous working configuration remains active.
 - `pletor_agent_observability_maxtaskstalenessms` rises for a sustained period
   (seconds behind schedule; healthy tasks stay near `0` whatever their refresh interval)
 - `pletor_agent_observability_failingtaskcount > 0` for a sustained period
+- `pletor_agent_observability_stucktaskcount > 0` (a filesystem call is blocked, usually a dead mount)
 - filesystem usable bytes drops below service thresholds
 - FD usage approaches max FD limit
 - cgroup memory usage/limit ratio stays above `0.90`
@@ -98,6 +99,17 @@ Failing metric refreshes:
 - `FailingTasks` (JMX only, a string attribute) lists the task names, e.g. `fs:/data,cpu`.
 - `ErrorCount` / `SinkFailureCount` count every failed refresh. The first failure of each
   minute is also logged at WARNING with a stack trace.
+
+Stuck filesystem calls:
+
+- Filesystem metrics run on their own worker threads, separate from CPU, memory and I/O metrics. A
+  filesystem call that blocks (typically `statvfs` on an unresponsive NFS mount) therefore only
+  freezes that one filesystem's MBean, which keeps its last values.
+- `StuckTaskCount > 0` / `StuckTasks` names the tasks whose current refresh has been running for
+  more than 30 seconds. `MaxTaskStalenessMs` rises for the same task.
+- A blocked call cannot be interrupted from Java; it clears when the mount recovers. Each stuck
+  task holds one of 3 background threads, and while it is stuck it is skipped (counted in
+  `DroppedCount`, once per refresh interval) instead of being queued again.
 
 Refresh intervals:
 

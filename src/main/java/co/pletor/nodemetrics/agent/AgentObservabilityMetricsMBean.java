@@ -67,6 +67,20 @@ public interface AgentObservabilityMetricsMBean {
   String getFailingTasks();
 
   /**
+   * Number of refresh tasks whose current poll has been running for more than 30 seconds, typically
+   * a filesystem call blocked on an unresponsive mount. Such tasks stop updating (their
+   * MBeans keep the last values) while all other metrics continue to refresh.
+   */
+  @JmxMetricHint("gauge")
+  int getStuckTaskCount();
+
+  /**
+   * Comma-separated names of the tasks counted by {@link #getStuckTaskCount()}, or an empty string.
+   */
+  @JmxMetricHint("gauge")
+  String getStuckTasks();
+
+  /**
    * Number of log attempts dropped because the {@link ThrottledLogger} key cap was exceeded.
    * <p>
    * A non-zero value indicates that a caller is using dynamic (unbounded) keys instead of

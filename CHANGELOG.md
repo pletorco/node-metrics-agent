@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Filesystem metrics now refresh on a separate background lane (3 worker threads) with at most one
+  queued or running instance per task. Previously a single worker served every metric, so one
+  blocked `statvfs` (dead NFS mount) froze all metrics and pushed the engine into `BYPASS`.
+- `StuckTaskCount` and `StuckTasks` on `co.pletor.agent:type=Observability` report tasks whose
+  refresh has been running for more than 30 seconds.
+
+### Changed
+
+- Overload modes are derived from the critical lane only. Skipped runs of a hung background task
+  are counted in `DroppedCount` (once per refresh interval) but do not change the mode.
+
+### Added
+
 - `FailingTaskCount` and `FailingTasks` on `co.pletor.agent:type=Observability`, and a throttled
   WARNING log, so failed metric refreshes are visible. Previously beans absorbed read failures
   silently, so `ErrorCount`/`SinkFailureCount` stayed at 0 and staleness was reset by failed polls.

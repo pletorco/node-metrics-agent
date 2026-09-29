@@ -9,7 +9,7 @@ connection, and the recommended Prometheus integration is the
 
 The agent is designed to run inside production JVMs with a fail-open posture:
 
-- bounded asynchronous refresh pipeline
+- bounded asynchronous refresh pipeline; filesystem refresh runs on separate threads so a hung mount cannot stall other metrics
 - overload modes: `NORMAL`, `DEGRADED`, `BYPASS`
 - runtime configuration reload for filesystem metrics
 - self-observability MBeans for queue pressure, drops, latency, staleness, and failing metric refreshes

@@ -111,6 +111,18 @@ public final class AgentObservabilityMetrics implements AgentObservabilityMetric
   }
 
   @Override
+  public int getStuckTaskCount() {
+    MetricsRefreshEngine engine = engineSupplier.get();
+    return engine == null ? 0 : engine.stuckTaskNames().size();
+  }
+
+  @Override
+  public String getStuckTasks() {
+    MetricsRefreshEngine engine = engineSupplier.get();
+    return engine == null ? "" : String.join(",", engine.stuckTaskNames());
+  }
+
+  @Override
   public long getThrottledLoggerOverflowCount() {
     Long count = throttledLoggerOverflowSupplier.get();
     return count == null ? 0L : count;
