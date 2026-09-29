@@ -1,4 +1,5 @@
 // co.pletor.nodemetrics.agent.ConfigReloader.java
+
 package co.pletor.nodemetrics.agent;
 
 import java.io.IOException;
@@ -262,7 +263,7 @@ final class ConfigReloader implements Runnable {
    *   <li>If the time changed, load the file and compare checksum
    * </ol>
    *
-   * This avoids reapplying the same configuration when only the timestamp changes.
+   * <p>This avoids reapplying the same configuration when only the timestamp changes.
    */
   private void checkAndReloadIfChanged() {
     try {

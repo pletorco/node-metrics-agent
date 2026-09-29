@@ -14,7 +14,7 @@ package co.pletor.nodemetrics.metrics;
  *       the last values or exposing sentinels) stay visible to the engine
  * </ul>
  *
- * Refresh failures never propagate to JMX callers or to {@link #poll()}.
+ * <p>Refresh failures never propagate to JMX callers or to {@link #poll()}.
  */
 abstract class AbstractRefreshingMetric implements RefreshManagedMetric {
 

@@ -1,4 +1,5 @@
 // src/test/java/co/pletor/nodemetrics/agent/MetricsAgentTest.java
+
 package co.pletor.nodemetrics.agent;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -79,11 +80,11 @@ class MetricsAgentTest {
     return ctor.newInstance();
   }
 
-  private static void setConfigPaths(Object cfg, java.util.List<String> fsmetrics_paths)
+  private static void setConfigPaths(Object cfg, java.util.List<String> fsmetricsPaths)
       throws Exception {
     Field f = cfg.getClass().getDeclaredField("fsmetricsPaths");
     f.setAccessible(true);
-    f.set(cfg, fsmetrics_paths);
+    f.set(cfg, fsmetricsPaths);
   }
 
   private static void setConfigMaxPartitions(Object cfg, Integer maxPartitions) throws Exception {

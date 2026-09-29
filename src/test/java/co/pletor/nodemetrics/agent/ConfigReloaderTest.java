@@ -167,7 +167,7 @@ class ConfigReloaderTest {
 
     String yaml1 = "paths:\n" + "  - /\n";
 
-    String yaml2 = "paths:\n" + "  - /changed\n";
+    final String yaml2 = "paths:\n" + "  - /changed\n";
 
     // First version
     Files.writeString(cfgPath, yaml1, StandardCharsets.UTF_8);
@@ -179,8 +179,8 @@ class ConfigReloaderTest {
       invokeCheckAndReload(reloader);
     }
     assertEquals(1, applier.callCount.get(), "Applier should be called once on first load");
-    String firstChecksum = (String) getField(reloader, "lastChecksum");
-    long firstMtime = getLongField(reloader, "lastSeenMtime");
+    final String firstChecksum = (String) getField(reloader, "lastChecksum");
+    final long firstMtime = getLongField(reloader, "lastSeenMtime");
 
     // Change content and (likely) mtime
     Thread.sleep(20L);
@@ -217,7 +217,7 @@ class ConfigReloaderTest {
     }
     assertEquals(1, applier.callCount.get(), "Applier should be called once on first load");
 
-    String checksumAfterFirst = (String) getField(reloader, "lastChecksum");
+    final String checksumAfterFirst = (String) getField(reloader, "lastChecksum");
 
     // Simulate a "touch": force lastSeenMtime to a different value so that
     // checkAndReloadIfChanged sees a changed timestamp, but keep the file

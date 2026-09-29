@@ -540,11 +540,9 @@ tasks.withType<Checkstyle>().configureEach {
     }
 }
 
-// Warning ratchet: the code base predates the style rules, so a warning-free build is not
-// realistic yet, but the count must never grow. Fix warnings and lower these numbers together
-// (checkstyleMain / checkstyleTest print the current count when it exceeds the limit).
-tasks.named<Checkstyle>("checkstyleMain") { maxWarnings = 46 }
-tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 21 }
+// The code base is checkstyle-clean: any warning fails the build.
+tasks.named<Checkstyle>("checkstyleMain") { maxWarnings = 0 }
+tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 0 }
 
 // -----------------------------------------------------------------------------
 // Formatting

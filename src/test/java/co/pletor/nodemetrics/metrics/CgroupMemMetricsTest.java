@@ -328,7 +328,7 @@ class CgroupMemMetricsTest {
   }
 
   @Test
-  void limit_v2_isUnlimitedWhenNoLevelHasALimit(@org.junit.jupiter.api.io.TempDir Path tmp)
+  void limit_v2_isUnlimitedWhenNoLevelHasLimit(@org.junit.jupiter.api.io.TempDir Path tmp)
       throws Exception {
     Path root = Files.createDirectories(tmp.resolve("cgroup"));
     Path leaf = Files.createDirectories(root.resolve("pod/container"));

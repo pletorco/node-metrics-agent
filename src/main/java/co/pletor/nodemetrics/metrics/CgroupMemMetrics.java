@@ -200,7 +200,9 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   // ----- MBean getters -----
 
   /**
-   * @return cgroup memory limit in bytes, or -1 when unlimited/unsupported
+   * Returns the effective cgroup memory limit.
+   *
+   * @return the limit in bytes, or -1 when unlimited/unsupported
    */
   @Override
   public long getMemoryLimitBytes() {
@@ -209,7 +211,9 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   }
 
   /**
-   * @return cgroup memory usage in bytes, or -1 when unavailable
+   * Returns the cgroup memory usage.
+   *
+   * @return the usage in bytes, or -1 when unavailable
    */
   @Override
   public long getMemoryUsageBytes() {
@@ -218,7 +222,9 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   }
 
   /**
-   * @return cgroup working set (usage minus inactive file cache) in bytes, or -1 when unavailable
+   * Returns the cgroup working set (usage minus inactive file cache).
+   *
+   * @return the working set in bytes, or -1 when unavailable
    */
   @Override
   public long getMemoryWorkingSetBytes() {
@@ -227,7 +233,9 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   }
 
   /**
-   * @return detected cgroup version: {@code "v1"}, {@code "v2"}, or {@code "none"}
+   * Returns the detected cgroup version.
+   *
+   * @return {@code "v1"}, {@code "v2"}, or {@code "none"}
    */
   @Override
   public String getCgroupVersion() {
@@ -235,7 +243,9 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   }
 
   /**
-   * @return detected cgroup path, or empty string if not available
+   * Returns the detected cgroup path.
+   *
+   * @return the path, or an empty string if not available
    */
   @Override
   public String getCgroupPath() {

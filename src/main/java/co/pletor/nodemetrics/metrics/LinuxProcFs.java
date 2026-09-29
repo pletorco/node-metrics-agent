@@ -124,7 +124,7 @@ final class LinuxProcFs {
    *   <li>It is not a well-known pseudo device such as loop, ram, fd, sr
    * </ul>
    *
-   * If discovery fails, an empty set is returned and the caller should fall back to the legacy
+   * <p>If discovery fails, an empty set is returned and the caller should fall back to the legacy
    * behavior.
    */
   private static Set<String> collectLeafBlockDevices() {

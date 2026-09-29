@@ -17,7 +17,7 @@ import java.nio.file.Path;
  *   <li>Usable space in bytes (for the current user)
  * </ul>
  *
- * On failure, numeric values are set to {@code -1} and names to {@code "unknown"}.
+ * <p>On failure, numeric values are set to {@code -1} and names to {@code "unknown"}.
  */
 public class FsMetrics extends AbstractRefreshingMetric implements FsMetricsMBean {
 

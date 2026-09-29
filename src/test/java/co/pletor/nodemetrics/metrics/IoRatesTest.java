@@ -55,7 +55,7 @@ class IoRatesTest {
     double diskRead = ioRates.getDiskReadBytesPerSec();
     double diskWrite = ioRates.getDiskWriteBytesPerSec();
     double netRx = ioRates.getNetRxBytesPerSec();
-    double netTx = ioRates.getNetTxBytesPerSec();
+    final double netTx = ioRates.getNetTxBytesPerSec();
 
     // Each value must be >= 0 (on non-Linux it will always be 0.0)
     assertTrue(diskRead >= 0.0, "diskReadBytesPerSec should be >= 0");

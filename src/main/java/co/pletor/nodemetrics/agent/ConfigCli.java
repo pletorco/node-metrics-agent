@@ -38,7 +38,7 @@ public final class ConfigCli {
   }
 
   /**
-   * CLI entrypoint
+   * CLI entrypoint.
    *
    * @param args command line arguments
    */
@@ -99,7 +99,8 @@ public final class ConfigCli {
   // =====================================================================
 
   /**
-   * Apply options that are common to both init-config and init-kafka-config: --output, --help/-h
+   * Apply options that are common to both init-config and init-kafka-config ({@code --output},
+   * {@code --help}/{@code -h}).
    *
    * @return next index to process (may be unchanged if arg is not common)
    */
@@ -177,9 +178,10 @@ public final class ConfigCli {
   }
 
   /**
-   * Core logic for init-config: - Use the CLI-provided list of fsmetrics_paths (the caller
-   * substitutes "/" when none is given) - Generate a minimal YAML file - An existing file is
-   * overwritten
+   * Core logic for init-config.
+   *
+   * <p>Writes a minimal YAML file with the given {@code fsmetrics_paths} (the caller substitutes
+   * "/" when none is given). An existing file is overwritten.
    */
   static void generateConfigFromCli(Path outputConfigPath, List<String> fsPaths)
       throws IOException {
@@ -375,9 +377,8 @@ public final class ConfigCli {
   /**
    * Build YAML content for node-metrics.yml.
    *
-   * <p>Example output: # <header>
-   *
-   * <p>- /path/two
+   * <p>The output is an optional comment header, a blank line, {@code fsmetrics_max_partitions} and
+   * a {@code fsmetrics_paths} list with one path per line.
    */
   static String buildNodeMetricsYaml(List<String> fsPaths, String header) {
     String lineSep = System.lineSeparator();

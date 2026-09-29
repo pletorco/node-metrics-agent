@@ -52,20 +52,11 @@ Java sources are formatted with google-java-format through Spotless. `./gradlew 
 `.git-blame-ignore-revs` lists the one-off reformatting commit; use
 `git config blame.ignoreRevsFile .git-blame-ignore-revs` to skip it in `git blame`.
 
-### Checkstyle warning ratchet
+### Checkstyle
 
-The code base predates the Google-style rules, so checkstyle reports warnings that are not fixed yet.
-`build.gradle.kts` caps them (`maxWarnings` for `checkstyleMain` and `checkstyleTest`): a change that
-adds warnings fails the build. When you fix warnings, lower the numbers in the same change.
-
-Security checks:
-
-```bash
-./gradlew cyclonedxBom
-./gradlew trivyScan
-```
-
-`trivyScan` requires a local `trivy` installation.
+The code base is checkstyle-clean (Google style, `config/checkstyle/checkstyle.xml`) and any warning
+fails the build. `MBean` in names such as `CpuMetricsMBean` is an allowed abbreviation because the
+JMX Standard MBean convention requires it.
 
 ## Releasing
 

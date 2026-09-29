@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Build and CI
+
+- Checkstyle warnings reduced from 46 (main) / 21 (test) to 0 and the ratchet is now `maxWarnings =
+  0`, so any new warning fails the build. `MBean` is an allowed abbreviation in names (required by
+  the JMX Standard MBean convention); the other fixes are Javadoc, blank lines, `final` locals and a
+  few private or test-only renames. No public API changed.
+
 ### Changed
 
 - `CpuMetrics` reads only the aggregate line of `/proc/stat` instead of every line, and resolves the

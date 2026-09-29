@@ -91,7 +91,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
 
     long dirtyKb = -1L;
     long writebackKb = -1L;
-    long sReclaimableKb = -1L;
+    long slabReclaimableKb = -1L;
   }
 
   /**
@@ -121,7 +121,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
       } else if (line.startsWith("Writeback:")) {
         s.writebackKb = MemStatsUtil.parseKbLine(line);
       } else if (line.startsWith("SReclaimable:")) {
-        s.sReclaimableKb = MemStatsUtil.parseKbLine(line);
+        s.slabReclaimableKb = MemStatsUtil.parseKbLine(line);
       }
     }
 
@@ -170,11 +170,11 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   /** Calculate and apply the 'Cached' metric, including SReclaimable. */
   private void applyCachedBytes(MemInfoSnapshot s) {
     long cached = (s.cachedKb >= 0) ? s.cachedKb : 0L;
-    if (s.sReclaimableKb >= 0) {
-      cached += s.sReclaimableKb;
+    if (s.slabReclaimableKb >= 0) {
+      cached += s.slabReclaimableKb;
     }
 
-    if (s.cachedKb < 0 && s.sReclaimableKb < 0) {
+    if (s.cachedKb < 0 && s.slabReclaimableKb < 0) {
       cachedBytes = -1L;
     } else {
       cachedBytes = cached * 1024L;
@@ -268,8 +268,8 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
    *       getFreePhysicalMemorySize()}
    * </ul>
    *
-   * Reflection is used so that the code can run on JDK 11 while still taking advantage of the newer
-   * methods on JDK 14+ without causing linkage errors.
+   * <p>Reflection is used so that the code can run on JDK 11 while still taking advantage of the
+   * newer methods on JDK 14+ without causing linkage errors.
    */
   private void pollFromOsMxBean() {
     try {
