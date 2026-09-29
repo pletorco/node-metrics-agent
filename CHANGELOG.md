@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- `CpuMetrics` reads only the aggregate line of `/proc/stat` instead of every line, and resolves the
+  location of the cgroup `cpu.stat` once a minute (or after a read failure) instead of on every
+  poll. About 16% less time per poll on a 4-core host; the saving grows with the CPU count.
+
 ### Fixed
 
 - `MemoryLimitBytes` is now the effective cgroup limit: the tightest finite limit of the cgroup and

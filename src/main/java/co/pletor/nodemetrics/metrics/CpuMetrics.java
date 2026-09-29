@@ -10,6 +10,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Implementation of {@link CpuMetricsMBean} backed by the platform
@@ -259,7 +260,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
 
     // Update cgroup CPU throttling metrics, if available
     try {
-      CgroupCpuStats cg = readCgroupCpuStats();
+      CgroupCpuStats cg = readCgroupCpuStatsCached();
       if (cg != null) {
         computeCgroupRatios(cg);
       }
@@ -316,13 +317,17 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
    */
   private static CpuTimes readCpuTimes() throws java.io.IOException {
     Path path = procRoot.resolve("stat");
-    List<String> lines = Files.readAllLines(path, StandardCharsets.US_ASCII);
+    // Only the aggregate first line is needed. /proc/stat has one line per CPU plus a very long
+    // "intr" line, so reading it all would allocate a String per line on every poll.
+    String first;
+    try (java.io.BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.US_ASCII)) {
+      first = reader.readLine();
+    }
 
-    if (lines.isEmpty()) {
+    if (first == null) {
       return null;
     }
 
-    String first = lines.get(0);
     // Expected format: cpu  user nice system idle iowait irq softirq steal ...
     if (!first.startsWith("cpu ")) {
       return null;
@@ -490,11 +495,46 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
    */
   private static CgroupCpuStats readCgroupCpuStats() throws java.io.IOException {
     Path baseDir = sysRoot.resolve("fs/cgroup");
+    return readCgroupCpuStats(baseDir, locateCgroupCpuStatPath(baseDir));
+  }
 
-    Path statPath = findProcessScopedCgroupCpuStatPath(baseDir);
-    if (statPath == null) {
-      statPath = findCgroupCpuStatPath(baseDir);
+  // A process rarely changes cgroup, so where cpu.stat lives is resolved once and re-resolved
+  // only every minute or after a read failure, instead of probing /proc/self/cgroup and the
+  // cgroup mount on every poll.
+  private static final long CGROUP_PATH_TTL_NANOS = TimeUnit.SECONDS.toNanos(60L);
+  private Path cachedCgroupBaseDir;
+  private Path cachedCgroupStatPath;
+  private long cachedCgroupStatPathAtNanos;
+
+  private CgroupCpuStats readCgroupCpuStatsCached() throws java.io.IOException {
+    Path baseDir = sysRoot.resolve("fs/cgroup");
+    long now = System.nanoTime();
+    if (!baseDir.equals(cachedCgroupBaseDir)
+        || now - cachedCgroupStatPathAtNanos >= CGROUP_PATH_TTL_NANOS) {
+      cachedCgroupStatPath = locateCgroupCpuStatPath(baseDir);
+      cachedCgroupBaseDir = baseDir;
+      cachedCgroupStatPathAtNanos = now;
     }
+    try {
+      return readCgroupCpuStats(baseDir, cachedCgroupStatPath);
+    } catch (java.io.IOException e) {
+      cachedCgroupBaseDir = null; // force re-resolution on the next poll
+      throw e;
+    }
+  }
+
+  /**
+   * Locate cpu.stat: the current process's cgroup first, then the common mount locations.
+   *
+   * @return the cpu.stat path, or {@code null} when none exists
+   */
+  private static Path locateCgroupCpuStatPath(Path baseDir) {
+    Path statPath = findProcessScopedCgroupCpuStatPath(baseDir);
+    return statPath != null ? statPath : findCgroupCpuStatPath(baseDir);
+  }
+
+  private static CgroupCpuStats readCgroupCpuStats(Path baseDir, Path statPath)
+      throws java.io.IOException {
     if (statPath == null) {
       return null;
     }

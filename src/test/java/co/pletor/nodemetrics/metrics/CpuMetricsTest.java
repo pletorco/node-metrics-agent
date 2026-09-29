@@ -616,4 +616,58 @@ class CpuMetricsTest {
     assertEquals(-1L, metrics.getCgroupCpuThrottledTimeNanosTotal(), "Unsupported field stays -1");
     assertEquals(9L, metrics.getCgroupCpuThrottledPeriodsTotal());
   }
+
+  @Test
+  @DisplayName("readCpuTimes reads only the first line, however long the rest of /proc/stat is")
+  void readCpuTimesIgnoresTheRestOfProcStat() throws Exception {
+    CpuMetrics.procRoot = tempDir;
+    StringBuilder stat = new StringBuilder("cpu  10 1 5 100 2 3 4 5 0 0\n");
+    for (int cpu = 0; cpu < 256; cpu++) {
+      stat.append("cpu").append(cpu).append(" 1 1 1 1 1 1 1 1 0 0\n");
+    }
+    stat.append("intr 1 2 3 4 5\nctxt 99\n");
+    Files.writeString(tempDir.resolve("stat"), stat.toString());
+
+    Method readCpuTimes = CpuMetrics.class.getDeclaredMethod("readCpuTimes");
+    readCpuTimes.setAccessible(true);
+    Object times = readCpuTimes.invoke(null);
+
+    assertNotNull(times);
+    Field user = CpuMetrics.CpuTimes.class.getDeclaredField("user");
+    user.setAccessible(true);
+    assertEquals(10L, user.getLong(times), "The aggregate line, not a per-CPU line");
+  }
+
+  @Test
+  @DisplayName("cpu.stat location is cached but the values are re-read on every poll")
+  void cgroupStatPathIsCachedAndValuesAreReReadEachPoll() throws Exception {
+    org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
+    CpuMetrics.procRoot = tempDir.resolve("proc");
+    CpuMetrics.sysRoot = tempDir.resolve("sys");
+    Files.createDirectories(CpuMetrics.procRoot);
+    java.nio.file.Path cgroupDir = CpuMetrics.sysRoot.resolve("fs/cgroup");
+    Files.createDirectories(cgroupDir);
+    java.nio.file.Path statFile = cgroupDir.resolve("cpu.stat");
+
+    CpuMetrics metrics = new CpuMetrics((OperatingSystemMXBean) null);
+    metrics.setReadRefreshEnabled(false);
+
+    Files.writeString(statFile, "usage_usec 1000\nnr_periods 10\nnr_throttled 2\nthrottled_usec 500\n");
+    metrics.poll();
+    assertEquals(2L, metrics.getCgroupCpuThrottledPeriodsTotal());
+
+    Files.writeString(statFile, "usage_usec 3000\nnr_periods 20\nnr_throttled 7\nthrottled_usec 900\n");
+    metrics.poll();
+    assertEquals(7L, metrics.getCgroupCpuThrottledPeriodsTotal(), "Counters follow the file, not the cache");
+    assertEquals(3_000_000L, metrics.getCgroupCpuUsageNanosTotal());
+
+    // cpu.stat disappears: the read fails, the cache is dropped, and the next poll re-resolves
+    // the location (here it moved to the cgroup v1 layout).
+    Files.delete(statFile);
+    java.nio.file.Path v1 = Files.createDirectories(cgroupDir.resolve("cpu")).resolve("cpu.stat");
+    Files.writeString(v1, "usage_usec 5000\nnr_periods 30\nnr_throttled 11\nthrottled_usec 1200\n");
+    metrics.poll();
+    metrics.poll();
+    assertEquals(11L, metrics.getCgroupCpuThrottledPeriodsTotal(), "A moved cpu.stat is found again");
+  }
 }
