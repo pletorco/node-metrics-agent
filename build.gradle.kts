@@ -130,7 +130,7 @@ tasks.named("sourcesJar") {
 // -----------------------------------------------------------------------------
 dependencies {
     // YAML parser used by the agent
-    implementation("org.yaml:snakeyaml:2.5")
+    implementation("org.yaml:snakeyaml:2.7")
 
     // JUnit 5 (BOM + API)
     testImplementation(platform("org.junit:junit-bom:$junitJupiterVersion"))
