@@ -1,4 +1,5 @@
 // co.pletor.nodemetrics.agent.MetricsAgent.java
+
 package co.pletor.nodemetrics.agent;
 
 import co.pletor.nodemetrics.metrics.CgroupMemMetrics;
@@ -207,7 +208,7 @@ public class MetricsAgent {
       // Resolve configuration file and load initial configuration (or defaults).
       Path cfgPath = resolveConfigPath(agentArgs);
       // Capture the mtime before loading so a modification during startup is still picked up.
-      long startupMtime = configMtimeOrUnknown(cfgPath);
+      final long startupMtime = configMtimeOrUnknown(cfgPath);
       current = ConfigLoader.loadOrDefault(cfgPath);
 
       // Get the platform MBeanServer.
@@ -698,7 +699,7 @@ public class MetricsAgent {
    *   <li>Reconcile filesystem MBeans (add / remove)
    * </ul>
    *
-   * The entire operation is serialized using {@link #APPLY_LOCK}.
+   * <p>The entire operation is serialized using {@link #APPLY_LOCK}.
    *
    * @param newCfg the configuration to apply
    * @throws InstanceAlreadyExistsException if an MBean with the same name is already registered

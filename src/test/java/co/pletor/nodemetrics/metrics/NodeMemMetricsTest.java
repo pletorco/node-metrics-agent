@@ -103,7 +103,9 @@ class NodeMemMetricsTest {
     assertEquals(
         2000L, getLongField(snapshotClass, snapshot, "writebackKb"), "writebackKb mismatch");
     assertEquals(
-        8000L, getLongField(snapshotClass, snapshot, "sReclaimableKb"), "sReclaimableKb mismatch");
+        8000L,
+        getLongField(snapshotClass, snapshot, "slabReclaimableKb"),
+        "slabReclaimableKb mismatch");
   }
 
   // ----------------------------------------------------
@@ -163,7 +165,7 @@ class NodeMemMetricsTest {
   @Test
   @DisplayName("applyMemInfoSnapshot should populate main and cache-related fields")
   void applyMemInfoSnapshotPopulatesFields() throws Exception {
-    NodeMemMetrics metrics = new NodeMemMetrics();
+    final NodeMemMetrics metrics = new NodeMemMetrics();
 
     Object snapshot = newSnapshot();
     Class<?> snapshotClass = snapshot.getClass();
@@ -177,7 +179,7 @@ class NodeMemMetricsTest {
     setLongField(snapshotClass, snapshot, "shmemKb", 32000L);
     setLongField(snapshotClass, snapshot, "dirtyKb", 4000L);
     setLongField(snapshotClass, snapshot, "writebackKb", 2000L);
-    setLongField(snapshotClass, snapshot, "sReclaimableKb", 8000L);
+    setLongField(snapshotClass, snapshot, "slabReclaimableKb", 8000L);
 
     Method applySnapshot =
         NodeMemMetrics.class.getDeclaredMethod("applyMemInfoSnapshot", snapshotClass);
@@ -191,7 +193,7 @@ class NodeMemMetricsTest {
     long total = metrics.getTotalMemoryBytes();
     long free = metrics.getFreeMemoryBytes();
     long available = metrics.getAvailableMemoryBytes();
-    long used = metrics.getUsedMemoryBytes();
+    final long used = metrics.getUsedMemoryBytes();
 
     assertEquals(1024000L * 1024L, total, "Total bytes should be converted from kB");
     assertEquals(256000L * 1024L, free, "Free bytes should follow MemFree");
@@ -219,7 +221,7 @@ class NodeMemMetricsTest {
   @Test
   @DisplayName("applyMemInfoSnapshot should clamp file page cache at zero when cached < shmem")
   void applyMemInfoSnapshotClampsNegativeFilePageCache() throws Exception {
-    NodeMemMetrics metrics = new NodeMemMetrics();
+    final NodeMemMetrics metrics = new NodeMemMetrics();
 
     Object snapshot = newSnapshot();
     Class<?> snapshotClass = snapshot.getClass();
@@ -263,7 +265,7 @@ class NodeMemMetricsTest {
   @Test
   @DisplayName("resetAll should reset all fields back to -1")
   void resetAllResetsFields() throws Exception {
-    NodeMemMetrics metrics = new NodeMemMetrics();
+    final NodeMemMetrics metrics = new NodeMemMetrics();
 
     // First apply a snapshot to change values
     Object snapshot = newSnapshot();

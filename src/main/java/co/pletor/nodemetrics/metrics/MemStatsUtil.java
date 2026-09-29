@@ -37,8 +37,8 @@ final class MemStatsUtil {
    *   "Dirty:           1234 kB"
    * </pre>
    *
-   * The method scans tokens after the first one and returns the first token that can be parsed as a
-   * {@code long}.
+   * <p>The method scans tokens after the first one and returns the first token that can be parsed
+   * as a {@code long}.
    *
    * @param line a single line from {@code /proc/meminfo}
    * @return parsed kB value, or {@code -1} on failure
@@ -87,7 +87,7 @@ final class MemStatsUtil {
    *   <li>Non v1/v2 versions: unsupported, return {@code null}
    * </ul>
    *
-   * If the computed {@code memory.stat} file does not exist, {@code null} is returned.
+   * <p>If the computed {@code memory.stat} file does not exist, {@code null} is returned.
    *
    * @param cg cgroup metadata for the current process
    * @return path to {@code memory.stat}, or {@code null} if not found/unsupported

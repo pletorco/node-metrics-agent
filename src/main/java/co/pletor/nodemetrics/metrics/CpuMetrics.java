@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
  *   <li>Falls back to sentinel values (e.g. -1) when metrics are not supported
  * </ul>
  *
- * The refresh mechanism is invoked on-demand when JMX attributes are queried.
+ * <p>The refresh mechanism is invoked on-demand when JMX attributes are queried.
  */
 public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMBean {
 
@@ -476,11 +476,11 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
    *   <li>{@link #readCpuAcctUsageIfPresent(Path)} optionally fills usage
    * </ul>
    *
-   * If no meaningful counters are found, this method returns {@code null}.
+   * <p>If no meaningful counters are found, this method returns {@code null}.
    */
   private static CgroupCpuStats readCgroupCpuStats() throws java.io.IOException {
     Path baseDir = sysRoot.resolve("fs/cgroup");
-    return readCgroupCpuStats(baseDir, locateCgroupCpuStatPath(baseDir));
+    return readCgroupCpuStatsFrom(baseDir, locateCgroupCpuStatPath(baseDir));
   }
 
   // A process rarely changes cgroup, so where cpu.stat lives is resolved once and re-resolved
@@ -501,7 +501,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
       cachedCgroupStatPathAtNanos = now;
     }
     try {
-      return readCgroupCpuStats(baseDir, cachedCgroupStatPath);
+      return readCgroupCpuStatsFrom(baseDir, cachedCgroupStatPath);
     } catch (java.io.IOException e) {
       cachedCgroupBaseDir = null; // force re-resolution on the next poll
       throw e;
@@ -518,7 +518,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     return statPath != null ? statPath : findCgroupCpuStatPath(baseDir);
   }
 
-  private static CgroupCpuStats readCgroupCpuStats(Path baseDir, Path statPath)
+  private static CgroupCpuStats readCgroupCpuStatsFrom(Path baseDir, Path statPath)
       throws java.io.IOException {
     if (statPath == null) {
       return null;

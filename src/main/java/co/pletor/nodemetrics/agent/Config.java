@@ -1,4 +1,5 @@
 // co.pletor.nodemetrics.agent.Config
+
 package co.pletor.nodemetrics.agent;
 
 import java.util.List;

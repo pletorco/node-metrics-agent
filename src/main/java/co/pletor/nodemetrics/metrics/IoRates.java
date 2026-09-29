@@ -15,7 +15,7 @@ import java.util.function.LongSupplier;
  *   <li>Computes bytes-per-second using a previous snapshot and {@link System#nanoTime()}
  * </ul>
  *
- * On non-Linux platforms, all metrics are reported as {@code 0.0}.
+ * <p>On non-Linux platforms, all metrics are reported as {@code 0.0}.
  */
 public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
 

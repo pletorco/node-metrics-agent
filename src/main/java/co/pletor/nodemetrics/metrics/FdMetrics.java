@@ -14,7 +14,7 @@ import java.lang.management.ManagementFactory;
  *   <li>Maximum file descriptor limit
  * </ul>
  *
- * On unsupported platforms, both values are reported as {@code -1}.
+ * <p>On unsupported platforms, both values are reported as {@code -1}.
  */
 public class FdMetrics extends AbstractRefreshingMetric implements FdMetricsMBean {
 

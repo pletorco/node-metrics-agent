@@ -1,4 +1,5 @@
 // src/test/java/co/pletor/nodemetrics/agent/ConfigCliTest.java
+
 package co.pletor.nodemetrics.agent;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,10 +30,6 @@ class ConfigCliTest {
 
   @TempDir Path tempDir;
 
-  /**
-   * Helper method to run the CLI main with given arguments while capturing stdout. This is used for
-   * "help" and successful paths where System.exit is not invoked.
-   */
   /** Helper method to run the CLI execute with given arguments while capturing stdout. */
   private String runMainCaptureStdout(String... args) {
     PrintStream originalOut = System.out;

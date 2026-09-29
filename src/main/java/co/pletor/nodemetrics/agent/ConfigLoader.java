@@ -1,4 +1,5 @@
 // co.pletor.nodemetrics.agent.ConfigLoader
+
 package co.pletor.nodemetrics.agent;
 
 import java.io.ByteArrayInputStream;
@@ -70,7 +71,7 @@ final class ConfigLoader {
    *   <li>{@code fsmetrics_paths} (list of strings)
    * </ul>
    *
-   * Missing keys will be replaced with defaults.
+   * <p>Missing keys will be replaced with defaults.
    *
    * @param path path to an existing YAML configuration file
    * @return populated {@link Config} instance

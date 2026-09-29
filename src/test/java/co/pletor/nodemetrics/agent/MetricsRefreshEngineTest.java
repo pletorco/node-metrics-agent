@@ -69,10 +69,15 @@ class MetricsRefreshEngineTest {
 
     try {
       engine.start();
-      waitUntil(() -> engine.currentMode() != TelemetryMode.NORMAL, 3_000L);
+      // The queue filling up changes the mode one dispatch cycle before the first task is
+      // dropped, so wait for both instead of assuming the drop has already happened.
+      waitUntil(
+          () -> engine.currentMode() != TelemetryMode.NORMAL && engine.droppedCount() > 0L, 3_000L);
       assertNotEquals(
           TelemetryMode.NORMAL, engine.currentMode(), "Overload should leave NORMAL mode");
       assertTrue(engine.droppedCount() > 0L, "Overload should produce dropped refresh tasks");
+      // The listener is invoked right after the mode changes.
+      waitUntil(() -> engine.currentMode() == lastMode.get(), 1_000L);
       assertEquals(engine.currentMode(), lastMode.get(), "Mode listener should track latest mode");
     } finally {
       engine.stop();
@@ -504,7 +509,7 @@ class MetricsRefreshEngineTest {
   }
 
   @Test
-  void engine_shouldCountSkippedRunsOfAHungTaskAsDropped() {
+  void engine_shouldCountSkippedRunsOfHungTaskAsDropped() {
     HangingMetric hung = new HangingMetric();
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
     engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("fs:/dead-nfs", hung, true, 20L)));

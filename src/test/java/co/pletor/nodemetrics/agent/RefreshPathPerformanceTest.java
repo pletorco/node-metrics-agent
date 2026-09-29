@@ -70,7 +70,7 @@ class RefreshPathPerformanceTest {
 
     long[] latencies = new long[iterations];
     long allocBefore = currentThreadAllocatedBytes();
-    long cpuBefore = currentThreadCpuNanos();
+    final long cpuBefore = currentThreadCpuNanos();
 
     for (int i = 0; i < iterations; i++) {
       long start = System.nanoTime();
