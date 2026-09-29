@@ -55,6 +55,15 @@ Security checks:
 
 `trivyScan` requires a local `trivy` installation.
 
+## Releasing
+
+Push a tag `vX.Y.Z` that matches the project version. The release workflow verifies the tag, runs
+`check`, builds the shaded jar, smoke-tests it and publishes the jar, `SHA256SUMS` and the SBOM.
+
+Optional signed build provenance: set the repository variable `ATTEST_RELEASE_ARTIFACTS` to `true`
+(requires repository support for attestations). Consumers can then verify a download with
+`gh attestation verify <jar> --repo <owner>/<repo>`.
+
 ## Pull Requests
 
 Please include:

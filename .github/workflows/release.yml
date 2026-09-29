@@ -48,3 +48,37 @@ jobs:
             build/libs/*-all.jar
             build/libs/SHA256SUMS
             build/reports/bom.json
+
+      - name: Keep the jar for the optional provenance job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-jar
+          path: build/libs/*-all.jar
+          if-no-files-found: error
+
+  # Optional: signed build provenance for the released jar, in its own job so that the OIDC and
+  # attestation permissions are granted only when it runs. Off by default because attestations
+  # need repository support (public repositories, or plans with attestations enabled). Enable it
+  # with a repository variable: Settings > Secrets and variables > Actions > Variables >
+  # ATTEST_RELEASE_ARTIFACTS = true.
+  # Verify a download with: gh attestation verify <jar> --repo <owner>/<repo>
+  attest:
+    needs: release
+    if: ${{ vars.ATTEST_RELEASE_ARTIFACTS == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download jar
+        uses: actions/download-artifact@v4
+        with:
+          name: release-jar
+          path: dist
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*-all.jar

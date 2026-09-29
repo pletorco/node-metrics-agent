@@ -24,6 +24,9 @@ All notable changes to this project will be documented in this file.
 
 ### Build and CI
 
+- Optional signed build provenance for release jars, in a separate job that only runs when the
+  repository variable `ATTEST_RELEASE_ARTIFACTS` is `true` (see `CONTRIBUTING.md`).
+
 - Compile with `--release 11` so the Java 11 API is enforced, not just Java 11 bytecode. This
   immediately caught `Stream.toList()` (Java 16) in tests.
 - CI runs the tests on Java 11 and 17 (`-PtestJavaVersion`) in addition to the Java 21 build, and
