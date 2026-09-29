@@ -6,13 +6,14 @@ import java.util.function.LongSupplier;
 
 /**
  * Lock-free refresh cadence guard.
- * <p>
- * Uses a monotonic clock so wall-clock adjustments (NTP steps, manual changes) cannot
- * suppress refreshes or make them fire early.
+ *
+ * <p>Uses a monotonic clock so wall-clock adjustments (NTP steps, manual changes) cannot suppress
+ * refreshes or make them fire early.
  */
 final class RefreshCadence {
   private final long intervalNanos;
   private final LongSupplier nanoClock;
+
   /** Earliest {@code nanoClock} value at which the next refresh is allowed. */
   private final AtomicLong nextAllowedNanos;
 

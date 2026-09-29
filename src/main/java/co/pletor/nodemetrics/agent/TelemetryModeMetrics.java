@@ -1,8 +1,6 @@
 package co.pletor.nodemetrics.agent;
 
-/**
- * Default telemetry mode MBean implementation.
- */
+/** Default telemetry mode MBean implementation. */
 public final class TelemetryModeMetrics implements TelemetryModeMetricsMBean {
   private final TelemetryModeState modeState;
 
@@ -20,4 +18,3 @@ public final class TelemetryModeMetrics implements TelemetryModeMetricsMBean {
     return modeState.transitions();
   }
 }
-

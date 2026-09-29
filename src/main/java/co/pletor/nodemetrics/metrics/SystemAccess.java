@@ -6,9 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-/**
- * Abstraction for system access to allow mocking in tests.
- */
+/** Abstraction for system access to allow mocking in tests. */
 interface SystemAccess {
   String getProperty(String key, String def);
 

@@ -6,52 +6,48 @@ import java.nio.file.Path;
 
 /**
  * Lightweight filesystem metrics implementation backed by {@link java.nio.file.FileStore}.
- * <p>
- * This MBean exposes:
+ *
+ * <p>This MBean exposes:
+ *
  * <ul>
- *   <li>Filesystem path (as configured)</li>
- *   <li>File store name</li>
- *   <li>Filesystem type (e.g., {@code "ext4"}, {@code "xfs"})</li>
- *   <li>Total capacity in bytes</li>
- *   <li>Usable space in bytes (for the current user)</li>
+ *   <li>Filesystem path (as configured)
+ *   <li>File store name
+ *   <li>Filesystem type (e.g., {@code "ext4"}, {@code "xfs"})
+ *   <li>Total capacity in bytes
+ *   <li>Usable space in bytes (for the current user)
  * </ul>
+ *
  * On failure, numeric values are set to {@code -1} and names to {@code "unknown"}.
  */
 public class FsMetrics extends AbstractRefreshingMetric implements FsMetricsMBean {
 
-  /**
-   * Path whose underlying filesystem is being monitored.
-   */
+  /** Path whose underlying filesystem is being monitored. */
   private final Path path;
 
-  /**
-   * Last observed file store name.
-   */
+  /** Last observed file store name. */
   private volatile String fsName = "";
 
-  /**
-   * Last observed filesystem type.
-   */
+  /** Last observed filesystem type. */
   private volatile String fsType = "";
 
   /**
    * Last observed total size of the filesystem in bytes.
-   * <p>
-   * {@code -1} indicates an error or unsupported value.
+   *
+   * <p>{@code -1} indicates an error or unsupported value.
    */
   private volatile long total;
 
   /**
    * Last observed usable bytes on the filesystem.
-   * <p>
-   * {@code -1} indicates an error or unsupported value.
+   *
+   * <p>{@code -1} indicates an error or unsupported value.
    */
   private volatile long usable;
 
   /**
    * Last observed unallocated bytes on the filesystem.
-   * <p>
-   * {@code -1} indicates an error or unsupported value.
+   *
+   * <p>{@code -1} indicates an error or unsupported value.
    */
   private volatile long unallocated;
 
@@ -68,9 +64,7 @@ public class FsMetrics extends AbstractRefreshingMetric implements FsMetricsMBea
   // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  /**
-   * Refresh the metric values.
-   */
+  /** Refresh the metric values. */
   @Override
   protected void doRefresh() {
     try {

@@ -4,7 +4,33 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- `CpuMetrics` reads only the aggregate line of `/proc/stat` instead of every line, and resolves the
+  location of the cgroup `cpu.stat` once a minute (or after a read failure) instead of on every
+  poll. About 16% less time per poll on a 4-core host; the saving grows with the CPU count.
+
+### Fixed
+
+- `MemoryLimitBytes` is now the effective cgroup limit: the tightest finite limit of the cgroup and
+  its ancestors. Previously a container without its own limit inside a limited Kubernetes pod (or
+  with a limit larger than the pod's) reported `-1` / an unreachable value, so limit-based alerts
+  and ratios were wrong.
+- Applying a configuration no longer blocks on an unresponsive filesystem. The `stat` calls made
+  for configured paths run on bounded probe threads with a 2 s per-call and 5 s per-apply budget;
+  a path that does not answer is still registered (and then reported as a stuck task) instead of
+  freezing the caller. At startup the caller is the application's main thread, so a dead NFS mount
+  listed in `fsmetrics_paths` could previously delay JVM startup indefinitely.
+
 ### Build and CI
+
+- Source is formatted with google-java-format through Spotless (`spotlessCheck` runs in `check` and
+  CI, `spotlessApply` fixes). The one-off reformatting commit is listed in `.git-blame-ignore-revs`.
+- Checkstyle warnings reduced from 321 (main) / 602 (test) to 46 / 21 and the ratchet lowered
+  accordingly. Remaining warnings need renames of public names or judgment calls.
+
+- Optional signed build provenance for release jars, in a separate job that only runs when the
+  repository variable `ATTEST_RELEASE_ARTIFACTS` is `true` (see `CONTRIBUTING.md`).
 
 - Compile with `--release 11` so the Java 11 API is enforced, not just Java 11 bytecode. This
   immediately caught `Stream.toList()` (Java 16) in tests.

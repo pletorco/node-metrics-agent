@@ -3,7 +3,9 @@ package co.pletor.nodemetrics.metrics;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
@@ -11,12 +13,13 @@ import java.util.Map;
 
 /**
  * Common memory statistics utilities.
- * <p>
- * Responsibilities:
+ *
+ * <p>Responsibilities:
+ *
  * <ul>
- *   <li>Parse {@code /proc/meminfo} lines that contain kB values</li>
- *   <li>Parse {@code memory.stat} key-value files for cgroup memory stats</li>
- *   <li>Locate the appropriate {@code memory.stat} file for cgroup v1/v2</li>
+ *   <li>Parse {@code /proc/meminfo} lines that contain kB values
+ *   <li>Parse {@code memory.stat} key-value files for cgroup memory stats
+ *   <li>Locate the appropriate {@code memory.stat} file for cgroup v1/v2
  * </ul>
  */
 final class MemStatsUtil {
@@ -27,13 +30,15 @@ final class MemStatsUtil {
 
   /**
    * Extract the numeric kB value from a {@code /proc/meminfo} line.
-   * <p>
-   * Example input:
+   *
+   * <p>Example input:
+   *
    * <pre>
    *   "Dirty:           1234 kB"
    * </pre>
-   * The method scans tokens after the first one and returns the first
-   * token that can be parsed as a {@code long}.
+   *
+   * The method scans tokens after the first one and returns the first token that can be parsed as a
+   * {@code long}.
    *
    * @param line a single line from {@code /proc/meminfo}
    * @return parsed kB value, or {@code -1} on failure
@@ -53,14 +58,13 @@ final class MemStatsUtil {
 
   /**
    * Read cgroup v1/v2 {@code memory.stat} file and parse it as a key-&gt;value map.
-   * <p>
-   * The exact file location depends on the cgroup version and the resolved path
-   * in {@link LinuxProcFs.CgroupInfo}. If the file cannot be located, an empty
-   * map is returned.
+   *
+   * <p>The exact file location depends on the cgroup version and the resolved path in {@link
+   * LinuxProcFs.CgroupInfo}. If the file cannot be located, an empty map is returned.
    *
    * @param cg cgroup metadata for the current process
-   * @return map of {@code memory.stat} keys to {@code Long} values,
-   *         or an empty map if the file is not found
+   * @return map of {@code memory.stat} keys to {@code Long} values, or an empty map if the file is
+   *     not found
    * @throws IOException if reading the file fails
    */
   static Map<String, Long> readCgroupMemoryStat(LinuxProcFs.CgroupInfo cg) throws IOException {
@@ -74,13 +78,15 @@ final class MemStatsUtil {
 
   /**
    * Resolve the {@code memory.stat} file path for cgroup v1/v2.
-   * <p>
-   * Resolution rules:
+   *
+   * <p>Resolution rules:
+   *
    * <ul>
-   *   <li>v2: use {@code cg.resolved} if it is a directory, otherwise {@code /sys/fs/cgroup}</li>
-   *   <li>v1: use {@code cg.resolved} if it is a directory, otherwise {@code /sys/fs/cgroup/memory}</li>
-   *   <li>Non v1/v2 versions: unsupported, return {@code null}</li>
+   *   <li>v2: use {@code cg.resolved} if it is a directory, otherwise {@code /sys/fs/cgroup}
+   *   <li>v1: use {@code cg.resolved} if it is a directory, otherwise {@code /sys/fs/cgroup/memory}
+   *   <li>Non v1/v2 versions: unsupported, return {@code null}
    * </ul>
+   *
    * If the computed {@code memory.stat} file does not exist, {@code null} is returned.
    *
    * @param cg cgroup metadata for the current process
@@ -93,13 +99,15 @@ final class MemStatsUtil {
 
     Path base;
     if ("v2".equals(cg.version)) {
-      base = (cg.resolved != null && Files.isDirectory(cg.resolved))
-          ? cg.resolved
-          : Paths.get("/sys/fs/cgroup");
+      base =
+          (cg.resolved != null && Files.isDirectory(cg.resolved))
+              ? cg.resolved
+              : Paths.get("/sys/fs/cgroup");
     } else if ("v1".equals(cg.version)) {
-      base = (cg.resolved != null && Files.isDirectory(cg.resolved))
-          ? cg.resolved
-          : Paths.get("/sys/fs/cgroup/memory");
+      base =
+          (cg.resolved != null && Files.isDirectory(cg.resolved))
+              ? cg.resolved
+              : Paths.get("/sys/fs/cgroup/memory");
     } else {
       // Not cgroup v1 or v2 → unsupported.
       return null;
@@ -111,8 +119,8 @@ final class MemStatsUtil {
 
   /**
    * Parse a file consisting of lines in {@code "key value"} format into a map.
-   * <p>
-   * Lines that cannot be parsed (e.g. invalid numbers) are skipped.
+   *
+   * <p>Lines that cannot be parsed (e.g. invalid numbers) are skipped.
    *
    * @param file path to the key-value file
    * @return map of keys to parsed long values (never {@code null})

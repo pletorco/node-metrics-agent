@@ -4,9 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
-/**
- * Utility class to provide access to agent metadata (version, commit ID).
- */
+/** Utility class to provide access to agent metadata (version, commit ID). */
 public final class AgentMetadata {
 
   private static final String VERSION;

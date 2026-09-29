@@ -1,12 +1,21 @@
 package co.pletor.nodemetrics.agent;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.Watchable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,22 +24,19 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tests for {@link ConfigReloader}.
  *
- * These tests cover:
- * - Core reload logic via checkAndReloadIfChanged()
- * - The main run() loop, including WatchService fallback and stop()
- * - Error handling in run()
- * - isConfigFileEvent() behavior via a fake WatchKey implementation
+ * <p>These tests cover: - Core reload logic via checkAndReloadIfChanged() - The main run() loop,
+ * including WatchService fallback and stop() - Error handling in run() - isConfigFileEvent()
+ * behavior via a fake WatchKey implementation
  */
 class ConfigReloaderTest {
 
-  @TempDir
-  Path tempDir;
+  @TempDir Path tempDir;
 
   // --- Simple test doubles for logger and applier ---
 
@@ -98,10 +104,7 @@ class ConfigReloaderTest {
     ListHandler handler = new ListHandler();
 
     // Minimal YAML for ConfigLoader; adjust if your ConfigLoader expects other keys
-    String yaml =
-
-        "paths:\n" +
-        "  - /";
+    String yaml = "paths:\n" + "  - /";
 
     Files.writeString(cfgPath, yaml, StandardCharsets.UTF_8);
 
@@ -114,7 +117,6 @@ class ConfigReloaderTest {
     assertEquals(1, applier.callCount.get(), "Applier should be called once on first load");
     Config applied = applier.lastConfig.get();
     assertNotNull(applied, "Last applied config should not be null");
-
 
     long lastSeenMtime = getLongField(reloader, "lastSeenMtime");
     String lastChecksum = (String) getField(reloader, "lastChecksum");
@@ -129,10 +131,7 @@ class ConfigReloaderTest {
     RecordingApplier applier = new RecordingApplier();
     ListHandler handler = new ListHandler();
 
-    String yaml =
-
-        "paths:\n" +
-        "  - /\n";
+    String yaml = "paths:\n" + "  - /\n";
 
     Files.writeString(cfgPath, yaml, StandardCharsets.UTF_8);
 
@@ -150,10 +149,13 @@ class ConfigReloaderTest {
     try (LogHandlerResource ignored = LogHandlerResource.attach(handler)) {
       invokeCheckAndReload(reloader);
     }
-    assertEquals(1, applier.callCount.get(), "Applier must not be called again if mtime is unchanged");
+    assertEquals(
+        1, applier.callCount.get(), "Applier must not be called again if mtime is unchanged");
 
     long lastSeenMtimeAfterSecond = getLongField(reloader, "lastSeenMtime");
-    assertEquals(lastSeenMtimeAfterFirst, lastSeenMtimeAfterSecond,
+    assertEquals(
+        lastSeenMtimeAfterFirst,
+        lastSeenMtimeAfterSecond,
         "lastSeenMtime should not change when mtime is unchanged");
   }
 
@@ -163,14 +165,9 @@ class ConfigReloaderTest {
     RecordingApplier applier = new RecordingApplier();
     ListHandler handler = new ListHandler();
 
-    String yaml1 =
+    String yaml1 = "paths:\n" + "  - /\n";
 
-        "paths:\n" +
-        "  - /\n";
-
-    String yaml2 =
-        "paths:\n" +
-        "  - /changed\n";
+    String yaml2 = "paths:\n" + "  - /changed\n";
 
     // First version
     Files.writeString(cfgPath, yaml1, StandardCharsets.UTF_8);
@@ -200,7 +197,6 @@ class ConfigReloaderTest {
 
     assertNotEquals(firstChecksum, secondChecksum, "Checksum should change when content changes");
     assertTrue(secondMtime >= firstMtime, "lastSeenMtime should be updated");
-
   }
 
   @Test
@@ -209,10 +205,7 @@ class ConfigReloaderTest {
     RecordingApplier applier = new RecordingApplier();
     ListHandler handler = new ListHandler();
 
-    String yaml =
-
-        "paths:\n" +
-        "  - /\n";
+    String yaml = "paths:\n" + "  - /\n";
 
     Files.writeString(cfgPath, yaml, StandardCharsets.UTF_8);
 
@@ -235,10 +228,12 @@ class ConfigReloaderTest {
       invokeCheckAndReload(reloader);
     }
 
-    assertEquals(1, applier.callCount.get(),
-        "Applier must not be called again when checksum is unchanged");
+    assertEquals(
+        1, applier.callCount.get(), "Applier must not be called again when checksum is unchanged");
     String checksumAfterSecond = (String) getField(reloader, "lastChecksum");
-    assertEquals(checksumAfterFirst, checksumAfterSecond,
+    assertEquals(
+        checksumAfterFirst,
+        checksumAfterSecond,
         "Checksum should remain the same for identical content");
   }
 
@@ -250,14 +245,9 @@ class ConfigReloaderTest {
     RecordingApplier applier = new RecordingApplier();
     ListHandler handler = new ListHandler();
 
-    String yaml1 =
+    String yaml1 = "paths:\n" + "  - /\n";
 
-        "paths:\n" +
-        "  - /\n";
-
-    String yaml2 =
-        "paths:\n" +
-        "  - /changed\n";
+    String yaml2 = "paths:\n" + "  - /changed\n";
 
     // Initial content
     Files.writeString(cfgPath, yaml1, StandardCharsets.UTF_8);
@@ -283,8 +273,6 @@ class ConfigReloaderTest {
     reloader.stop();
     t.join(2_000);
     assertFalse(t.isAlive(), "ConfigReloader thread should stop after stop() is called");
-
-
   }
 
   @Test
@@ -332,23 +320,20 @@ class ConfigReloaderTest {
 
       // Recover with a valid config; reloader should eventually apply it.
       Thread.sleep(20L);
-      Files.writeString(
-          cfgPath,
-          "fsmetrics_paths:\n  - /\n",
-          StandardCharsets.UTF_8
-      );
-      waitUntil(() -> applier.callCount.get() >= 1, 5_000, "Valid config was not applied after recovery");
+      Files.writeString(cfgPath, "fsmetrics_paths:\n  - /\n", StandardCharsets.UTF_8);
+      waitUntil(
+          () -> applier.callCount.get() >= 1, 5_000, "Valid config was not applied after recovery");
 
       reloader.stop();
       t.join(2_000);
     }
 
     assertFalse(t.isAlive(), "Thread should stop after stop() is called");
-    assertTrue(handler.errors.isEmpty(), "No SEVERE log should be emitted for temporary parse failures");
+    assertTrue(
+        handler.errors.isEmpty(), "No SEVERE log should be emitted for temporary parse failures");
     assertTrue(
         handler.warns.stream().anyMatch(msg -> msg.contains("configuration reload failed")),
-        "Parse failure should be logged as warning while keeping previous configuration"
-    );
+        "Parse failure should be logged as warning while keeping previous configuration");
   }
 
   // --- Tests: isConfigFileEvent() via a fake WatchKey ---
@@ -361,9 +346,7 @@ class ConfigReloaderTest {
     ConfigReloader reloader = new ConfigReloader(cfgPath, applier);
 
     // Create a fake WatchKey whose event context matches the config file name
-    WatchKey key = new FakeWatchKey(List.of(
-        new FakeWatchEvent<>(cfgPath.getFileName())
-    ));
+    WatchKey key = new FakeWatchKey(List.of(new FakeWatchEvent<>(cfgPath.getFileName())));
 
     Method m = ConfigReloader.class.getDeclaredMethod("isConfigFileEvent", WatchKey.class);
     m.setAccessible(true);
@@ -380,9 +363,7 @@ class ConfigReloaderTest {
     ConfigReloader reloader = new ConfigReloader(cfgPath, applier);
 
     // Event for a different file name
-    WatchKey key = new FakeWatchKey(List.of(
-        new FakeWatchEvent<>(Paths.get("other.yml"))
-    ));
+    WatchKey key = new FakeWatchKey(List.of(new FakeWatchEvent<>(Paths.get("other.yml"))));
 
     Method m = ConfigReloader.class.getDeclaredMethod("isConfigFileEvent", WatchKey.class);
     m.setAccessible(true);
@@ -471,7 +452,7 @@ class ConfigReloaderTest {
     // Test computePollingIntervalMs() directly by setting consecutiveReloadFailures via reflection,
     // avoiding any ThrottledLogger interaction (which is static and shared across tests).
     Path cfgPath = tempDir.resolve("backoff-test.yml");
-    ConfigReloader reloader = new ConfigReloader(cfgPath, cfg -> { });
+    ConfigReloader reloader = new ConfigReloader(cfgPath, cfg -> {});
 
     // 0 failures → base interval
     setIntField(reloader, "consecutiveReloadFailures", 0);
@@ -494,26 +475,31 @@ class ConfigReloaderTest {
     assertEquals(60_000L, invokeComputePollingInterval(reloader), "7+ failures → capped at 60 s");
 
     setIntField(reloader, "consecutiveReloadFailures", 20);
-    assertEquals(60_000L, invokeComputePollingInterval(reloader), "20 failures → still capped at 60 s");
+    assertEquals(
+        60_000L, invokeComputePollingInterval(reloader), "20 failures → still capped at 60 s");
   }
 
   @Test
   void successAfterFailures_shouldResetConsecutiveFailureCounter() throws Exception {
     Path cfgPath = tempDir.resolve("recover-config.yml");
     // Start with a valid config file so the first load succeeds and doesn't log
-    Files.writeString(cfgPath, "fsmetrics_paths:\n  - /\n", java.nio.charset.StandardCharsets.UTF_8);
+    Files.writeString(
+        cfgPath, "fsmetrics_paths:\n  - /\n", java.nio.charset.StandardCharsets.UTF_8);
 
     RecordingApplier applier = new RecordingApplier();
     ConfigReloader reloader = new ConfigReloader(cfgPath, applier);
 
     // Manually set the failure counter (bypassing ThrottledLogger) and verify reset on success
     setIntField(reloader, "consecutiveReloadFailures", 3);
-    assertEquals(3, getIntField(reloader, "consecutiveReloadFailures"), "Counter set via reflection");
+    assertEquals(
+        3, getIntField(reloader, "consecutiveReloadFailures"), "Counter set via reflection");
 
     // Perform a successful reload: load valid config so apply() is called
     invokeCheckAndReload(reloader);
 
-    assertEquals(0, getIntField(reloader, "consecutiveReloadFailures"),
+    assertEquals(
+        0,
+        getIntField(reloader, "consecutiveReloadFailures"),
         "Consecutive failure counter must reset to 0 after a successful reload");
     long interval = invokeComputePollingInterval(reloader);
     assertEquals(1_000L, interval, "Polling interval should return to base 1 s after recovery");
@@ -613,7 +599,7 @@ class ConfigReloaderTest {
   void run_shouldNotCreateMissingConfigDirectory() throws Exception {
     Path missingDir = tempDir.resolve("does-not-exist");
     Path cfgPath = missingDir.resolve("node-metrics.yml");
-    ConfigReloader reloader = new ConfigReloader(cfgPath, cfg -> { });
+    ConfigReloader reloader = new ConfigReloader(cfgPath, cfg -> {});
 
     Thread t = new Thread(reloader, "config-reloader-no-mkdir-test");
     t.setDaemon(true);
@@ -666,13 +652,16 @@ class ConfigReloaderTest {
     ConfigReloader reloader = new ConfigReloader(cfgPath, applier, startupChecksum, startupMtime);
     invokeCheckAndReload(reloader);
 
-    assertEquals(0, applier.callCount.get(), "Config already applied at startup must not be applied again");
-    assertEquals(startupMtime, getLongField(reloader, "lastSeenMtime"),
+    assertEquals(
+        0, applier.callCount.get(), "Config already applied at startup must not be applied again");
+    assertEquals(
+        startupMtime,
+        getLongField(reloader, "lastSeenMtime"),
         "An unchanged file must be skipped without re-parsing");
 
     Files.writeString(cfgPath, "fsmetrics_paths:\n  - /tmp\n", StandardCharsets.UTF_8);
-    Files.setLastModifiedTime(cfgPath, java.nio.file.attribute.FileTime.fromMillis(
-        System.currentTimeMillis() + 5_000L));
+    Files.setLastModifiedTime(
+        cfgPath, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 5_000L));
     invokeCheckAndReload(reloader);
 
     assertEquals(1, applier.callCount.get(), "A real content change must still be applied");
@@ -680,14 +669,17 @@ class ConfigReloaderTest {
 
   @Test
   void timerDrivenChecks_shouldBackOffAfterFailureButRecoverAfterInterval() throws Exception {
-    ConfigReloader reloader = new ConfigReloader(tempDir.resolve("broken.yml"), new RecordingApplier());
+    ConfigReloader reloader =
+        new ConfigReloader(tempDir.resolve("broken.yml"), new RecordingApplier());
 
     assertTrue(reloader.pollDue(System.nanoTime()), "Checks are due before any failure");
 
     reloader.recordReloadFailure();
 
     long now = System.nanoTime();
-    assertFalse(reloader.pollDue(now), "Right after a failure the timer-driven check must back off");
-    assertTrue(reloader.pollDue(now + 2_000_000_000L), "Check is due again once the backoff elapsed");
+    assertFalse(
+        reloader.pollDue(now), "Right after a failure the timer-driven check must back off");
+    assertTrue(
+        reloader.pollDue(now + 2_000_000_000L), "Check is due again once the backoff elapsed");
   }
 }

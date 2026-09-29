@@ -1,8 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
-/**
- * JMX MBean interface for exposing high-level I/O throughput metrics.
- */
+/** JMX MBean interface for exposing high-level I/O throughput metrics. */
 public interface IoRatesMBean {
 
   /**
@@ -42,9 +40,9 @@ public interface IoRatesMBean {
   double getNetTxBytesPerSec();
 
   /**
-   * Returns the cumulative bytes read from the counted block devices. Monotonic; use
-   * {@code rate()} over any time range instead of the point-in-time per-second gauges above.
-   * {@code -1} until the first successful read.
+   * Returns the cumulative bytes read from the counted block devices. Monotonic; use {@code rate()}
+   * over any time range instead of the point-in-time per-second gauges above. {@code -1} until the
+   * first successful read.
    *
    * @return total disk bytes read
    */
@@ -73,8 +71,8 @@ public interface IoRatesMBean {
   long getNetRxBytesTotal();
 
   /**
-   * Returns the cumulative bytes sent on the counted network interfaces. {@code -1} until the
-   * first successful read.
+   * Returns the cumulative bytes sent on the counted network interfaces. {@code -1} until the first
+   * successful read.
    *
    * @return total network bytes sent
    */

@@ -16,18 +16,18 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tests for {@link MemStatsUtil}.
- * <p>
- * Covers:
+ *
+ * <p>Covers:
+ *
  * <ul>
- *   <li>parseKbLine: parsing various /proc/meminfo-style lines</li>
- *   <li>readKeyValues: parsing simple key/value files</li>
- *   <li>readCgroupMemoryStat: behavior for different CgroupInfo configurations</li>
+ *   <li>parseKbLine: parsing various /proc/meminfo-style lines
+ *   <li>readKeyValues: parsing simple key/value files
+ *   <li>readCgroupMemoryStat: behavior for different CgroupInfo configurations
  * </ul>
  */
 class MemStatsUtilTest {
 
-  @TempDir
-  Path tempDir;
+  @TempDir Path tempDir;
 
   // ----------------------------------------------------
   // parseKbLine tests
@@ -147,9 +147,7 @@ class MemStatsUtilTest {
     Path cgDir = tempDir.resolve("cgv2");
     Files.createDirectories(cgDir);
     Path stat = cgDir.resolve("memory.stat");
-    String content =
-        "file 111\n"
-            + "anon 222";
+    String content = "file 111\n" + "anon 222";
     Files.writeString(stat, content, StandardCharsets.UTF_8);
 
     LinuxProcFs.CgroupInfo info = new LinuxProcFs.CgroupInfo();

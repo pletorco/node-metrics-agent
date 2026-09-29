@@ -2,22 +2,22 @@
 package co.pletor.nodemetrics.agent;
 
 import co.pletor.nodemetrics.metrics.CgroupMemMetrics;
+import co.pletor.nodemetrics.metrics.CgroupMemMetricsMBean;
 import co.pletor.nodemetrics.metrics.CpuMetrics;
+import co.pletor.nodemetrics.metrics.CpuMetricsMBean;
 import co.pletor.nodemetrics.metrics.FdMetrics;
+import co.pletor.nodemetrics.metrics.FdMetricsMBean;
 import co.pletor.nodemetrics.metrics.FsMetrics;
+import co.pletor.nodemetrics.metrics.FsMetricsMBean;
 import co.pletor.nodemetrics.metrics.IoRates;
+import co.pletor.nodemetrics.metrics.IoRatesMBean;
 import co.pletor.nodemetrics.metrics.NodeMemMetrics;
+import co.pletor.nodemetrics.metrics.NodeMemMetricsMBean;
 import co.pletor.nodemetrics.metrics.OsInfoMetrics;
+import co.pletor.nodemetrics.metrics.OsInfoMetricsMBean;
 import co.pletor.nodemetrics.metrics.OsRuntimeMetrics;
-
-import javax.management.InstanceAlreadyExistsException;
-import javax.management.InstanceNotFoundException;
-import javax.management.MBeanRegistrationException;
-import javax.management.MBeanServer;
-import javax.management.MalformedObjectNameException;
-import javax.management.NotCompliantMBeanException;
-import javax.management.ObjectName;
-import javax.management.StandardMBean;
+import co.pletor.nodemetrics.metrics.OsRuntimeMetricsMBean;
+import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
@@ -34,64 +34,66 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.management.InstanceAlreadyExistsException;
+import javax.management.InstanceNotFoundException;
+import javax.management.MBeanRegistrationException;
+import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
+import javax.management.NotCompliantMBeanException;
+import javax.management.ObjectName;
+import javax.management.StandardMBean;
 
 /**
  * Java agent entry point that exposes node / process metrics as JMX MBeans.
- * <p>
- * Responsibilities:
+ *
+ * <p>Responsibilities:
+ *
  * <ul>
- *   <li>Resolve and load configuration from YAML</li>
- *   <li>Register fixed (non-filesystem) MBeans</li>
- *   <li>Dynamically register filesystem MBeans based on configuration</li>
- *   <li>Schedule periodic polling of all metrics</li>
- *   <li>Watch the configuration file and apply changes at runtime</li>
+ *   <li>Resolve and load configuration from YAML
+ *   <li>Register fixed (non-filesystem) MBeans
+ *   <li>Dynamically register filesystem MBeans based on configuration
+ *   <li>Schedule periodic polling of all metrics
+ *   <li>Watch the configuration file and apply changes at runtime
  * </ul>
  */
 public class MetricsAgent {
 
   /**
    * This class is not meant to be instantiated.
-   * <p>
-   * All behavior is provided via static methods and static state.
+   *
+   * <p>All behavior is provided via static methods and static state.
    */
   private MetricsAgent() {
     // Prevent instantiation of utility/agent class.
   }
 
-  /**
-   * Underlying JUL logger used by the agent.
-   */
+  /** Underlying JUL logger used by the agent. */
   private static final Logger LOGGER = Logger.getLogger(MetricsAgent.class.getName());
+
   private static final ThrottledLogger THROTTLED_LOGGER = new ThrottledLogger(LOGGER, 60_000L);
 
-
-  /**
-   * Lock used to serialize configuration updates (including MBean changes).
-   */
+  /** Lock used to serialize configuration updates (including MBean changes). */
   private static final Object APPLY_LOCK = new Object();
 
   /**
    * Map of configured filesystem paths to their corresponding MBean entries.
-   * <p>
-   * Key: configured path string (as in {@link Config#fsmetricsPaths})<br>
-   * Value: {@link FsEntry} holding the bean instance, {@link ObjectName},
-   * and resolved {@link Path}.
+   *
+   * <p>Key: configured path string (as in {@link Config#fsmetricsPaths})<br>
+   * Value: {@link FsEntry} holding the bean instance, {@link ObjectName}, and resolved {@link
+   * Path}.
    */
   private static final Map<String, FsEntry> fsMap = new LinkedHashMap<>();
 
-
-
-  /**
-   * Platform MBean server used to register all metrics.
-   */
+  /** Platform MBean server used to register all metrics. */
   private static MBeanServer svr;
 
-  /**
-   * Last applied configuration.
-   */
+  /** Last applied configuration. */
   private static Config current;
+
   private static final TelemetryModeState TELEMETRY_MODE_STATE = new TelemetryModeState();
   private static final TelemetryModeMetrics TELEMETRY_MODE_METRICS =
       new TelemetryModeMetrics(TELEMETRY_MODE_STATE);
@@ -100,8 +102,7 @@ public class MetricsAgent {
       new AgentObservabilityMetrics(
           MetricsAgent::refreshEngineInstance,
           MetricsAgent::currentTelemetryMode,
-          MetricsAgent::throttledLoggerOverflowCount
-      );
+          MetricsAgent::throttledLoggerOverflowCount);
   private static final long REFRESH_DISPATCH_INTERVAL_MS = 500L;
   private static final int REFRESH_QUEUE_CAPACITY = 1024;
 
@@ -127,26 +128,40 @@ public class MetricsAgent {
   private static final String LOG_KEY_REGISTER_FS_FAILURE = "register-fs-failure";
   private static final String LOG_KEY_INVALID_RESOLVED_PATH = "invalid-resolved-path";
   private static final String LOG_KEY_MISSING_CONFIGURED_PATH = "missing-configured-path";
-  private static final String LOG_KEY_FIXED_MBEAN_REGISTRATION_FAILURE = "fixed-mbean-registration-failure";
+  private static final String LOG_KEY_FIXED_MBEAN_REGISTRATION_FAILURE =
+      "fixed-mbean-registration-failure";
   private static final String LOG_KEY_NULL_CONFIG_APPLIED = "null-config-applied";
   private static final String LOG_KEY_PARTITION_CAP_REACHED = "partition-cap-reached";
+  private static final String LOG_KEY_FS_PROBE_TIMEOUT = "fs-probe-timeout";
+
+  // Filesystem calls made while applying a configuration (stat of configured paths) are run
+  // through a bounded probe so an unresponsive mount cannot stall the caller. At startup that
+  // caller is the application's main thread.
+  private static final int FS_PROBE_MAX_THREADS = 4;
+  private static final long FS_PROBE_CALL_TIMEOUT_MS = 2_000L;
+  private static final long APPLY_PROBE_BUDGET_MS = 5_000L;
+  private static final FilesystemProbe FS_PROBE = new FilesystemProbe(FS_PROBE_MAX_THREADS);
+
+  /** Deadline for probing during the current {@link #applyConfig}; 0 = no overall budget. */
+  private static long probeDeadlineNanos = 0L;
+
+  /** Seam for tests: the partition-key lookup that is run through {@link #FS_PROBE}. */
+  static Function<Path, String> partitionKeyDetector = MetricsAgent::detectPartitionKeyUnguarded;
 
   /**
    * Functional interface for applying a new configuration.
-   * <p>
-   * This allows decoupling the {@link ConfigReloader} from the agent logic
-   * by injecting an {@link ApplyConfigFn} that knows how to update the
-   * running agent state.
+   *
+   * <p>This allows decoupling the {@link ConfigReloader} from the agent logic by injecting an
+   * {@link ApplyConfigFn} that knows how to update the running agent state.
    */
   @FunctionalInterface
   public interface ApplyConfigFn {
 
     /**
      * Applies the given configuration to the running agent.
-     * <p>
-     * Implementations are expected to be thread-safe and should perform
-     * any necessary MBean registration, unregistration, and scheduling
-     * adjustments.
+     *
+     * <p>Implementations are expected to be thread-safe and should perform any necessary MBean
+     * registration, unregistration, and scheduling adjustments.
      *
      * @param cfg configuration to apply; never {@code null}
      * @throws Exception if the configuration cannot be applied
@@ -154,10 +169,7 @@ public class MetricsAgent {
     void apply(Config cfg) throws Exception;
   }
 
-  /**
-   * Internal data holder to track filesystem metrics beans and their
-   * JMX {@link ObjectName}s.
-   */
+  /** Internal data holder to track filesystem metrics beans and their JMX {@link ObjectName}s. */
   private static final class FsEntry {
     private final FsMetrics bean;
     private final ObjectName on;
@@ -184,12 +196,11 @@ public class MetricsAgent {
 
   /**
    * JVM agent entry point, executed before the main application.
-   * <p>
-   * Agent arguments (if present) are interpreted as the path to the YAML
-   * configuration file.
+   *
+   * <p>Agent arguments (if present) are interpreted as the path to the YAML configuration file.
    *
    * @param agentArgs agent argument string (optional configuration path)
-   * @param inst      instrumentation handle (not used here but required by the JVM)
+   * @param inst instrumentation handle (not used here but required by the JVM)
    */
   public static void premain(String agentArgs, Instrumentation inst) {
     try {
@@ -204,43 +215,49 @@ public class MetricsAgent {
 
       // ----- Register fixed, non-filesystem MBeans -----
       cgroupMemBean = new CgroupMemMetrics();
-      registerStandardMBeanSafely(cgroupMemBean, co.pletor.nodemetrics.metrics.CgroupMemMetricsMBean.class,
+      registerStandardMBeanSafely(
+          cgroupMemBean,
+          CgroupMemMetricsMBean.class,
           fixedObjectName("co.pletor.cgroup:type=MemMetrics"));
 
       cpuBean = new CpuMetrics();
-      registerStandardMBeanSafely(cpuBean, co.pletor.nodemetrics.metrics.CpuMetricsMBean.class,
-          fixedObjectName("co.pletor.node:type=CpuMetrics"));
+      registerStandardMBeanSafely(
+          cpuBean, CpuMetricsMBean.class, fixedObjectName("co.pletor.node:type=CpuMetrics"));
 
       fdBean = new FdMetrics();
-      registerStandardMBeanSafely(fdBean, co.pletor.nodemetrics.metrics.FdMetricsMBean.class,
-          fixedObjectName("co.pletor.proc:type=FdMetrics"));
+      registerStandardMBeanSafely(
+          fdBean, FdMetricsMBean.class, fixedObjectName("co.pletor.proc:type=FdMetrics"));
 
       ioRatesBean = new IoRates();
-      registerStandardMBeanSafely(ioRatesBean, co.pletor.nodemetrics.metrics.IoRatesMBean.class,
-          fixedObjectName("co.pletor.node:type=IoRates"));
+      registerStandardMBeanSafely(
+          ioRatesBean, IoRatesMBean.class, fixedObjectName("co.pletor.node:type=IoRates"));
 
       nodeMemBean = new NodeMemMetrics();
-      registerStandardMBeanSafely(nodeMemBean, co.pletor.nodemetrics.metrics.NodeMemMetricsMBean.class,
+      registerStandardMBeanSafely(
+          nodeMemBean,
+          NodeMemMetricsMBean.class,
           fixedObjectName("co.pletor.node:type=MemMetrics"));
 
       osInfoBean = new OsInfoMetrics();
-      registerStandardMBeanSafely(osInfoBean, co.pletor.nodemetrics.metrics.OsInfoMetricsMBean.class,
+      registerStandardMBeanSafely(
+          osInfoBean,
+          OsInfoMetricsMBean.class,
           fixedObjectName("co.pletor.node:type=OsInfoMetrics"));
 
       osRuntimeBean = new OsRuntimeMetrics();
-      registerStandardMBeanSafely(osRuntimeBean, co.pletor.nodemetrics.metrics.OsRuntimeMetricsMBean.class,
+      registerStandardMBeanSafely(
+          osRuntimeBean,
+          OsRuntimeMetricsMBean.class,
           fixedObjectName("co.pletor.node:type=OsRuntimeMetrics"));
 
       registerStandardMBeanSafely(
           TELEMETRY_MODE_METRICS,
           TelemetryModeMetricsMBean.class,
-          fixedObjectName("co.pletor.agent:type=TelemetryMode")
-      );
+          fixedObjectName("co.pletor.agent:type=TelemetryMode"));
       registerStandardMBeanSafely(
           AGENT_OBSERVABILITY_METRICS,
           AgentObservabilityMetricsMBean.class,
-          fixedObjectName("co.pletor.agent:type=Observability")
-      );
+          fixedObjectName("co.pletor.agent:type=Observability"));
 
       // ----- Apply initial config (filesystem MBeans + scheduler) -----
       applyConfig(current);
@@ -249,26 +266,29 @@ public class MetricsAgent {
       // ----- Start configuration watcher -----
       // If cfgPath is null, watch the default config location (for hot creation).
       Path watchTarget = (cfgPath != null) ? cfgPath : Paths.get("./config/node-metrics.yml");
-      ConfigReloader reloader = new ConfigReloader(watchTarget, MetricsAgent::applyConfig, current.checksum,
-          startupMtime);
+      ConfigReloader reloader =
+          new ConfigReloader(
+              watchTarget, MetricsAgent::applyConfig, current.checksum, startupMtime);
 
       Thread watcherThread = new Thread(reloader, "node-metrics-config-watcher");
       watcherThread.setDaemon(true);
       watcherThread.start();
 
-      LOGGER.log(Level.INFO, "[node-metrics-agent] started. cfg={0}",
-          new Object[]{cfgPath != null ? cfgPath : "(default)"});
+      LOGGER.log(
+          Level.INFO,
+          "[node-metrics-agent] started. cfg={0}",
+          new Object[] {cfgPath != null ? cfgPath : "(default)"});
     } catch (Throwable t) { // NOSONAR
       // Prevent the agent from crashing the main application startup.
       THROTTLED_LOGGER.log(
           Level.SEVERE,
           LOG_KEY_AGENT_STARTUP_FAILURE,
           t,
-          () -> "[node-metrics-agent] Failed to start agent. The application will continue without metrics."
-      );
+          () ->
+              "[node-metrics-agent] Failed to start agent. The application will continue without"
+                  + " metrics.");
     }
   }
-
 
   private static long configMtimeOrUnknown(Path cfgPath) {
     try {
@@ -283,17 +303,15 @@ public class MetricsAgent {
 
   /**
    * Build the normalized set of filesystem paths from the configuration.
-   * <p>
-   * The root path ({@code "/"}) is always included as a fallback.
+   *
+   * <p>The root path ({@code "/"}) is always included as a fallback.
    *
    * @param cfg configuration containing {@link Config#fsmetricsPaths}
    * @return a {@link LinkedHashSet} of normalized path strings
    */
   private static LinkedHashSet<String> buildPathSet(Config cfg) {
     LinkedHashSet<String> paths = new LinkedHashSet<>();
-    java.util.List<String> configured = (cfg.fsmetricsPaths == null)
-        ? java.util.List.of("/")
-        : cfg.fsmetricsPaths;
+    List<String> configured = (cfg.fsmetricsPaths == null) ? List.of("/") : cfg.fsmetricsPaths;
 
     for (String raw : configured) {
       String normalized = normalizeConfiguredPath(raw);
@@ -312,8 +330,7 @@ public class MetricsAgent {
       THROTTLED_LOGGER.log(
           Level.WARNING,
           LOG_KEY_BLANK_FSMETRICS_PATH,
-          () -> "[node-metrics-agent] ignoring blank fsmetrics_paths entry"
-      );
+          () -> "[node-metrics-agent] ignoring blank fsmetrics_paths entry");
       return null;
     }
     try {
@@ -323,8 +340,7 @@ public class MetricsAgent {
           Level.WARNING,
           LOG_KEY_INVALID_FSMETRICS_PATH,
           e,
-          () -> "[node-metrics-agent] ignoring invalid fsmetrics_paths entry: " + rawPath
-      );
+          () -> "[node-metrics-agent] ignoring invalid fsmetrics_paths entry: " + rawPath);
       return null;
     }
   }
@@ -337,9 +353,7 @@ public class MetricsAgent {
   }
 
   private static LinkedHashSet<String> applyPartitionDedupAndCap(
-      LinkedHashSet<String> normalizedPaths,
-      int maxPartitions
-  ) {
+      LinkedHashSet<String> normalizedPaths, int maxPartitions) {
     LinkedHashSet<String> effectivePaths = new LinkedHashSet<>();
     LinkedHashMap<String, String> partitionToPath = new LinkedHashMap<>();
     int duplicatePartitionCount = 0;
@@ -366,8 +380,7 @@ public class MetricsAgent {
       LOGGER.log(
           Level.INFO,
           "[node-metrics-agent] deduplicated {0} filesystem path(s) on already-covered partitions",
-          duplicatePartitionCount
-      );
+          duplicatePartitionCount);
     }
 
     if (capExceededCount > 0) {
@@ -375,15 +388,47 @@ public class MetricsAgent {
       THROTTLED_LOGGER.log(
           Level.WARNING,
           LOG_KEY_PARTITION_CAP_REACHED,
-          () -> "[node-metrics-agent] fsmetrics partition cap reached (cap="
-              + maxPartitions + ", dropped=" + droppedCount + ")"
-      );
+          () ->
+              "[node-metrics-agent] fsmetrics partition cap reached (cap="
+                  + maxPartitions
+                  + ", dropped="
+                  + droppedCount
+                  + ")");
     }
 
     return effectivePaths;
   }
 
+  private static long probeWaitMs() {
+    if (probeDeadlineNanos == 0L) {
+      return FS_PROBE_CALL_TIMEOUT_MS;
+    }
+    long remainingMs = TimeUnit.NANOSECONDS.toMillis(probeDeadlineNanos - System.nanoTime());
+    return Math.min(FS_PROBE_CALL_TIMEOUT_MS, remainingMs);
+  }
+
+  private static void logProbeTimeout(Path path) {
+    THROTTLED_LOGGER.log(
+        Level.WARNING,
+        LOG_KEY_FS_PROBE_TIMEOUT,
+        () ->
+            "[node-metrics-agent] filesystem did not respond in time, path is treated as"
+                + " unresponsive: "
+                + path);
+  }
+
   private static String detectPartitionKey(Path path) {
+    String key = FS_PROBE.call(() -> partitionKeyDetector.apply(path), null, probeWaitMs());
+    if (key == null) {
+      // Unresponsive (or probe threads exhausted): keep it unique by path. The path is still
+      // registered; its refresh runs on the background lane and shows up as a stuck task.
+      logProbeTimeout(path);
+      return "unresponsive:" + path;
+    }
+    return key;
+  }
+
+  private static String detectPartitionKeyUnguarded(Path path) {
     // Missing paths cannot be mapped reliably to a mounted partition.
     // Keep them unique by absolute path so cap logic remains deterministic.
     if (!Files.exists(path)) {
@@ -409,13 +454,13 @@ public class MetricsAgent {
   }
 
   /**
-   * Register filesystem MBeans for all configured paths or keep existing ones
-   * when they can be reused.
+   * Register filesystem MBeans for all configured paths or keep existing ones when they can be
+   * reused.
    *
    * @param newPaths normalized set of configured paths
    * @throws InstanceAlreadyExistsException if an MBean with the same name is already registered
-   * @throws MBeanRegistrationException     if an MBean cannot be registered
-   * @throws NotCompliantMBeanException     if an MBean does not comply with JMX requirements
+   * @throws MBeanRegistrationException if an MBean cannot be registered
+   * @throws NotCompliantMBeanException if an MBean does not comply with JMX requirements
    */
   private static void registerOrReuseFsBeans(LinkedHashSet<String> newPaths) {
 
@@ -427,25 +472,26 @@ public class MetricsAgent {
             registerFsBean(p, path);
           }
         } catch (InstanceAlreadyExistsException
-                 | MBeanRegistrationException
-                 | NotCompliantMBeanException
-                 | RuntimeException e) {
+            | MBeanRegistrationException
+            | NotCompliantMBeanException
+            | RuntimeException e) {
           THROTTLED_LOGGER.log(
               Level.WARNING,
               LOG_KEY_REGISTER_FS_FAILURE,
               e,
-              () -> "[node-metrics-agent] failed to register filesystem metrics for path: " + p
-          );
+              () -> "[node-metrics-agent] failed to register filesystem metrics for path: " + p);
         }
       }
     }
   }
 
   private static void registerFsBean(String configuredPath, Path path)
-      throws InstanceAlreadyExistsException, MBeanRegistrationException, NotCompliantMBeanException {
+      throws InstanceAlreadyExistsException,
+          MBeanRegistrationException,
+          NotCompliantMBeanException {
     FsMetrics bean = new FsMetrics(path);
     ObjectName on = buildFsObjectName(path);
-    svr.registerMBean(new StandardMBean(bean, co.pletor.nodemetrics.metrics.FsMetricsMBean.class), on);
+    svr.registerMBean(new StandardMBean(bean, FsMetricsMBean.class), on);
     fsMap.put(configuredPath, new FsEntry(bean, on, path));
     LOGGER.log(Level.INFO, "Registered MBean: {0}", on);
   }
@@ -462,9 +508,9 @@ public class MetricsAgent {
 
   /**
    * Resolve and validate the filesystem path for a configured entry.
-   * <p>
-   * If the path does not exist, a warning is logged but the path is still used
-   * for registration to avoid hard-failing on transient or mounted-later paths.
+   *
+   * <p>If the path does not exist, a warning is logged but the path is still used for registration
+   * to avoid hard-failing on transient or mounted-later paths.
    *
    * @param rawPath configured path string
    * @return normalized absolute {@link Path}
@@ -478,17 +524,17 @@ public class MetricsAgent {
           Level.WARNING,
           LOG_KEY_INVALID_RESOLVED_PATH,
           e,
-          () -> "[node-metrics-agent] invalid path, skipping registration: " + rawPath
-      );
+          () -> "[node-metrics-agent] invalid path, skipping registration: " + rawPath);
       return null;
     }
 
-    if (!Files.exists(path)) {
+    // An unresponsive filesystem counts as existing: it is registered and reported as stuck
+    // rather than blocking here or being reported as missing.
+    if (!FS_PROBE.call(() -> Files.exists(path), Boolean.TRUE, probeWaitMs())) {
       THROTTLED_LOGGER.log(
           Level.WARNING,
           LOG_KEY_MISSING_CONFIGURED_PATH,
-          () -> "[node-metrics-agent] WARN missing path (registering anyway): " + path
-      );
+          () -> "[node-metrics-agent] WARN missing path (registering anyway): " + path);
     }
 
     return path;
@@ -496,9 +542,9 @@ public class MetricsAgent {
 
   /**
    * Build the JMX {@link ObjectName} for a filesystem metrics bean.
-   * <p>
-   * Any {@link MalformedObjectNameException} is wrapped into
-   * {@link IllegalArgumentException}, as it indicates a programming error.
+   *
+   * <p>Any {@link MalformedObjectNameException} is wrapped into {@link IllegalArgumentException},
+   * as it indicates a programming error.
    *
    * @param path filesystem path being monitored
    * @return constructed {@link ObjectName}
@@ -532,9 +578,9 @@ public class MetricsAgent {
 
   /**
    * Build {@link ObjectName} for fixed (hard-coded) beans.
-   * <p>
-   * Any {@link MalformedObjectNameException} is treated as a programming error
-   * and wrapped into {@link IllegalStateException}.
+   *
+   * <p>Any {@link MalformedObjectNameException} is treated as a programming error and wrapped into
+   * {@link IllegalStateException}.
    *
    * @param name hard-coded {@link ObjectName} string
    * @return constructed {@link ObjectName}
@@ -550,7 +596,8 @@ public class MetricsAgent {
   }
 
   @SuppressWarnings({"rawtypes", "unchecked"})
-  private static void registerStandardMBeanSafely(Object bean, Class<?> mbeanInterface, ObjectName objectName) {
+  private static void registerStandardMBeanSafely(
+      Object bean, Class<?> mbeanInterface, ObjectName objectName) {
     try {
       StandardMBean wrapped = new StandardMBean(bean, (Class) mbeanInterface);
       svr.registerMBean(wrapped, objectName);
@@ -559,16 +606,15 @@ public class MetricsAgent {
           Level.WARNING,
           LOG_KEY_FIXED_MBEAN_REGISTRATION_FAILURE,
           e,
-          () -> "[node-metrics-agent] failed to register fixed MBean: " + objectName
-      );
+          () -> "[node-metrics-agent] failed to register fixed MBean: " + objectName);
     }
   }
 
   /**
    * Unregister filesystem MBeans for paths that are no longer configured.
-   * <p>
-   * Any failures during unregistration are logged and ignored so that the
-   * agent can continue operating.
+   *
+   * <p>Any failures during unregistration are logged and ignored so that the agent can continue
+   * operating.
    *
    * @param newPaths normalized set of currently configured paths
    */
@@ -593,11 +639,11 @@ public class MetricsAgent {
       if (refreshEngine != null) {
         return;
       }
-      refreshEngine = new MetricsRefreshEngine(
-          REFRESH_DISPATCH_INTERVAL_MS,
-          REFRESH_QUEUE_CAPACITY,
-          MetricsAgent::transitionTelemetryMode
-      );
+      refreshEngine =
+          new MetricsRefreshEngine(
+              REFRESH_DISPATCH_INTERVAL_MS,
+              REFRESH_QUEUE_CAPACITY,
+              MetricsAgent::transitionTelemetryMode);
       updateRefreshEngineTasksLocked();
       refreshEngine.start();
     }
@@ -625,8 +671,9 @@ public class MetricsAgent {
       FsMetrics fsBean = entry.getValue().getBean();
       if (fsBean != null) {
         fsBean.setReadRefreshEnabled(false);
-        tasks.add(new MetricsRefreshEngine.RefreshTask(
-            "fs:" + entry.getKey(), fsBean, true, FS_REFRESH_INTERVAL_MS));
+        tasks.add(
+            new MetricsRefreshEngine.RefreshTask(
+                "fs:" + entry.getKey(), fsBean, true, FS_REFRESH_INTERVAL_MS));
       }
     }
     return tasks;
@@ -635,9 +682,8 @@ public class MetricsAgent {
   private static void addHighPriorityTask(
       List<MetricsRefreshEngine.RefreshTask> tasks,
       String name,
-      co.pletor.nodemetrics.metrics.RefreshManagedMetric metric,
-      long intervalMs
-  ) {
+      RefreshManagedMetric metric,
+      long intervalMs) {
     if (metric == null) {
       return;
     }
@@ -645,63 +691,68 @@ public class MetricsAgent {
     tasks.add(new MetricsRefreshEngine.RefreshTask(name, metric, false, intervalMs));
   }
 
-
   /**
    * Apply a new configuration to the running agent:
+   *
    * <ul>
-   *   <li>Reconcile filesystem MBeans (add / remove)</li>
+   *   <li>Reconcile filesystem MBeans (add / remove)
    * </ul>
+   *
    * The entire operation is serialized using {@link #APPLY_LOCK}.
    *
    * @param newCfg the configuration to apply
    * @throws InstanceAlreadyExistsException if an MBean with the same name is already registered
-   * @throws MBeanRegistrationException     if an MBean cannot be registered or unregistered
-   * @throws NotCompliantMBeanException     if an MBean does not comply with JMX requirements
+   * @throws MBeanRegistrationException if an MBean cannot be registered or unregistered
+   * @throws NotCompliantMBeanException if an MBean does not comply with JMX requirements
    */
   private static void applyConfig(Config newCfg) {
     if (newCfg == null) {
       THROTTLED_LOGGER.log(
           Level.WARNING,
           LOG_KEY_NULL_CONFIG_APPLIED,
-          () -> "[node-metrics-agent] null config received, applying defaults"
-      );
+          () -> "[node-metrics-agent] null config received, applying defaults");
       newCfg = Config.defaults();
     }
 
     synchronized (APPLY_LOCK) {
-      // 1) Build the path set (always including "/").
-      LinkedHashSet<String> requestedPaths = buildPathSet(newCfg);
-      int maxPartitions = resolveMaxFsPartitions(newCfg);
-      LinkedHashSet<String> newPaths = applyPartitionDedupAndCap(requestedPaths, maxPartitions);
+      probeDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(APPLY_PROBE_BUDGET_MS);
+      try {
+        // 1) Build the path set (always including "/").
+        LinkedHashSet<String> requestedPaths = buildPathSet(newCfg);
+        int maxPartitions = resolveMaxFsPartitions(newCfg);
+        LinkedHashSet<String> newPaths = applyPartitionDedupAndCap(requestedPaths, maxPartitions);
 
-      // 2) Ensure beans exist for all configured paths.
-      registerOrReuseFsBeans(newPaths);
+        // 2) Ensure beans exist for all configured paths.
+        registerOrReuseFsBeans(newPaths);
 
-      // 3) Unregister beans for paths no longer configured.
-      unregisterRemovedFsBeans(newPaths);
+        // 3) Unregister beans for paths no longer configured.
+        unregisterRemovedFsBeans(newPaths);
 
-      // 4) Update async refresh targets.
-      updateRefreshEngineTasksLocked();
+        // 4) Update async refresh targets.
+        updateRefreshEngineTasksLocked();
 
-      // 5) Update current config and log.
-      current = newCfg;
-      LOGGER.log(Level.INFO, "[node-metrics-agent] config applied: {0}", current);
+        // 5) Update current config and log.
+        current = newCfg;
+        LOGGER.log(Level.INFO, "[node-metrics-agent] config applied: {0}", current);
+      } finally {
+        probeDeadlineNanos = 0L;
+      }
     }
   }
 
   /**
    * Resolve the configuration file path from agent arguments or known defaults.
-   * <p>
-   * Resolution strategy:
+   *
+   * <p>Resolution strategy:
+   *
    * <ol>
-   *   <li>If {@code agentArgs} is non-blank, treat it as an explicit config path.</li>
+   *   <li>If {@code agentArgs} is non-blank, treat it as an explicit config path.
    *   <li>Otherwise, try known default locations:
-   *     <ul>
-   *       <li>{@code /monitor/node-metrics.yml}</li>
-   *       <li>{@code ./config/node-metrics.yml}</li>
-   *     </ul>
-   *   </li>
-   *   <li>If no file is found, return {@code null}.</li>
+   *       <ul>
+   *         <li>{@code /monitor/node-metrics.yml}
+   *         <li>{@code ./config/node-metrics.yml}
+   *       </ul>
+   *   <li>If no file is found, return {@code null}.
    * </ol>
    *
    * @param agentArgs optional agent argument specifying the config path
@@ -714,10 +765,7 @@ public class MetricsAgent {
     }
 
     // 2) Known default locations
-    String[] candidates = {
-        "/monitor/node-metrics.yml",
-        "./config/node-metrics.yml"
-    };
+    String[] candidates = {"/monitor/node-metrics.yml", "./config/node-metrics.yml"};
 
     for (String c : candidates) {
       Path p = Paths.get(c);

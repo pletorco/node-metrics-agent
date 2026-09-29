@@ -1,14 +1,13 @@
 package co.pletor.nodemetrics.metrics;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 class RefreshCadenceTest {
 
@@ -30,8 +29,10 @@ class RefreshCadenceTest {
     CountDownLatch start = new CountDownLatch(1);
     AtomicInteger granted = new AtomicInteger(0);
 
-    Thread t1 = new Thread(() -> runContender(cadence, ready, start, granted), "refresh-cadence-test-1");
-    Thread t2 = new Thread(() -> runContender(cadence, ready, start, granted), "refresh-cadence-test-2");
+    Thread t1 =
+        new Thread(() -> runContender(cadence, ready, start, granted), "refresh-cadence-test-1");
+    Thread t2 =
+        new Thread(() -> runContender(cadence, ready, start, granted), "refresh-cadence-test-2");
     t1.start();
     t2.start();
 
@@ -44,11 +45,7 @@ class RefreshCadenceTest {
   }
 
   private static void runContender(
-      RefreshCadence cadence,
-      CountDownLatch ready,
-      CountDownLatch start,
-      AtomicInteger granted
-  ) {
+      RefreshCadence cadence, CountDownLatch ready, CountDownLatch start, AtomicInteger granted) {
     ready.countDown();
     try {
       if (!start.await(1, TimeUnit.SECONDS)) {
@@ -64,7 +61,8 @@ class RefreshCadenceTest {
 
   @Test
   void cadence_shouldHonourIntervalWithMonotonicClockEvenWhenNanoTimeIsNegative() {
-    java.util.concurrent.atomic.AtomicLong now = new java.util.concurrent.atomic.AtomicLong(-10_000_000_000L);
+    java.util.concurrent.atomic.AtomicLong now =
+        new java.util.concurrent.atomic.AtomicLong(-10_000_000_000L);
     RefreshCadence cadence = new RefreshCadence(500L, now::get);
 
     assertTrue(cadence.tryAcquire(), "First acquire should pass");

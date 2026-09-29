@@ -2,16 +2,18 @@ package co.pletor.nodemetrics.metrics;
 
 /**
  * Shared refresh plumbing for the metric beans.
- * <p>
- * Subclasses implement {@link #doRefresh()} and read their attributes through
- * {@link #refreshOnRead()}. This class provides:
+ *
+ * <p>Subclasses implement {@link #doRefresh()} and read their attributes through {@link
+ * #refreshOnRead()}. This class provides:
+ *
  * <ul>
- *   <li>a cadence guard so JMX reads never refresh more often than every 500 ms</li>
- *   <li>{@link #poll()} for the asynchronous refresh engine (always refreshes)</li>
- *   <li>the read-refresh switch used to keep refresh work off the JMX read path</li>
- *   <li>failure reporting via {@link #lastRefreshError()}, so failures that a bean absorbs
- *       (keeping the last values or exposing sentinels) stay visible to the engine</li>
+ *   <li>a cadence guard so JMX reads never refresh more often than every 500 ms
+ *   <li>{@link #poll()} for the asynchronous refresh engine (always refreshes)
+ *   <li>the read-refresh switch used to keep refresh work off the JMX read path
+ *   <li>failure reporting via {@link #lastRefreshError()}, so failures that a bean absorbs (keeping
+ *       the last values or exposing sentinels) stay visible to the engine
  * </ul>
+ *
  * Refresh failures never propagate to JMX callers or to {@link #poll()}.
  */
 abstract class AbstractRefreshingMetric implements RefreshManagedMetric {
@@ -23,8 +25,8 @@ abstract class AbstractRefreshingMetric implements RefreshManagedMetric {
   private volatile Throwable lastRefreshError;
 
   /**
-   * Perform one refresh. Implementations should absorb expected I/O failures (exposing sentinel
-   * or last-known values) and report them with {@link #recordRefreshFailure(Throwable)}.
+   * Perform one refresh. Implementations should absorb expected I/O failures (exposing sentinel or
+   * last-known values) and report them with {@link #recordRefreshFailure(Throwable)}.
    */
   protected abstract void doRefresh();
 
@@ -50,16 +52,14 @@ abstract class AbstractRefreshingMetric implements RefreshManagedMetric {
     return lastRefreshError;
   }
 
-  /**
-   * Record that the current refresh failed. Cleared automatically at the start of the next one.
-   */
+  /** Record that the current refresh failed. Cleared automatically at the start of the next one. */
   protected final void recordRefreshFailure(Throwable error) {
     lastRefreshError = error;
   }
 
   /**
-   * Refresh from a JMX attribute read, if read-triggered refresh is enabled and the cadence
-   * guard allows it.
+   * Refresh from a JMX attribute read, if read-triggered refresh is enabled and the cadence guard
+   * allows it.
    */
   protected final void refreshOnRead() {
     if (readRefreshEnabled && refreshCadence.tryAcquire()) {

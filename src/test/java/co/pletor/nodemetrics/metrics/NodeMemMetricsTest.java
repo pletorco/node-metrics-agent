@@ -21,9 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledForJreRange;
 import org.junit.jupiter.api.condition.JRE;
 
-/**
- * Unit tests for {@link NodeMemMetrics}.
- */
+/** Unit tests for {@link NodeMemMetrics}. */
 class NodeMemMetricsTest {
 
   // ----------------------------------------------------
@@ -36,7 +34,7 @@ class NodeMemMetricsTest {
     NodeMemMetrics metrics = new NodeMemMetrics();
 
     // For on-demand metrics, the first getter call triggers a refresh.
-    // If we want to test "initial" (unpopulated) state, we must ensure refresh() 
+    // If we want to test "initial" (unpopulated) state, we must ensure refresh()
     // doesn't actually overwrite fields with real system data if we are testing defaults.
     // However, on a real system, it WILL overwrite.
     // So assertions of "-1" are flaky if the system returns valid data.
@@ -56,8 +54,8 @@ class NodeMemMetricsTest {
     assertEquals(-1L, metrics.getShmemBytes(), "Initial shmem should be -1");
     assertEquals(-1L, metrics.getFilePageCacheBytes(), "Initial file page cache should be -1");
 
-    assertEquals(-1.0, metrics.getUsedMemoryPercent(), 0.000001,
-        "Initial used percent should be -1.0");
+    assertEquals(
+        -1.0, metrics.getUsedMemoryPercent(), 0.000001, "Initial used percent should be -1.0");
   }
 
   // ----------------------------------------------------
@@ -72,14 +70,14 @@ class NodeMemMetricsTest {
     // Multi-line text block with sample /proc/meminfo content
     String meminfoSample =
         "MemTotal:       1024000 kB\n"
-        + "MemAvailable:    512000 kB\n"
-        + "MemFree:         256000 kB\n"
-        + "Buffers:          64000 kB\n"
-        + "Cached:          128000 kB\n"
-        + "Shmem:            32000 kB\n"
-        + "Dirty:             4000 kB\n"
-        + "Writeback:         2000 kB\n"
-        + "SReclaimable:      8000 kB\n";
+            + "MemAvailable:    512000 kB\n"
+            + "MemFree:         256000 kB\n"
+            + "Buffers:          64000 kB\n"
+            + "Cached:          128000 kB\n"
+            + "Shmem:            32000 kB\n"
+            + "Dirty:             4000 kB\n"
+            + "Writeback:         2000 kB\n"
+            + "SReclaimable:      8000 kB\n";
 
     List<String> lines = meminfoSample.lines().collect(java.util.stream.Collectors.toList());
 
@@ -91,21 +89,21 @@ class NodeMemMetricsTest {
     Class<?> snapshotClass = snapshot.getClass();
 
     // Helper to read long field from the snapshot
-    assertEquals(1024000L, getLongField(snapshotClass, snapshot, "memTotalKb"),
-        "memTotalKb mismatch");
-    assertEquals(512000L, getLongField(snapshotClass, snapshot, "memAvailableKb"),
+    assertEquals(
+        1024000L, getLongField(snapshotClass, snapshot, "memTotalKb"), "memTotalKb mismatch");
+    assertEquals(
+        512000L,
+        getLongField(snapshotClass, snapshot, "memAvailableKb"),
         "memAvailableKb mismatch");
     assertEquals(256000L, getLongField(snapshotClass, snapshot, "memFreeKb"), "memFreeKb mismatch");
     assertEquals(64000L, getLongField(snapshotClass, snapshot, "buffersKb"), "buffersKb mismatch");
-    assertEquals(128000L, getLongField(snapshotClass, snapshot, "cachedKb"),
-        "cachedKb mismatch");
-    assertEquals(32000L, getLongField(snapshotClass, snapshot, "shmemKb"),
-        "shmemKb mismatch");
+    assertEquals(128000L, getLongField(snapshotClass, snapshot, "cachedKb"), "cachedKb mismatch");
+    assertEquals(32000L, getLongField(snapshotClass, snapshot, "shmemKb"), "shmemKb mismatch");
     assertEquals(4000L, getLongField(snapshotClass, snapshot, "dirtyKb"), "dirtyKb mismatch");
-    assertEquals(2000L, getLongField(snapshotClass, snapshot, "writebackKb"),
-        "writebackKb mismatch");
-    assertEquals(8000L, getLongField(snapshotClass, snapshot, "sReclaimableKb"),
-        "sReclaimableKb mismatch");
+    assertEquals(
+        2000L, getLongField(snapshotClass, snapshot, "writebackKb"), "writebackKb mismatch");
+    assertEquals(
+        8000L, getLongField(snapshotClass, snapshot, "sReclaimableKb"), "sReclaimableKb mismatch");
   }
 
   // ----------------------------------------------------
@@ -121,8 +119,8 @@ class NodeMemMetricsTest {
     setLongField(snapshotClass, snapshot, "memAvailableKb", 12345L);
     setLongField(snapshotClass, snapshot, "memFreeKb", 111L);
 
-    Method computeAvailableBytes = NodeMemMetrics.class
-        .getDeclaredMethod("computeAvailableBytes", snapshotClass);
+    Method computeAvailableBytes =
+        NodeMemMetrics.class.getDeclaredMethod("computeAvailableBytes", snapshotClass);
     computeAvailableBytes.setAccessible(true);
 
     NodeMemMetrics metrics = new NodeMemMetrics();
@@ -132,10 +130,10 @@ class NodeMemMetricsTest {
   }
 
   @Test
-  @DisplayName("computeAvailableBytes should fall back to Free+Buffers+Cached "
-      + "when MemAvailable is missing")
+  @DisplayName(
+      "computeAvailableBytes should fall back to Free+Buffers+Cached "
+          + "when MemAvailable is missing")
   void computeAvailableBytesFallbackSum() throws Exception {
-
 
     Object snapshot = newSnapshot();
     Class<?> snapshotClass = snapshot.getClass();
@@ -145,14 +143,16 @@ class NodeMemMetricsTest {
     setLongField(snapshotClass, snapshot, "buffersKb", 200L);
     setLongField(snapshotClass, snapshot, "cachedKb", 300L);
 
-    Method computeAvailableBytes = NodeMemMetrics.class
-        .getDeclaredMethod("computeAvailableBytes", snapshotClass);
+    Method computeAvailableBytes =
+        NodeMemMetrics.class.getDeclaredMethod("computeAvailableBytes", snapshotClass);
     computeAvailableBytes.setAccessible(true);
 
     NodeMemMetrics metrics = new NodeMemMetrics();
     long availableBytes = (long) computeAvailableBytes.invoke(metrics, snapshot);
 
-    assertEquals((100L + 200L + 300L) * 1024L, availableBytes,
+    assertEquals(
+        (100L + 200L + 300L) * 1024L,
+        availableBytes,
         "Fallback should sum MemFree, Buffers, and Cached");
   }
 
@@ -179,12 +179,12 @@ class NodeMemMetricsTest {
     setLongField(snapshotClass, snapshot, "writebackKb", 2000L);
     setLongField(snapshotClass, snapshot, "sReclaimableKb", 8000L);
 
-    Method applySnapshot = NodeMemMetrics.class
-        .getDeclaredMethod("applyMemInfoSnapshot", snapshotClass);
+    Method applySnapshot =
+        NodeMemMetrics.class.getDeclaredMethod("applyMemInfoSnapshot", snapshotClass);
     applySnapshot.setAccessible(true);
 
     applySnapshot.invoke(metrics, snapshot);
-    
+
     // Prevent get*() from triggering a real refresh and overwriting our snapshot data
     bypassRefresh(metrics);
 
@@ -195,28 +195,25 @@ class NodeMemMetricsTest {
 
     assertEquals(1024000L * 1024L, total, "Total bytes should be converted from kB");
     assertEquals(256000L * 1024L, free, "Free bytes should follow MemFree");
-    assertEquals(512000L * 1024L, available,
-        "Available bytes should follow MemAvailable");
+    assertEquals(512000L * 1024L, available, "Available bytes should follow MemAvailable");
     assertEquals(total - available, used, "Used bytes should be total - available");
 
     assertEquals(4000L * 1024L, metrics.getDirtyBytes(), "Dirty bytes conversion mismatch");
     assertEquals(2000L * 1024L, metrics.getWritebackBytes(), "Writeback bytes conversion mismatch");
-    
+
     // Cached = Cached(128000) + SReclaimable(8000) = 136000
-    assertEquals(136000L * 1024L, metrics.getCachedBytes(),
-        "Cached bytes should include SReclaimable");
-    assertEquals(64000L * 1024L, metrics.getBuffersBytes(),
-        "Buffers bytes conversion mismatch");
-    assertEquals(32000L * 1024L, metrics.getShmemBytes(),
-        "Shmem bytes conversion mismatch");
+    assertEquals(
+        136000L * 1024L, metrics.getCachedBytes(), "Cached bytes should include SReclaimable");
+    assertEquals(64000L * 1024L, metrics.getBuffersBytes(), "Buffers bytes conversion mismatch");
+    assertEquals(32000L * 1024L, metrics.getShmemBytes(), "Shmem bytes conversion mismatch");
 
     long expectedFileCache = (128000L - 32000L) * 1024L;
-    assertEquals(expectedFileCache, metrics.getFilePageCacheBytes(),
-        "File page cache bytes mismatch");
+    assertEquals(
+        expectedFileCache, metrics.getFilePageCacheBytes(), "File page cache bytes mismatch");
 
     double usedPercent = metrics.getUsedMemoryPercent();
-    assertTrue(usedPercent > 0.0 && usedPercent < 100.0,
-        "Used percent should be between 0 and 100");
+    assertTrue(
+        usedPercent > 0.0 && usedPercent < 100.0, "Used percent should be between 0 and 100");
   }
 
   @Test
@@ -232,15 +229,14 @@ class NodeMemMetricsTest {
     setLongField(snapshotClass, snapshot, "cachedKb", 100L);
     setLongField(snapshotClass, snapshot, "shmemKb", 200L);
 
-    Method applySnapshot = NodeMemMetrics.class
-        .getDeclaredMethod("applyMemInfoSnapshot", snapshotClass);
+    Method applySnapshot =
+        NodeMemMetrics.class.getDeclaredMethod("applyMemInfoSnapshot", snapshotClass);
     applySnapshot.setAccessible(true);
 
     applySnapshot.invoke(metrics, snapshot);
     bypassRefresh(metrics);
 
-    assertEquals(0L, metrics.getFilePageCacheBytes(),
-        "File page cache should be clamped to zero");
+    assertEquals(0L, metrics.getFilePageCacheBytes(), "File page cache should be clamped to zero");
   }
 
   // ----------------------------------------------------
@@ -275,8 +271,8 @@ class NodeMemMetricsTest {
     setLongField(snapshotClass, snapshot, "memTotalKb", 1000L);
     setLongField(snapshotClass, snapshot, "memAvailableKb", 500L);
 
-    Method applySnapshot = NodeMemMetrics.class
-        .getDeclaredMethod("applyMemInfoSnapshot", snapshotClass);
+    Method applySnapshot =
+        NodeMemMetrics.class.getDeclaredMethod("applyMemInfoSnapshot", snapshotClass);
     applySnapshot.setAccessible(true);
     applySnapshot.invoke(metrics, snapshot);
 
@@ -298,8 +294,8 @@ class NodeMemMetricsTest {
     assertEquals(-1L, metrics.getShmemBytes(), "Shmem should be reset to -1");
     assertEquals(-1L, metrics.getFilePageCacheBytes(), "File page cache should be reset to -1");
 
-    assertEquals(-1.0, metrics.getUsedMemoryPercent(), 0.000001,
-        "Used percent should be reset to -1.0");
+    assertEquals(
+        -1.0, metrics.getUsedMemoryPercent(), 0.000001, "Used percent should be reset to -1.0");
   }
 
   // ----------------------------------------------------
@@ -322,7 +318,10 @@ class NodeMemMetricsTest {
 
     bypassRefresh(metrics);
 
-    assertEquals(25.0, metrics.getUsedMemoryPercent(), 0.000001,
+    assertEquals(
+        25.0,
+        metrics.getUsedMemoryPercent(),
+        0.000001,
         "Used percent should be used / total * 100");
   }
 
@@ -337,21 +336,23 @@ class NodeMemMetricsTest {
     NodeMemMetrics metrics = new NodeMemMetrics();
 
     // Dynamic proxy for OperatingSystemMXBean, using pattern-based behavior
-    OperatingSystemMXBean osBean = (OperatingSystemMXBean) Proxy.newProxyInstance(
-        getClass().getClassLoader(),
-        new Class<?>[]{OperatingSystemMXBean.class},
-        new MemoryInvocationHandler(
-            4096L,   // totalMemorySize
-            8192L,   // totalPhysicalMemorySize
-            0L,      // freeMemorySize (unused in this test)
-            0L,      // freePhysicalMemorySize (unused in this test)
-            false,   // throwOnNewTotal
-            false    // throwOnNewFree
-        )
-    );
+    OperatingSystemMXBean osBean =
+        (OperatingSystemMXBean)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {OperatingSystemMXBean.class},
+                new MemoryInvocationHandler(
+                    4096L, // totalMemorySize
+                    8192L, // totalPhysicalMemorySize
+                    0L, // freeMemorySize (unused in this test)
+                    0L, // freePhysicalMemorySize (unused in this test)
+                    false, // throwOnNewTotal
+                    false // throwOnNewFree
+                    ));
 
-    Method totalPortable = NodeMemMetrics.class
-        .getDeclaredMethod("getTotalMemoryPortable", OperatingSystemMXBean.class);
+    Method totalPortable =
+        NodeMemMetrics.class.getDeclaredMethod(
+            "getTotalMemoryPortable", OperatingSystemMXBean.class);
     totalPortable.setAccessible(true);
 
     long total = (long) totalPortable.invoke(metrics, osBean);
@@ -365,21 +366,19 @@ class NodeMemMetricsTest {
     NodeMemMetrics metrics = new NodeMemMetrics();
 
     // New API returns 0, so code should fall back to physical memory size
-    OperatingSystemMXBean osBean = (OperatingSystemMXBean) Proxy.newProxyInstance(
-        getClass().getClassLoader(),
-        new Class<?>[]{OperatingSystemMXBean.class},
-        new MemoryInvocationHandler(
-            0L,       // totalMemorySize -> non-positive
-            16384L,   // totalPhysicalMemorySize
-            0L,
-            0L,
-            false,
-            false
-        )
-    );
+    OperatingSystemMXBean osBean =
+        (OperatingSystemMXBean)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {OperatingSystemMXBean.class},
+                new MemoryInvocationHandler(
+                    0L, // totalMemorySize -> non-positive
+                    16384L, // totalPhysicalMemorySize
+                    0L, 0L, false, false));
 
-    Method totalPortable = NodeMemMetrics.class
-        .getDeclaredMethod("getTotalMemoryPortable", OperatingSystemMXBean.class);
+    Method totalPortable =
+        NodeMemMetrics.class.getDeclaredMethod(
+            "getTotalMemoryPortable", OperatingSystemMXBean.class);
     totalPortable.setAccessible(true);
 
     long total = (long) totalPortable.invoke(metrics, osBean);
@@ -393,21 +392,18 @@ class NodeMemMetricsTest {
     NodeMemMetrics metrics = new NodeMemMetrics();
 
     // Handler configured to throw on getTotalMemorySize
-    OperatingSystemMXBean osBean = (OperatingSystemMXBean) Proxy.newProxyInstance(
-        getClass().getClassLoader(),
-        new Class<?>[]{OperatingSystemMXBean.class},
-        new MemoryInvocationHandler(
-            1234L,
-            5678L,
-            0L,
-            0L,
-            true,   // throwOnNewTotal
-            false
-        )
-    );
+    OperatingSystemMXBean osBean =
+        (OperatingSystemMXBean)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {OperatingSystemMXBean.class},
+                new MemoryInvocationHandler(
+                    1234L, 5678L, 0L, 0L, true, // throwOnNewTotal
+                    false));
 
-    Method totalPortable = NodeMemMetrics.class
-        .getDeclaredMethod("getTotalMemoryPortable", OperatingSystemMXBean.class);
+    Method totalPortable =
+        NodeMemMetrics.class.getDeclaredMethod(
+            "getTotalMemoryPortable", OperatingSystemMXBean.class);
     totalPortable.setAccessible(true);
 
     long total = (long) totalPortable.invoke(metrics, osBean);
@@ -421,21 +417,19 @@ class NodeMemMetricsTest {
   void getFreeMemoryPortablePrefersNewApi() throws Exception {
     NodeMemMetrics metrics = new NodeMemMetrics();
 
-    OperatingSystemMXBean osBean = (OperatingSystemMXBean) Proxy.newProxyInstance(
-        getClass().getClassLoader(),
-        new Class<?>[]{OperatingSystemMXBean.class},
-        new MemoryInvocationHandler(
-            0L,
-            0L,
-            1111L,  // freeMemorySize
-            2222L,  // freePhysicalMemorySize
-            false,
-            false
-        )
-    );
+    OperatingSystemMXBean osBean =
+        (OperatingSystemMXBean)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {OperatingSystemMXBean.class},
+                new MemoryInvocationHandler(
+                    0L, 0L, 1111L, // freeMemorySize
+                    2222L, // freePhysicalMemorySize
+                    false, false));
 
-    Method freePortable = NodeMemMetrics.class
-        .getDeclaredMethod("getFreeMemoryPortable", OperatingSystemMXBean.class);
+    Method freePortable =
+        NodeMemMetrics.class.getDeclaredMethod(
+            "getFreeMemoryPortable", OperatingSystemMXBean.class);
     freePortable.setAccessible(true);
 
     long free = (long) freePortable.invoke(metrics, osBean);
@@ -449,21 +443,19 @@ class NodeMemMetricsTest {
     NodeMemMetrics metrics = new NodeMemMetrics();
 
     // FreeMemorySize returns -1, so code should fall back to free physical
-    OperatingSystemMXBean osBean = (OperatingSystemMXBean) Proxy.newProxyInstance(
-        getClass().getClassLoader(),
-        new Class<?>[]{OperatingSystemMXBean.class},
-        new MemoryInvocationHandler(
-            0L,
-            0L,
-            -1L,    // freeMemorySize -> negative
-            2222L,  // freePhysicalMemorySize
-            false,
-            false
-        )
-    );
+    OperatingSystemMXBean osBean =
+        (OperatingSystemMXBean)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {OperatingSystemMXBean.class},
+                new MemoryInvocationHandler(
+                    0L, 0L, -1L, // freeMemorySize -> negative
+                    2222L, // freePhysicalMemorySize
+                    false, false));
 
-    Method freePortable = NodeMemMetrics.class
-        .getDeclaredMethod("getFreeMemoryPortable", OperatingSystemMXBean.class);
+    Method freePortable =
+        NodeMemMetrics.class.getDeclaredMethod(
+            "getFreeMemoryPortable", OperatingSystemMXBean.class);
     freePortable.setAccessible(true);
 
     long free = (long) freePortable.invoke(metrics, osBean);
@@ -477,21 +469,18 @@ class NodeMemMetricsTest {
     NodeMemMetrics metrics = new NodeMemMetrics();
 
     // Handler configured to throw on getFreeMemorySize
-    OperatingSystemMXBean osBean = (OperatingSystemMXBean) Proxy.newProxyInstance(
-        getClass().getClassLoader(),
-        new Class<?>[]{OperatingSystemMXBean.class},
-        new MemoryInvocationHandler(
-            0L,
-            0L,
-            0L,
-            3333L,
-            false,
-            true   // throwOnNewFree
-        )
-    );
+    OperatingSystemMXBean osBean =
+        (OperatingSystemMXBean)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {OperatingSystemMXBean.class},
+                new MemoryInvocationHandler(
+                    0L, 0L, 0L, 3333L, false, true // throwOnNewFree
+                    ));
 
-    Method freePortable = NodeMemMetrics.class
-        .getDeclaredMethod("getFreeMemoryPortable", OperatingSystemMXBean.class);
+    Method freePortable =
+        NodeMemMetrics.class.getDeclaredMethod(
+            "getFreeMemoryPortable", OperatingSystemMXBean.class);
     freePortable.setAccessible(true);
 
     long free = (long) freePortable.invoke(metrics, osBean);
@@ -549,8 +538,8 @@ class NodeMemMetricsTest {
   // ----------------------------------------------------
 
   /**
-   * Create a new MemInfoSnapshot instance via reflection.
-   * This class is private static inside NodeMemMetrics.
+   * Create a new MemInfoSnapshot instance via reflection. This class is private static inside
+   * NodeMemMetrics.
    */
   private Object newSnapshot() throws Exception {
     Class<?>[] innerClasses = NodeMemMetrics.class.getDeclaredClasses();
@@ -583,12 +572,13 @@ class NodeMemMetricsTest {
 
   /**
    * Invocation handler that simulates container-aware memory methods.
+   *
    * <ul>
-   *   <li>getTotalMemorySize() -> totalMemorySize (or throws if throwOnNewTotal)</li>
-   *   <li>getTotalPhysicalMemorySize() -> totalPhysicalMemorySize</li>
-   *   <li>getFreeMemorySize() -> freeMemorySize (or throws if throwOnNewFree)</li>
-   *   <li>getFreePhysicalMemorySize() -> freePhysicalMemorySize</li>
-   *   <li>Other numeric methods return 0 or a safe default.</li>
+   *   <li>getTotalMemorySize() -> totalMemorySize (or throws if throwOnNewTotal)
+   *   <li>getTotalPhysicalMemorySize() -> totalPhysicalMemorySize
+   *   <li>getFreeMemorySize() -> freeMemorySize (or throws if throwOnNewFree)
+   *   <li>getFreePhysicalMemorySize() -> freePhysicalMemorySize
+   *   <li>Other numeric methods return 0 or a safe default.
    * </ul>
    */
   private static final class MemoryInvocationHandler implements InvocationHandler {
@@ -600,12 +590,13 @@ class NodeMemMetricsTest {
     private final boolean throwOnNewTotal;
     private final boolean throwOnNewFree;
 
-    MemoryInvocationHandler(long totalMemorySize,
-                            long totalPhysicalMemorySize,
-                            long freeMemorySize,
-                            long freePhysicalMemorySize,
-                            boolean throwOnNewTotal,
-                            boolean throwOnNewFree) {
+    MemoryInvocationHandler(
+        long totalMemorySize,
+        long totalPhysicalMemorySize,
+        long freeMemorySize,
+        long freePhysicalMemorySize,
+        boolean throwOnNewTotal,
+        boolean throwOnNewFree) {
       this.totalMemorySize = totalMemorySize;
       this.totalPhysicalMemorySize = totalPhysicalMemorySize;
       this.freeMemorySize = freeMemorySize;
@@ -675,12 +666,13 @@ class NodeMemMetricsTest {
   @DisplayName("pollFromProcMeminfo should reset all fields on IOException")
   void pollFromProcMeminfoResetsOnIoException() throws Exception {
     // Subclass to simulate IOException during read
-    NodeMemMetrics metrics = new NodeMemMetrics() {
-      @Override
-      List<String> readProcMemInfoLines() throws java.io.IOException {
-        throw new java.io.IOException("Simulated read failure");
-      }
-    };
+    NodeMemMetrics metrics =
+        new NodeMemMetrics() {
+          @Override
+          List<String> readProcMemInfoLines() throws java.io.IOException {
+            throw new java.io.IOException("Simulated read failure");
+          }
+        };
 
     // Pre-set some values to ensure they get reset
     setLongField(NodeMemMetrics.class, metrics, "totalBytes", 1234L);
@@ -691,23 +683,23 @@ class NodeMemMetricsTest {
     method.setAccessible(true);
     method.invoke(metrics);
 
-    assertEquals(-1L, metrics.getTotalMemoryBytes(),
-        "Should reset totalBytes on IOException");
+    assertEquals(-1L, metrics.getTotalMemoryBytes(), "Should reset totalBytes on IOException");
     assertEquals(-1L, metrics.getUsedMemoryBytes(), "Should reset usedBytes on IOException");
   }
 
   @Test
-  @DisplayName("pollFromOsMxBean should handle non-OperatingSystemMXBean "
-      + "implementations gracefully")
+  @DisplayName(
+      "pollFromOsMxBean should handle non-OperatingSystemMXBean " + "implementations gracefully")
   void pollFromOsMxBeanHandlesStandardBean() throws Exception {
     // Subclass to return a standard java.lang.management.OperatingSystemMXBean
     // that is NOT com.sun.management.OperatingSystemMXBean
-    NodeMemMetrics metrics = new NodeMemMetrics() {
-      @Override
-      java.lang.management.OperatingSystemMXBean getOsMxBean() {
-        return org.mockito.Mockito.mock(java.lang.management.OperatingSystemMXBean.class);
-      }
-    };
+    NodeMemMetrics metrics =
+        new NodeMemMetrics() {
+          @Override
+          java.lang.management.OperatingSystemMXBean getOsMxBean() {
+            return org.mockito.Mockito.mock(java.lang.management.OperatingSystemMXBean.class);
+          }
+        };
 
     // Invoke private pollFromOsMxBean()
     Method method = NodeMemMetrics.class.getDeclaredMethod("pollFromOsMxBean");
@@ -723,12 +715,13 @@ class NodeMemMetricsTest {
   @Test
   @DisplayName("pollFromOsMxBean should handle RuntimeException during bean retrieval")
   void pollFromOsMxBeanHandlesException() throws Exception {
-    NodeMemMetrics metrics = new NodeMemMetrics() {
-      @Override
-      java.lang.management.OperatingSystemMXBean getOsMxBean() {
-        throw new RuntimeException("Simulated JMX failure");
-      }
-    };
+    NodeMemMetrics metrics =
+        new NodeMemMetrics() {
+          @Override
+          java.lang.management.OperatingSystemMXBean getOsMxBean() {
+            throw new RuntimeException("Simulated JMX failure");
+          }
+        };
 
     Method method = NodeMemMetrics.class.getDeclaredMethod("pollFromOsMxBean");
     method.setAccessible(true);
@@ -754,12 +747,12 @@ class NodeMemMetricsTest {
     assertEquals(100L, getLongField(snapshot.getClass(), snapshot, "memTotalKb"));
     assertEquals(20L, getLongField(snapshot.getClass(), snapshot, "memFreeKb"));
     assertEquals(-1L, getLongField(snapshot.getClass(), snapshot, "memAvailableKb")); // Missing
-    assertEquals(-1L, getLongField(snapshot.getClass(), snapshot, "cachedKb"));      // Missing
+    assertEquals(-1L, getLongField(snapshot.getClass(), snapshot, "cachedKb")); // Missing
   }
 
   @Test
-  @DisplayName("getUsedMemoryPercent should return -1.0 if total is non-positive "
-      + "or used is negative")
+  @DisplayName(
+      "getUsedMemoryPercent should return -1.0 if total is non-positive " + "or used is negative")
   void usedMemoryPercentInvalidStates() throws Exception {
     NodeMemMetrics metrics = new NodeMemMetrics();
 
@@ -783,12 +776,13 @@ class NodeMemMetricsTest {
   @Test
   void poll_shouldReportRefreshErrorWhenMeminfoIsUnreadable() {
     org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
-    NodeMemMetrics metrics = new NodeMemMetrics() {
-      @Override
-      List<String> readProcMemInfoLines() throws IOException {
-        throw new IOException("simulated");
-      }
-    };
+    NodeMemMetrics metrics =
+        new NodeMemMetrics() {
+          @Override
+          List<String> readProcMemInfoLines() throws IOException {
+            throw new IOException("simulated");
+          }
+        };
 
     metrics.poll();
 

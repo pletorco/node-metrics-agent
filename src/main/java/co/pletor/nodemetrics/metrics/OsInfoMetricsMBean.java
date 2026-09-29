@@ -2,9 +2,9 @@ package co.pletor.nodemetrics.metrics;
 
 /**
  * MBean interface for {@link OsInfoMetrics}.
- * <p>
- * Exposes basic operating system information and a best-effort
- * classification of the environment type (host/VM, container, Kubernetes).
+ *
+ * <p>Exposes basic operating system information and a best-effort classification of the environment
+ * type (host/VM, container, Kubernetes).
  */
 public interface OsInfoMetricsMBean {
 
@@ -17,8 +17,8 @@ public interface OsInfoMetricsMBean {
 
   /**
    * Returns a human-readable OS release string.
-   * <p>
-   * On Linux this is typically derived from {@code /etc/os-release}.
+   *
+   * <p>On Linux this is typically derived from {@code /etc/os-release}.
    *
    * @return OS release string, or an empty string when unknown
    */
@@ -26,8 +26,8 @@ public interface OsInfoMetricsMBean {
 
   /**
    * Returns the kernel version of the underlying OS.
-   * <p>
-   * On Linux this is typically equivalent to {@code uname -r}.
+   *
+   * <p>On Linux this is typically equivalent to {@code uname -r}.
    *
    * @return kernel version, or an empty string when unknown
    */
@@ -35,8 +35,8 @@ public interface OsInfoMetricsMBean {
 
   /**
    * Returns the JVM-reported OS name.
-   * <p>
-   * This usually corresponds to {@code System.getProperty("os.name")}.
+   *
+   * <p>This usually corresponds to {@code System.getProperty("os.name")}.
    *
    * @return OS name, or an empty string when unknown
    */
@@ -44,8 +44,8 @@ public interface OsInfoMetricsMBean {
 
   /**
    * Returns the JVM-reported OS architecture.
-   * <p>
-   * This usually corresponds to {@code System.getProperty("os.arch")}.
+   *
+   * <p>This usually corresponds to {@code System.getProperty("os.arch")}.
    *
    * @return OS architecture string, or an empty string when unknown
    */
@@ -53,13 +53,14 @@ public interface OsInfoMetricsMBean {
 
   /**
    * Returns the best-effort environment type.
-   * <p>
-   * Typical values:
+   *
+   * <p>Typical values:
+   *
    * <ul>
-   *   <li>{@code "host_or_vm"} – bare metal host or virtual machine</li>
-   *   <li>{@code "container"} – generic Linux container (Docker, containerd, Podman, ...)</li>
-   *   <li>{@code "kubernetes"} – container running as a Kubernetes pod</li>
-   *   <li>{@code "unknown"} – non-Linux or insufficient information</li>
+   *   <li>{@code "host_or_vm"} – bare metal host or virtual machine
+   *   <li>{@code "container"} – generic Linux container (Docker, containerd, Podman, ...)
+   *   <li>{@code "kubernetes"} – container running as a Kubernetes pod
+   *   <li>{@code "unknown"} – non-Linux or insufficient information
    * </ul>
    *
    * @return environment type label

@@ -1,10 +1,6 @@
 // co.pletor.nodemetrics.agent.ConfigLoader
 package co.pletor.nodemetrics.agent;
 
-import org.yaml.snakeyaml.LoaderOptions;
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.SafeConstructor;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,39 +9,39 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
-import java.util.Set;
 import java.util.Map;
-import java.util.logging.Logger;
+import java.util.Set;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * Utility class for loading {@link Config} from a YAML file.
- * <p>
- * This class:
+ *
+ * <p>This class:
+ *
  * <ul>
- *   <li>Parses a YAML file into a {@link Config} instance</li>
- *   <li>Applies sensible defaults when fields are missing</li>
- *   <li>Computes a SHA-256 checksum for change detection</li>
+ *   <li>Parses a YAML file into a {@link Config} instance
+ *   <li>Applies sensible defaults when fields are missing
+ *   <li>Computes a SHA-256 checksum for change detection
  * </ul>
  */
 final class ConfigLoader {
 
-  /**
-   * Prevent instantiation of this utility class.
-   */
+  /** Prevent instantiation of this utility class. */
   private static final Logger LOGGER = Logger.getLogger(ConfigLoader.class.getName());
 
-  /**
-   * Prevent instantiation of this utility class.
-   */
+  /** Prevent instantiation of this utility class. */
   private ConfigLoader() {
     throw new IllegalStateException("Utility class");
   }
 
   /**
-   * Load configuration from the given path, or return {@link Config#defaults()}
-   * when the file does not exist or the path is {@code null}.
+   * Load configuration from the given path, or return {@link Config#defaults()} when the file does
+   * not exist or the path is {@code null}.
    *
    * @param path path to the YAML configuration file (may be {@code null})
    * @return loaded configuration, or default configuration if file is missing
@@ -53,7 +49,8 @@ final class ConfigLoader {
    */
   static Config loadOrDefault(Path path) throws IOException {
     if (path == null || !Files.isRegularFile(path)) {
-      LOGGER.log(Level.INFO, "Config file not found or not specified (path={0}). Using defaults.", path);
+      LOGGER.log(
+          Level.INFO, "Config file not found or not specified (path={0}). Using defaults.", path);
       return Config.defaults();
     }
     try {
@@ -66,11 +63,13 @@ final class ConfigLoader {
 
   /**
    * Load configuration from a YAML file.
-   * <p>
-   * Expected YAML keys:
+   *
+   * <p>Expected YAML keys:
+   *
    * <ul>
-   *   <li>{@code fsmetrics_paths} (list of strings)</li>
+   *   <li>{@code fsmetrics_paths} (list of strings)
    * </ul>
+   *
    * Missing keys will be replaced with defaults.
    *
    * @param path path to an existing YAML configuration file
@@ -105,13 +104,12 @@ final class ConfigLoader {
         @SuppressWarnings("unchecked")
         List<Object> lst = (List<Object>) ps;
         // Convert all elements to String (defensive)
-        c.fsmetricsPaths = lst.stream()
-            .map(String::valueOf)
-            .collect(Collectors.toList());
+        c.fsmetricsPaths = lst.stream().map(String::valueOf).collect(Collectors.toList());
       } else {
         // If paths is missing or not a list, use the default root path
         c.fsmetricsPaths = List.of("/");
-        LOGGER.log(Level.INFO, "Config key ''fsmetrics_paths'' missing or invalid; defaulting to ''/''");
+        LOGGER.log(
+            Level.INFO, "Config key ''fsmetrics_paths'' missing or invalid; defaulting to ''/''");
       }
 
       // ---- fsmetrics_max_partitions ----
@@ -125,11 +123,12 @@ final class ConfigLoader {
     }
   }
 
-  private static final Set<String> KNOWN_KEYS = Set.of("fsmetrics_paths", "fsmetrics_max_partitions");
+  private static final Set<String> KNOWN_KEYS =
+      Set.of("fsmetrics_paths", "fsmetrics_max_partitions");
 
   /**
-   * Warn about keys we do not understand, so typos such as {@code fsmetric_paths} do not
-   * silently fall back to defaults.
+   * Warn about keys we do not understand, so typos such as {@code fsmetric_paths} do not silently
+   * fall back to defaults.
    */
   private static void warnOnUnknownKeys(Map<String, Object> m, Path path) {
     for (Object key : m.keySet()) {
@@ -137,8 +136,7 @@ final class ConfigLoader {
         LOGGER.log(
             Level.WARNING,
             "Unknown config key ''{0}'' in {1} (ignored). Supported keys: {2}",
-            new Object[]{key, path, KNOWN_KEYS.stream().sorted().collect(Collectors.toList())}
-        );
+            new Object[] {key, path, KNOWN_KEYS.stream().sorted().collect(Collectors.toList())});
       }
     }
   }
@@ -181,8 +179,7 @@ final class ConfigLoader {
         LOGGER.log(
             Level.WARNING,
             "Config key ''fsmetrics_max_partitions'' is invalid: {0}. Using default: {1}",
-            new Object[]{raw, Config.DEFAULT_FSMETRICS_MAX_PARTITIONS}
-        );
+            new Object[] {raw, Config.DEFAULT_FSMETRICS_MAX_PARTITIONS});
         return Config.DEFAULT_FSMETRICS_MAX_PARTITIONS;
       }
     }
@@ -191,8 +188,7 @@ final class ConfigLoader {
       LOGGER.log(
           Level.WARNING,
           "Config key ''fsmetrics_max_partitions'' out of range: {0}. Using default: {1}",
-          new Object[]{raw, Config.DEFAULT_FSMETRICS_MAX_PARTITIONS}
-      );
+          new Object[] {raw, Config.DEFAULT_FSMETRICS_MAX_PARTITIONS});
       return Config.DEFAULT_FSMETRICS_MAX_PARTITIONS;
     }
 

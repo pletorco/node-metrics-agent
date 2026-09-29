@@ -2,9 +2,7 @@ package co.pletor.nodemetrics.agent;
 
 import java.util.function.Supplier;
 
-/**
- * JMX adapter exposing refresh engine baseline counters and mode.
- */
+/** JMX adapter exposing refresh engine baseline counters and mode. */
 public final class AgentObservabilityMetrics implements AgentObservabilityMetricsMBean {
   private final Supplier<MetricsRefreshEngine> engineSupplier;
   private final Supplier<TelemetryMode> modeSupplier;
@@ -13,8 +11,7 @@ public final class AgentObservabilityMetrics implements AgentObservabilityMetric
   AgentObservabilityMetrics(
       Supplier<MetricsRefreshEngine> engineSupplier,
       Supplier<TelemetryMode> modeSupplier,
-      Supplier<Long> throttledLoggerOverflowSupplier
-  ) {
+      Supplier<Long> throttledLoggerOverflowSupplier) {
     this.engineSupplier = engineSupplier;
     this.modeSupplier = modeSupplier;
     this.throttledLoggerOverflowSupplier = throttledLoggerOverflowSupplier;

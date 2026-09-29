@@ -22,6 +22,9 @@ plugins {
 
     // Checkstyle for linting
     checkstyle
+
+    // Formatting (google-java-format): `spotlessCheck` verifies, `spotlessApply` fixes
+    id("com.diffplug.spotless") version "8.0.0"
 }
 
 // -----------------------------------------------------------------------------
@@ -540,5 +543,17 @@ tasks.withType<Checkstyle>().configureEach {
 // Warning ratchet: the code base predates the style rules, so a warning-free build is not
 // realistic yet, but the count must never grow. Fix warnings and lower these numbers together
 // (checkstyleMain / checkstyleTest print the current count when it exceeds the limit).
-tasks.named<Checkstyle>("checkstyleMain") { maxWarnings = 321 }
-tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 602 }
+tasks.named<Checkstyle>("checkstyleMain") { maxWarnings = 46 }
+tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 21 }
+
+// -----------------------------------------------------------------------------
+// Formatting
+//   - The code base is formatted with google-java-format; keep it that way with
+//     `./gradlew spotlessApply` (CI runs `spotlessCheck`).
+// -----------------------------------------------------------------------------
+spotless {
+    java {
+        target("src/**/*.java")
+        googleJavaFormat("1.25.2")
+    }
+}

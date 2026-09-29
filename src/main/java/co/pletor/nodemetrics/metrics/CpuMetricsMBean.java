@@ -1,8 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
-/**
- * MBean interface for CPU-related metrics.
- */
+/** MBean interface for CPU-related metrics. */
 public interface CpuMetricsMBean {
 
   /**
@@ -96,9 +94,9 @@ public interface CpuMetricsMBean {
 
   /**
    * Returns the number of times the cgroup was throttled during the last polling window.
-   * <p>
-   * This is a per-window delta, not a monotonic counter; use
-   * {@link #getCgroupCpuThrottledPeriodsTotal()} with {@code rate()} for alerting.
+   *
+   * <p>This is a per-window delta, not a monotonic counter; use {@link
+   * #getCgroupCpuThrottledPeriodsTotal()} with {@code rate()} for alerting.
    *
    * @return the cgroup cpu throttled count in the last window
    */
@@ -108,10 +106,10 @@ public interface CpuMetricsMBean {
   /**
    * Returns the cumulative CPU time of all states since boot, in clock ticks ({@code USER_HZ},
    * normally 100 per second), from the aggregate line of {@code /proc/stat}.
-   * <p>
-   * Divide the {@code rate()} of {@link #getSystemCpuIoWaitTicks()} or
-   * {@link #getSystemCpuStealTicks()} by the {@code rate()} of this value to get a ratio over any
-   * time range. {@code -1} when unavailable.
+   *
+   * <p>Divide the {@code rate()} of {@link #getSystemCpuIoWaitTicks()} or {@link
+   * #getSystemCpuStealTicks()} by the {@code rate()} of this value to get a ratio over any time
+   * range. {@code -1} when unavailable.
    *
    * @return total CPU ticks
    */
@@ -140,8 +138,8 @@ public interface CpuMetricsMBean {
   long getSystemCpuStealTicks();
 
   /**
-   * Returns the cumulative number of periods in which the cgroup was throttled
-   * ({@code nr_throttled}). {@code -1} when unavailable.
+   * Returns the cumulative number of periods in which the cgroup was throttled ({@code
+   * nr_throttled}). {@code -1} when unavailable.
    *
    * @return throttled periods since the cgroup was created
    */

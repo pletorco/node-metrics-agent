@@ -1,8 +1,8 @@
 package co.pletor.nodemetrics.agent;
 
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
 
 class TelemetryModeStateTest {
 
@@ -38,4 +38,3 @@ class TelemetryModeStateTest {
     assertEquals(1L, metrics.getModeTransitionCount());
   }
 }
-

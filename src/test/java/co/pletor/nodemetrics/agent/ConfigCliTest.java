@@ -1,40 +1,39 @@
 // src/test/java/co/pletor/nodemetrics/agent/ConfigCliTest.java
 package co.pletor.nodemetrics.agent;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Tests for {@link ConfigCli}.
- * This test suite focuses on:
- * - Verifying CLI behavior for init-config and init-kafka-config
- * - Ensuring that YAML files are generated correctly
- * - Covering error paths in generateConfigFromKafka() and generateConfigFromCli()
- * - Using Java 17 features such as text blocks and pattern matching
+ * Tests for {@link ConfigCli}. This test suite focuses on: - Verifying CLI behavior for init-config
+ * and init-kafka-config - Ensuring that YAML files are generated correctly - Covering error paths
+ * in generateConfigFromKafka() and generateConfigFromCli() - Exercising the CLI end to end against
+ * temporary files
  */
 class ConfigCliTest {
 
-  @TempDir
-  Path tempDir;
+  @TempDir Path tempDir;
 
   /**
-   * Helper method to run the CLI main with given arguments while capturing stdout.
-   * This is used for "help" and successful paths where System.exit is not invoked.
+   * Helper method to run the CLI main with given arguments while capturing stdout. This is used for
+   * "help" and successful paths where System.exit is not invoked.
    */
-  /**
-   * Helper method to run the CLI execute with given arguments while capturing stdout.
-   */
+  /** Helper method to run the CLI execute with given arguments while capturing stdout. */
   private String runMainCaptureStdout(String... args) {
     PrintStream originalOut = System.out;
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -51,12 +50,10 @@ class ConfigCliTest {
   @Test
   void helpCommandShouldPrintUsageAndNotThrow() {
     String output = runMainCaptureStdout("help");
-    assertTrue(output.contains("Node Metrics Agent CLI"),
-        "Help output should contain main title");
-    assertTrue(output.contains("init-config"),
-        "Help output should mention init-config");
-    assertTrue(output.contains("init-kafka-config"),
-        "Help output should mention init-kafka-config");
+    assertTrue(output.contains("Node Metrics Agent CLI"), "Help output should contain main title");
+    assertTrue(output.contains("init-config"), "Help output should mention init-config");
+    assertTrue(
+        output.contains("init-kafka-config"), "Help output should mention init-kafka-config");
   }
 
   @Test
@@ -64,10 +61,7 @@ class ConfigCliTest {
     // Given: Only use defaults; we still direct output into a temp dir
     Path output = tempDir.resolve("node-metrics-default.yml");
 
-    int exitCode = ConfigCli.execute(new String[]{
-        "init-config",
-        "--output", output.toString()
-    });
+    int exitCode = ConfigCli.execute(new String[] {"init-config", "--output", output.toString()});
 
     assertEquals(0, exitCode, "Exit code should be 0 for success");
 
@@ -76,12 +70,11 @@ class ConfigCliTest {
 
     // Default poll_interval_sec
     // Default fsmetrics_paths contains "/"
-    assertTrue(yaml.contains("fsmetrics_paths:"),
-        "YAML should contain fsmetrics_paths section");
-    assertTrue(yaml.contains("fsmetrics_max_partitions: " + Config.DEFAULT_FSMETRICS_MAX_PARTITIONS),
+    assertTrue(yaml.contains("fsmetrics_paths:"), "YAML should contain fsmetrics_paths section");
+    assertTrue(
+        yaml.contains("fsmetrics_max_partitions: " + Config.DEFAULT_FSMETRICS_MAX_PARTITIONS),
         "YAML should contain default fsmetrics_max_partitions");
-    assertTrue(yaml.contains("  - /"),
-        "Default fsmetrics_paths should contain root directory /");
+    assertTrue(yaml.contains("  - /"), "Default fsmetrics_paths should contain root directory /");
   }
 
   @Test
@@ -91,14 +84,19 @@ class ConfigCliTest {
 
     // When: Running init-config with custom poll interval and fs paths
     // When: Running init-config with custom poll interval and fs paths
-    int exitCode = ConfigCli.execute(new String[]{
-        "init-config",
-        "--output", output.toString(),
-
-        "--fs-path", "/data/logs",
-        "--fs-path", "/var",
-        "--fs-path", "/opt/app"
-    });
+    int exitCode =
+        ConfigCli.execute(
+            new String[] {
+              "init-config",
+              "--output",
+              output.toString(),
+              "--fs-path",
+              "/data/logs",
+              "--fs-path",
+              "/var",
+              "--fs-path",
+              "/opt/app"
+            });
 
     assertEquals(0, exitCode, "Exit code should be 0");
 
@@ -106,25 +104,20 @@ class ConfigCliTest {
     assertTrue(Files.exists(output), "CLI-based config file should exist");
     String yaml = Files.readString(output, StandardCharsets.UTF_8);
 
-
-    assertTrue(yaml.contains("fsmetrics_paths:"),
-        "YAML should contain fsmetrics_paths section");
-    assertTrue(yaml.contains("fsmetrics_max_partitions: " + Config.DEFAULT_FSMETRICS_MAX_PARTITIONS),
+    assertTrue(yaml.contains("fsmetrics_paths:"), "YAML should contain fsmetrics_paths section");
+    assertTrue(
+        yaml.contains("fsmetrics_max_partitions: " + Config.DEFAULT_FSMETRICS_MAX_PARTITIONS),
         "YAML should contain default fsmetrics_max_partitions");
 
-    assertTrue(yaml.contains("  - /data/logs"),
-        "YAML should contain /data/logs");
-    assertTrue(yaml.contains("  - /var"),
-        "YAML should contain /var");
-    assertTrue(yaml.contains("  - /opt/app"),
-        "YAML should contain /opt/app");
+    assertTrue(yaml.contains("  - /data/logs"), "YAML should contain /data/logs");
+    assertTrue(yaml.contains("  - /var"), "YAML should contain /var");
+    assertTrue(yaml.contains("  - /opt/app"), "YAML should contain /opt/app");
 
     // When fs-paths are explicitly provided, "/" should not be injected implicitly
     // (we only expect the paths we passed)
     assertFalse(
         yaml.lines().anyMatch(line -> line.trim().equals("- /")),
-        "Root path should not be added when fs-paths are specified explicitly"
-    );
+        "Root path should not be added when fs-paths are specified explicitly");
   }
 
   @Test
@@ -134,31 +127,33 @@ class ConfigCliTest {
 
     // When: Running init-config with comma-separated and repeated --fs-path
     // When: Running init-config with comma-separated and repeated --fs-path
-    int exitCode = ConfigCli.execute(new String[]{
-        "init-config",
-        "--output", output.toString(),
-
-        "--fs-path", "/data/a,/data/b , /data/c",
-        "--fs-path", "/var"
-    });
+    int exitCode =
+        ConfigCli.execute(
+            new String[] {
+              "init-config",
+              "--output",
+              output.toString(),
+              "--fs-path",
+              "/data/a,/data/b , /data/c",
+              "--fs-path",
+              "/var"
+            });
 
     assertEquals(0, exitCode, "Exit code should be 0");
 
     assertTrue(Files.exists(output), "CLI-based config file with comma paths should exist");
     String yaml = Files.readString(output, StandardCharsets.UTF_8);
 
-
     // From comma-separated value
-    assertTrue(yaml.contains("  - /data/a"),
-        "YAML should contain /data/a from comma-separated list");
-    assertTrue(yaml.contains("  - /data/b"),
-        "YAML should contain /data/b from comma-separated list");
-    assertTrue(yaml.contains("  - /data/c"),
-        "YAML should contain /data/c from comma-separated list");
+    assertTrue(
+        yaml.contains("  - /data/a"), "YAML should contain /data/a from comma-separated list");
+    assertTrue(
+        yaml.contains("  - /data/b"), "YAML should contain /data/b from comma-separated list");
+    assertTrue(
+        yaml.contains("  - /data/c"), "YAML should contain /data/c from comma-separated list");
 
     // From second --fs-path
-    assertTrue(yaml.contains("  - /var"),
-        "YAML should contain /var from second --fs-path");
+    assertTrue(yaml.contains("  - /var"), "YAML should contain /var from second --fs-path");
   }
 
   @Test
@@ -167,10 +162,11 @@ class ConfigCliTest {
     Path output = tempDir.resolve("node-metrics-empty-cli.yml");
 
     // When / Then: Expect an IOException because fsPaths is empty
-    IOException ex = assertThrows(IOException.class, () ->
-    ConfigCli.generateConfigFromCli(output, List.of()));
+    IOException ex =
+        assertThrows(IOException.class, () -> ConfigCli.generateConfigFromCli(output, List.of()));
 
-    assertTrue(ex.getMessage().contains("No filesystem paths provided"),
+    assertTrue(
+        ex.getMessage().contains("No filesystem paths provided"),
         "Error message should mention missing filesystem paths");
   }
 
@@ -186,18 +182,18 @@ class ConfigCliTest {
 
     String yaml = Files.readString(output, StandardCharsets.UTF_8);
 
-    assertTrue(yaml.contains("  - /data"),
-        "Overwritten YAML should contain new fsmetrics_paths entry");
+    assertTrue(
+        yaml.contains("  - /data"), "Overwritten YAML should contain new fsmetrics_paths entry");
   }
 
   @Test
   void initConfigHelpShouldPrintUsageAndReturn() {
     String output = runMainCaptureStdout("init-config", "--help");
 
-    assertTrue(output.contains("Node Metrics Agent CLI"),
+    assertTrue(
+        output.contains("Node Metrics Agent CLI"),
         "Help output for init-config should contain main title");
-    assertTrue(output.contains("init-config"),
-        "Help output should mention init-config");
+    assertTrue(output.contains("init-config"), "Help output should mention init-config");
   }
 
   @Test
@@ -226,8 +222,7 @@ class ConfigCliTest {
     // Given: Kafka server.properties with log.dirs and some extra spacing / empty parts
     Path serverProps = tempDir.resolve("server.properties");
     String props =
-        "broker.id=1\n" +
-        "log.dirs=/data/kafka-logs-1, /data/kafka-logs-2 , ,/data/kafka-logs-3\n";
+        "broker.id=1\n" + "log.dirs=/data/kafka-logs-1, /data/kafka-logs-2 , ,/data/kafka-logs-3\n";
 
     Files.writeString(serverProps, props, StandardCharsets.UTF_8);
 
@@ -235,12 +230,15 @@ class ConfigCliTest {
 
     // When: Running init-kafka-config with custom server.properties, output and poll interval
     // When: Running init-kafka-config with custom server.properties, output and poll interval
-    int exitCode = ConfigCli.execute(new String[]{
-        "init-kafka-config",
-        "--server-properties", serverProps.toString(),
-        "--output", output.toString(),
-
-    });
+    int exitCode =
+        ConfigCli.execute(
+            new String[] {
+              "init-kafka-config",
+              "--server-properties",
+              serverProps.toString(),
+              "--output",
+              output.toString(),
+            });
 
     assertEquals(0, exitCode, "Exit code should be 0");
 
@@ -249,16 +247,13 @@ class ConfigCliTest {
     String yaml = Files.readString(output, StandardCharsets.UTF_8);
 
     // All non-empty log dirs must be present (unquoted paths)
-    assertTrue(yaml.contains("  - /data/kafka-logs-1"),
-        "YAML should contain first log directory");
-    assertTrue(yaml.contains("  - /data/kafka-logs-2"),
-        "YAML should contain second log directory");
-    assertTrue(yaml.contains("  - /data/kafka-logs-3"),
-        "YAML should contain third log directory");
+    assertTrue(yaml.contains("  - /data/kafka-logs-1"), "YAML should contain first log directory");
+    assertTrue(yaml.contains("  - /data/kafka-logs-2"), "YAML should contain second log directory");
+    assertTrue(yaml.contains("  - /data/kafka-logs-3"), "YAML should contain third log directory");
 
-    assertTrue(yaml.contains("fsmetrics_paths:"),
-        "YAML should contain fsmetrics_paths section");
-    assertTrue(yaml.contains("fsmetrics_max_partitions: " + Config.DEFAULT_FSMETRICS_MAX_PARTITIONS),
+    assertTrue(yaml.contains("fsmetrics_paths:"), "YAML should contain fsmetrics_paths section");
+    assertTrue(
+        yaml.contains("fsmetrics_max_partitions: " + Config.DEFAULT_FSMETRICS_MAX_PARTITIONS),
         "YAML should contain default fsmetrics_max_partitions");
   }
 
@@ -266,9 +261,7 @@ class ConfigCliTest {
   void generateConfigFromKafkaShouldUseLogDirWhenLogDirsMissing() throws IOException {
     // Given: server.properties with only log.dir
     Path serverProps = tempDir.resolve("server-logdir.properties");
-    String props =
-        "broker.id=2\n" +
-        "log.dir=/var/lib/kafka-single\n";
+    String props = "broker.id=2\n" + "log.dir=/var/lib/kafka-single\n";
     Files.writeString(serverProps, props, StandardCharsets.UTF_8);
 
     Path output = tempDir.resolve("node-metrics-logdir.yml");
@@ -280,26 +273,27 @@ class ConfigCliTest {
     assertTrue(Files.exists(output), "Config file for log.dir should exist");
     String yaml = Files.readString(output, StandardCharsets.UTF_8);
 
-
-    assertTrue(yaml.contains("  - /var/lib/kafka-single"),
+    assertTrue(
+        yaml.contains("  - /var/lib/kafka-single"),
         "YAML should contain the log.dir path (unquoted)");
   }
+
   @Test
   void generateConfigFromKafkaShouldFailWhenNoLogDirsOrLogDir() throws IOException {
     // Given: server.properties without log.dirs and log.dir
     Path serverProps = tempDir.resolve("server-nologdirs.properties");
-    String props =
-        "broker.id=3\n" +
-        "listeners=PLAINTEXT://:9092\n";
+    String props = "broker.id=3\n" + "listeners=PLAINTEXT://:9092\n";
     Files.writeString(serverProps, props, StandardCharsets.UTF_8);
 
     Path output = tempDir.resolve("node-metrics-invalid.yml");
 
     // When / Then: Expect an IOException because no log.dirs or log.dir defined
-    IOException ex = assertThrows(IOException.class, () ->
-        ConfigCli.generateConfigFromKafka(serverProps, output));
+    IOException ex =
+        assertThrows(
+            IOException.class, () -> ConfigCli.generateConfigFromKafka(serverProps, output));
 
-    assertTrue(ex.getMessage().contains("Neither log.dirs nor log.dir is defined"),
+    assertTrue(
+        ex.getMessage().contains("Neither log.dirs nor log.dir is defined"),
         "Error message should mention missing log.dirs/log.dir");
   }
 
@@ -310,10 +304,12 @@ class ConfigCliTest {
     Path output = tempDir.resolve("node-metrics-missing.yml");
 
     // When / Then: Expect an IOException for missing file
-    IOException ex = assertThrows(IOException.class, () ->
-        ConfigCli.generateConfigFromKafka(missingProps, output));
+    IOException ex =
+        assertThrows(
+            IOException.class, () -> ConfigCli.generateConfigFromKafka(missingProps, output));
 
-    assertTrue(ex.getMessage().contains("Kafka server.properties not found"),
+    assertTrue(
+        ex.getMessage().contains("Kafka server.properties not found"),
         "Error message should mention missing server.properties");
   }
 
@@ -321,9 +317,7 @@ class ConfigCliTest {
   void generateConfigFromKafkaShouldIgnoreEmptyEntriesInLogDirs() throws IOException {
     // Given: server.properties where log.dirs contains empty segments
     Path serverProps = tempDir.resolve("server-empty-logdirs.properties");
-    String props =
-        "broker.id=4\n" +
-        "log.dirs=/data/a,, /data/b,  ,/data/c\n";
+    String props = "broker.id=4\n" + "log.dirs=/data/a,, /data/b,  ,/data/c\n";
     Files.writeString(serverProps, props, StandardCharsets.UTF_8);
 
     Path output = tempDir.resolve("node-metrics-empty-logdirs.yml");
@@ -341,9 +335,7 @@ class ConfigCliTest {
     // Ensure that there is no empty entry line such as just "-"
     String[] lines = yaml.split("\\R");
     for (String line : lines) {
-      assertNotEquals("-",
-          line.trim(),
-          "YAML should not contain empty fsmetrics_paths entries");
+      assertNotEquals("-", line.trim(), "YAML should not contain empty fsmetrics_paths entries");
     }
   }
 
@@ -351,10 +343,11 @@ class ConfigCliTest {
   void initKafkaConfigHelpShouldPrintUsageAndReturn() {
     String output = runMainCaptureStdout("init-kafka-config", "--help");
 
-    assertTrue(output.contains("Node Metrics Agent CLI"),
+    assertTrue(
+        output.contains("Node Metrics Agent CLI"),
         "Help output for init-kafka-config should contain main title");
-    assertTrue(output.contains("init-kafka-config"),
-        "Help output should mention init-kafka-config");
+    assertTrue(
+        output.contains("init-kafka-config"), "Help output should mention init-kafka-config");
   }
 
   // ---------------------------------------------------------------------
@@ -380,9 +373,14 @@ class ConfigCliTest {
     assertEquals(List.of("/single"), result, "Should handle single item");
 
     // Null or empty
-    assertEquals(List.of(), ConfigCli.parseCommaSeparatedPaths(null), "Null should return empty list");
-    assertEquals(List.of(), ConfigCli.parseCommaSeparatedPaths(""), "Empty string should return empty list");
-    assertEquals(List.of(), ConfigCli.parseCommaSeparatedPaths("   "), "Blank string should return empty list");
+    assertEquals(
+        List.of(), ConfigCli.parseCommaSeparatedPaths(null), "Null should return empty list");
+    assertEquals(
+        List.of(), ConfigCli.parseCommaSeparatedPaths(""), "Empty string should return empty list");
+    assertEquals(
+        List.of(),
+        ConfigCli.parseCommaSeparatedPaths("   "),
+        "Blank string should return empty list");
   }
 
   @Test
@@ -401,49 +399,50 @@ class ConfigCliTest {
   void buildNodeMetricsYamlShouldHandleNullHeader() {
     String yaml = ConfigCli.buildNodeMetricsYaml(List.of("/a"), null);
     assertFalse(yaml.contains("# null"), "Should not print 'null' string");
-
   }
 
   @Test
   void parseInitConfigOptionsShouldThrowOnUnknownOption() {
     String[] args = {"init-config", "--unknown-opt", "val"};
-    IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-        ConfigCli.parseInitConfigOptions(args));
+    IllegalArgumentException ex =
+        assertThrows(IllegalArgumentException.class, () -> ConfigCli.parseInitConfigOptions(args));
     assertTrue(ex.getMessage().contains("Unknown option"), "Should throw on unknown option");
   }
 
   @Test
   void parseInitConfigOptionsShouldThrowOnMissingValue() {
     String[] args = {"init-config", "--output"}; // missing value
-    IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-        ConfigCli.parseInitConfigOptions(args));
+    IllegalArgumentException ex =
+        assertThrows(IllegalArgumentException.class, () -> ConfigCli.parseInitConfigOptions(args));
     assertTrue(ex.getMessage().contains("Missing value"), "Should throw on missing value");
   }
 
   @Test
   void parseKafkaInitOptionsShouldThrowOnUnknownOption() {
     String[] args = {"init-kafka-config", "--bad-opt"};
-    IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-        ConfigCli.parseKafkaInitOptions(args));
+    IllegalArgumentException ex =
+        assertThrows(IllegalArgumentException.class, () -> ConfigCli.parseKafkaInitOptions(args));
     assertTrue(ex.getMessage().contains("Unknown option"), "Should throw on unknown option");
   }
 
   @Test
   void parseKafkaInitOptionsShouldThrowOnMissingValue() {
     String[] args = {"init-kafka-config", "--server-properties"}; // missing value
-    IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-        ConfigCli.parseKafkaInitOptions(args));
+    IllegalArgumentException ex =
+        assertThrows(IllegalArgumentException.class, () -> ConfigCli.parseKafkaInitOptions(args));
     assertTrue(ex.getMessage().contains("Missing value"), "Should throw on missing value");
   }
+
   @Test
   void executeShouldReturnZeroAndPrintUsageWhenNoArgs() {
     String output = runMainCaptureStdout();
-    assertTrue(output.contains("Node Metrics Agent CLI"), "Should print usage when no args provided");
+    assertTrue(
+        output.contains("Node Metrics Agent CLI"), "Should print usage when no args provided");
   }
 
   @Test
   void executeShouldReturnOneWhenCommandIsUnknown() {
-    int exitCode = ConfigCli.execute(new String[]{"unknown-cmd"});
+    int exitCode = ConfigCli.execute(new String[] {"unknown-cmd"});
     assertEquals(1, exitCode, "Exit code should be 1 for unknown command");
   }
 
@@ -459,13 +458,14 @@ class ConfigCliTest {
       System.setErr(originalErr);
     }
     String errOutput = baos.toString(StandardCharsets.UTF_8);
-    assertTrue(errOutput.contains("not found in classpath"), "Should verify missing usage file error");
+    assertTrue(
+        errOutput.contains("not found in classpath"), "Should verify missing usage file error");
   }
 
   @Test
   void runCommandShouldReturnOneOnIllegalArgument() {
     // init-config with unknown option triggers IllegalArgumentException inside parseOptions
-    int exitCode = ConfigCli.execute(new String[]{"init-config", "--unknown-opt"});
+    int exitCode = ConfigCli.execute(new String[] {"init-config", "--unknown-opt"});
     assertEquals(1, exitCode, "Should return exit code 1 on illegal argument exception");
   }
 
@@ -479,7 +479,14 @@ class ConfigCliTest {
 
   @Test
   void buildNodeMetricsYamlShouldQuotePathsThatYamlWouldMisread() throws IOException {
-    List<String> paths = List.of("/data/my #logs", "/data/a: b", "/data/say \"hi\"", "/data/back\\slash", "*/alias", "true");
+    List<String> paths =
+        List.of(
+            "/data/my #logs",
+            "/data/a: b",
+            "/data/say \"hi\"",
+            "/data/back\\slash",
+            "*/alias",
+            "true");
     String yaml = ConfigCli.buildNodeMetricsYaml(paths, null);
 
     Path out = tempDir.resolve("quoted.yml");
