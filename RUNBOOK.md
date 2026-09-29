@@ -81,7 +81,8 @@ If reload fails, the previous working configuration remains active.
 - `pletor_agent_observability_stucktaskcount > 0` (a filesystem call is blocked, usually a dead mount)
 - filesystem usable bytes drops below service thresholds
 - FD usage approaches max FD limit
-- cgroup memory usage/limit ratio stays above `0.90`
+- cgroup memory working set / limit ratio stays above `0.90`
+  (`memoryworkingsetbytes / memorylimitbytes`, only when the limit is not `-1`)
 
 ## Troubleshooting
 
@@ -126,6 +127,10 @@ Filesystem MBeans:
 Cgroup metrics:
 
 - `MemoryLimitBytes = -1` means unlimited or unavailable.
+- `MemoryUsageBytes` includes reclaimable page cache, so page-cache-heavy workloads such as Kafka
+  sit close to the limit by design. Alert on `MemoryWorkingSetBytes` (usage minus inactive file
+  cache, the same figure Kubernetes/cAdvisor uses) instead. It is `-1` when `memory.stat` is
+  unavailable.
 - `CgroupVersion` is `v1`, `v2`, or `none`.
 
 Rollback:

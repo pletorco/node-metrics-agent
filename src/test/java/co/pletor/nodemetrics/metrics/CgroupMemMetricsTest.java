@@ -170,4 +170,72 @@ class CgroupMemMetricsTest {
             assertEquals(-1L, metrics.getMemoryUsageBytes());
         }
     }
+
+    // ------- working set (usage minus inactive file cache) -------
+
+    private CgroupMemMetrics pollRealFiles(String version, Path dir, String... files) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
+        for (int i = 0; i < files.length; i += 2) {
+            Files.writeString(dir.resolve(files[i]), files[i + 1]);
+        }
+        CgroupMemMetrics metrics = new CgroupMemMetrics();
+        setCgroupInfo(metrics, version, dir, "/pod/container");
+        metrics.poll();
+        metrics.setReadRefreshEnabled(false);
+        return metrics;
+    }
+
+    @Test
+    void workingSet_v2_subtractsInactiveFile(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        CgroupMemMetrics m = pollRealFiles("v2", dir,
+                "memory.max", "1000000\n",
+                "memory.current", "600000\n",
+                "memory.stat", "anon 200000\nfile 350000\ninactive_file 100000\nactive_file 250000\n");
+
+        assertEquals(600000L, m.getMemoryUsageBytes());
+        assertEquals(500000L, m.getMemoryWorkingSetBytes());
+        assertNull(m.lastRefreshError());
+    }
+
+    @Test
+    void workingSet_v1_prefersTotalInactiveFileAndFallsBackToInactiveFile(
+            @org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        CgroupMemMetrics total = pollRealFiles("v1", dir,
+                "memory.limit_in_bytes", "1000000\n",
+                "memory.usage_in_bytes", "400000\n",
+                "memory.stat", "inactive_file 10\ntotal_inactive_file 150000\n");
+        assertEquals(250000L, total.getMemoryWorkingSetBytes(), "total_inactive_file wins on v1");
+
+        Files.writeString(dir.resolve("memory.stat"), "inactive_file 50000\n");
+        total.poll();
+        assertEquals(350000L, total.getMemoryWorkingSetBytes(), "falls back to inactive_file");
+    }
+
+    @Test
+    void workingSet_isClampedAtZeroAndUnavailableWithoutMemoryStat(
+            @org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        CgroupMemMetrics clamped = pollRealFiles("v2", dir,
+                "memory.max", "max\n",
+                "memory.current", "1000\n",
+                "memory.stat", "inactive_file 5000\n");
+        assertEquals(0L, clamped.getMemoryWorkingSetBytes(), "Racy stats must never yield a negative value");
+        assertEquals(-1L, clamped.getMemoryLimitBytes());
+
+        Files.delete(dir.resolve("memory.stat"));
+        clamped.poll();
+        assertEquals(-1L, clamped.getMemoryWorkingSetBytes());
+        assertEquals(1000L, clamped.getMemoryUsageBytes(), "Usage is still reported without memory.stat");
+        assertNull(clamped.lastRefreshError(), "A missing memory.stat is not a refresh failure");
+    }
+
+    @Test
+    void workingSet_isUnavailableForNonCgroupHosts() {
+        CgroupMemMetrics metrics = new CgroupMemMetrics();
+        try (MockedStatic<LinuxProcFs> mocked = mockStatic(LinuxProcFs.class)) {
+            mocked.when(LinuxProcFs::isLinux).thenReturn(false);
+            metrics.poll();
+            metrics.setReadRefreshEnabled(false);
+            assertEquals(-1L, metrics.getMemoryWorkingSetBytes());
+        }
+    }
 }

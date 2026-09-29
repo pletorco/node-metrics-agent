@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `MemoryWorkingSetBytes` on `co.pletor.cgroup:type=MemMetrics` (exported as
+  `pletor_cgroup_memmetrics_memoryworkingsetbytes`): cgroup usage minus inactive file cache, from
+  `memory.stat` (`inactive_file` on v2, `total_inactive_file` on v1). `MemoryUsageBytes` includes
+  reclaimable page cache and overstates memory pressure for page-cache-heavy workloads.
+
+### Added
+
 - Filesystem metrics now refresh on a separate background lane (3 worker threads) with at most one
   queued or running instance per task. Previously a single worker served every metric, so one
   blocked `statvfs` (dead NFS mount) froze all metrics and pushed the engine into `BYPASS`.

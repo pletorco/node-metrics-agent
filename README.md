@@ -105,6 +105,7 @@ Exported Prometheus metric names use the `pletor_*` prefix, for example:
 - `pletor_node_cpumetrics_systemcpuload`
 - `pletor_node_memmetrics_availablememorybytes`
 - `pletor_cgroup_memmetrics_memoryusagebytes`
+- `pletor_cgroup_memmetrics_memoryworkingsetbytes`
 - `pletor_proc_fdmetrics_openfiledescriptorcount`
 - `pletor_agent_observability_queuefillratio`
 
