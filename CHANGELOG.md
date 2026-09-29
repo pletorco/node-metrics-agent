@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Applying a configuration no longer blocks on an unresponsive filesystem. The `stat` calls made
+  for configured paths run on bounded probe threads with a 2 s per-call and 5 s per-apply budget;
+  a path that does not answer is still registered (and then reported as a stuck task) instead of
+  freezing the caller. At startup the caller is the application's main thread, so a dead NFS mount
+  listed in `fsmetrics_paths` could previously delay JVM startup indefinitely.
+
 ### Build and CI
 
 - Compile with `--release 11` so the Java 11 API is enforced, not just Java 11 bytecode. This

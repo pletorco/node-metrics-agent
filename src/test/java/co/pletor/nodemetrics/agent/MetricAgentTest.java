@@ -844,4 +844,43 @@ class MetricsAgentTest {
       assertFalse(name.isPattern(), "Quoted name must not be a pattern: " + raw);
     }
   }
+
+  @Test
+  @DisplayName("applyPartitionDedupAndCap must not block on an unresponsive filesystem")
+  void applyPartitionDedupAndCap_shouldNotBlockOnUnresponsiveFilesystem() throws Exception {
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    java.util.function.Function<Path, String> original = MetricsAgent.partitionKeyDetector;
+    MetricsAgent.partitionKeyDetector = path -> {
+      if (path.toString().contains("dead-nfs")) {
+        while (release.getCount() > 0) {
+          try {
+            release.await();
+          } catch (InterruptedException ignored) {
+            // uninterruptible I/O does not react to interrupts
+          }
+        }
+      }
+      return "dev:" + path;
+    };
+    try {
+      LinkedHashSet<String> paths = new LinkedHashSet<>();
+      paths.add("/healthy");
+      paths.add("/mnt/dead-nfs/data");
+
+      long start = System.nanoTime();
+      Object result = invokePrivateStatic(
+          "applyPartitionDedupAndCap",
+          new Class<?>[]{LinkedHashSet.class, int.class},
+          paths,
+          32
+      );
+      long elapsedMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+      assertTrue(elapsedMs < 10_000L, "Unresponsive mount must not stall config application: " + elapsedMs + " ms");
+      assertEquals(paths, result, "The unresponsive path is still registered so it can be reported as stuck");
+    } finally {
+      MetricsAgent.partitionKeyDetector = original;
+      release.countDown();
+    }
+  }
 }

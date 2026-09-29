@@ -34,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -130,6 +131,22 @@ public class MetricsAgent {
   private static final String LOG_KEY_FIXED_MBEAN_REGISTRATION_FAILURE = "fixed-mbean-registration-failure";
   private static final String LOG_KEY_NULL_CONFIG_APPLIED = "null-config-applied";
   private static final String LOG_KEY_PARTITION_CAP_REACHED = "partition-cap-reached";
+  private static final String LOG_KEY_FS_PROBE_TIMEOUT = "fs-probe-timeout";
+
+  // Filesystem calls made while applying a configuration (stat of configured paths) are run
+  // through a bounded probe so an unresponsive mount cannot stall the caller. At startup that
+  // caller is the application's main thread.
+  private static final int FS_PROBE_MAX_THREADS = 4;
+  private static final long FS_PROBE_CALL_TIMEOUT_MS = 2_000L;
+  private static final long APPLY_PROBE_BUDGET_MS = 5_000L;
+  private static final FilesystemProbe FS_PROBE = new FilesystemProbe(FS_PROBE_MAX_THREADS);
+
+  /** Deadline for probing during the current {@link #applyConfig}; 0 = no overall budget. */
+  private static long probeDeadlineNanos = 0L;
+
+  /** Seam for tests: the partition-key lookup that is run through {@link #FS_PROBE}. */
+  static java.util.function.Function<Path, String> partitionKeyDetector =
+      MetricsAgent::detectPartitionKeyUnguarded;
 
   /**
    * Functional interface for applying a new configuration.
@@ -383,7 +400,35 @@ public class MetricsAgent {
     return effectivePaths;
   }
 
+  private static long probeWaitMs() {
+    if (probeDeadlineNanos == 0L) {
+      return FS_PROBE_CALL_TIMEOUT_MS;
+    }
+    long remainingMs = TimeUnit.NANOSECONDS.toMillis(probeDeadlineNanos - System.nanoTime());
+    return Math.min(FS_PROBE_CALL_TIMEOUT_MS, remainingMs);
+  }
+
+  private static void logProbeTimeout(Path path) {
+    THROTTLED_LOGGER.log(
+        Level.WARNING,
+        LOG_KEY_FS_PROBE_TIMEOUT,
+        () -> "[node-metrics-agent] filesystem did not respond in time, path is treated as unresponsive: "
+            + path
+    );
+  }
+
   private static String detectPartitionKey(Path path) {
+    String key = FS_PROBE.call(() -> partitionKeyDetector.apply(path), null, probeWaitMs());
+    if (key == null) {
+      // Unresponsive (or probe threads exhausted): keep it unique by path. The path is still
+      // registered; its refresh runs on the background lane and shows up as a stuck task.
+      logProbeTimeout(path);
+      return "unresponsive:" + path;
+    }
+    return key;
+  }
+
+  private static String detectPartitionKeyUnguarded(Path path) {
     // Missing paths cannot be mapped reliably to a mounted partition.
     // Keep them unique by absolute path so cap logic remains deterministic.
     if (!Files.exists(path)) {
@@ -483,7 +528,9 @@ public class MetricsAgent {
       return null;
     }
 
-    if (!Files.exists(path)) {
+    // An unresponsive filesystem counts as existing: it is registered and reported as stuck
+    // rather than blocking here or being reported as missing.
+    if (!FS_PROBE.call(() -> Files.exists(path), Boolean.TRUE, probeWaitMs())) {
       THROTTLED_LOGGER.log(
           Level.WARNING,
           LOG_KEY_MISSING_CONFIGURED_PATH,
@@ -669,23 +716,28 @@ public class MetricsAgent {
     }
 
     synchronized (APPLY_LOCK) {
-      // 1) Build the path set (always including "/").
-      LinkedHashSet<String> requestedPaths = buildPathSet(newCfg);
-      int maxPartitions = resolveMaxFsPartitions(newCfg);
-      LinkedHashSet<String> newPaths = applyPartitionDedupAndCap(requestedPaths, maxPartitions);
+      probeDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(APPLY_PROBE_BUDGET_MS);
+      try {
+        // 1) Build the path set (always including "/").
+        LinkedHashSet<String> requestedPaths = buildPathSet(newCfg);
+        int maxPartitions = resolveMaxFsPartitions(newCfg);
+        LinkedHashSet<String> newPaths = applyPartitionDedupAndCap(requestedPaths, maxPartitions);
 
-      // 2) Ensure beans exist for all configured paths.
-      registerOrReuseFsBeans(newPaths);
+        // 2) Ensure beans exist for all configured paths.
+        registerOrReuseFsBeans(newPaths);
 
-      // 3) Unregister beans for paths no longer configured.
-      unregisterRemovedFsBeans(newPaths);
+        // 3) Unregister beans for paths no longer configured.
+        unregisterRemovedFsBeans(newPaths);
 
-      // 4) Update async refresh targets.
-      updateRefreshEngineTasksLocked();
+        // 4) Update async refresh targets.
+        updateRefreshEngineTasksLocked();
 
-      // 5) Update current config and log.
-      current = newCfg;
-      LOGGER.log(Level.INFO, "[node-metrics-agent] config applied: {0}", current);
+        // 5) Update current config and log.
+        current = newCfg;
+        LOGGER.log(Level.INFO, "[node-metrics-agent] config applied: {0}", current);
+      } finally {
+        probeDeadlineNanos = 0L;
+      }
     }
   }
 
