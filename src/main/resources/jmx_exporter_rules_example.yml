@@ -58,7 +58,7 @@ rules:
   # Exports node counters/gauges.
   # Note: OsInfoMetrics labels are appended by metricCustomizers.
   # ============================================================================
-  - pattern: 'co.pletor.node<type=(.+?)(?:,(.+))?><>(ProcessCpuTimeNanos|UptimeSeconds|SystemCpuTotalTicks|SystemCpuIoWaitTicks|SystemCpuStealTicks|CgroupCpuThrottledPeriodsTotal|CgroupCpuThrottledTimeNanosTotal|CgroupCpuUsageNanosTotal|DiskReadBytesTotal|DiskWriteBytesTotal|NetRxBytesTotal|NetTxBytesTotal|SwapInPagesTotal|SwapOutPagesTotal|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
+  - pattern: 'co.pletor.node<type=(.+?)(?:,(.+))?><>(ProcessCpuTimeNanos|UptimeSeconds|SystemCpuTotalTicks|SystemCpuIoWaitTicks|SystemCpuStealTicks|CgroupCpuThrottledPeriodsTotal|CgroupCpuThrottledTimeNanosTotal|CgroupCpuUsageNanosTotal|DiskReadBytesTotal|DiskWriteBytesTotal|NetRxBytesTotal|NetTxBytesTotal|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_node_$1_$3
     type: COUNTER
     cache: true
@@ -79,6 +79,11 @@ rules:
   # [proc] co.pletor.proc
   # Exports process gauges.
   # ============================================================================
+  - pattern: 'co.pletor.proc<type=(.+?)(?:,(.+))?><>(IoReadBytesTotal|IoWriteBytesTotal):'
+    name: pletor_proc_$1_$3
+    type: COUNTER
+    cache: true
+
   - pattern: 'co.pletor.proc<type=(.+?)(?:,(.+))?><>(.+):'
     name: pletor_proc_$1_$3
     type: GAUGE

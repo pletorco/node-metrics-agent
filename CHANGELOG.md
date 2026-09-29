@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Disk operation and I/O time counters, `co.pletor.node:type=DiskIoMetrics`, from
+  `/proc/diskstats` and summed over the same leaf devices as the disk byte counters: completed
+  reads and writes, time spent reading and writing, busy time (`io_ticks`), weighted busy time, I/O
+  in flight and the number of devices. Rates give IOPS, latency, utilization and queue length.
+- Network error and TCP health counters, `co.pletor.node:type=NetworkMetrics`: receive/transmit
+  errors and drops (same interfaces as the byte counters) and, from `/proc/net/snmp` and
+  `/proc/net/netstat`, TCP segments sent, retransmitted and in error, failed connection attempts,
+  established-connection resets, current connections, listen overflows and drops, and
+  retransmission timeouts. Each source is read independently.
+- JVM process figures, `co.pletor.proc:type=ProcessMetrics`, from `/proc/self`: resident set size
+  and its peak, anonymous, file and shared parts, swap, native thread count, and the bytes read
+  from and written to storage. Context switches are not exposed because `/proc/self/status`
+  reports them for the main thread only.
 - `CgroupCpuLimitCores` on `co.pletor.node:type=CpuMetrics`: the effective CPU limit of the
   container in cores (CFS quota over period; the tightest finite limit of the cgroup and its
   ancestors, like `MemoryLimitBytes`; `-1` when unlimited or unavailable). With

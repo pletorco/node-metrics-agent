@@ -47,6 +47,9 @@ Confirm these MBeans exist:
 - `co.pletor.node:type=PressureMetrics`
 - `co.pletor.cgroup:type=PressureMetrics`
 - `co.pletor.proc:type=FdMetrics`
+- `co.pletor.proc:type=ProcessMetrics`
+- `co.pletor.node:type=DiskIoMetrics`
+- `co.pletor.node:type=NetworkMetrics`
 - `co.pletor.node:type=IoRates`
 - `co.pletor.node:type=OsInfoMetrics`
 - `co.pletor.node:type=OsRuntimeMetrics`
@@ -165,6 +168,40 @@ Filesystem MBeans:
 - Paths on the same partition are deduplicated.
 - `fsmetrics_max_partitions` caps unique filesystem partitions (default `32`, at most `256`; a
   larger value is lowered to 256 with a warning).
+
+Disk I/O (`DiskIoMetrics`):
+
+- Operation counts and I/O time from `/proc/diskstats`, summed over the same physical (leaf) block
+  devices as the disk byte counters, so there is no per-device breakdown. All are cumulative
+  counters (`rate()`); the `-1` sentinel means `/proc/diskstats` or a countable device is missing.
+- Average latency: `rate(diskreadtimemillistotal[5m]) / rate(diskreadscompletedtotal[5m])` (and the
+  write equivalent), in milliseconds per operation.
+- Average device utilization: `rate(diskiotimemillistotal[5m]) / 1000 / diskdevicecount`. It is an
+  average over devices: one saturated disk among several idle ones will not show as high.
+- Average queue length: `rate(diskweightediotimemillistotal[5m]) / 1000`.
+
+Network errors and TCP (`NetworkMetrics`):
+
+- Interface error and drop counters use the same interfaces as the network byte counters.
+- TCP counters come from `/proc/net/snmp` and `/proc/net/netstat`; inside a container they describe
+  the container's network namespace, so on Kubernetes they cover that pod.
+- Retransmit ratio: `rate(tcpretranssegstotal[5m]) / rate(tcpoutsegstotal[5m])`. A sustained rise
+  is an early sign of a network problem. `tcplistenoverflowstotal` / `tcplistendropstotal` rising
+  means the application accepts connections too slowly.
+- Each source is independent: a missing file only makes its own attributes `-1` (not a failure).
+
+JVM process (`ProcessMetrics`):
+
+- `ResidentSetBytes` is the memory the JVM process really holds (`VmRSS`): heap, metaspace, direct
+  buffers, mapped files and native libraries. Compare it with the JVM's own accounting
+  (`java.lang` memory MBeans) to find memory the JVM does not track, and with
+  `MemoryWorkingSetBytes / MemoryLimitBytes` of the container.
+- `ResidentAnonBytes` (heap and private memory) and `ResidentFileBytes` (mapped files) split the
+  resident set. `ThreadCount` counts native threads, including JVM-internal ones.
+- `IoReadBytesTotal` / `IoWriteBytesTotal` are the bytes this process caused to hit storage
+  (`/proc/self/io`, excluding page-cache hits); they are `-1` when the kernel has no task I/O
+  accounting or access is denied.
+- Context switches are not exposed: `/proc/self/status` reports them for the main thread only.
 
 CPU limit:
 

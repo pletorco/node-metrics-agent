@@ -27,6 +27,9 @@ The agent registers these MBeans:
 - `co.pletor.node:type=PressureMetrics` and `co.pletor.cgroup:type=PressureMetrics` (pressure stall
   information, see `RUNBOOK.md`)
 - `co.pletor.proc:type=FdMetrics`
+- `co.pletor.proc:type=ProcessMetrics` (resident set, threads and I/O of the JVM process)
+- `co.pletor.node:type=DiskIoMetrics` (disk operations, latency and utilization counters)
+- `co.pletor.node:type=NetworkMetrics` (network errors and drops, TCP retransmits)
 - `co.pletor.node:type=IoRates`
 - `co.pletor.node:type=OsInfoMetrics`
 - `co.pletor.node:type=OsRuntimeMetrics`
@@ -114,6 +117,9 @@ Exported Prometheus metric names use the `pletor_*` prefix, for example:
 - `pletor_node_cpumetrics_systemcpuiowaitticks` (cumulative counter)
 - `pletor_node_pressuremetrics_memoryfulltotalmicros` (cumulative counter: stalled microseconds)
 - `pletor_node_memmetrics_swapoutpagestotal` (cumulative counter: pages swapped out)
+- `pletor_node_networkmetrics_tcpretranssegstotal` (cumulative counter)
+- `pletor_node_diskiometrics_diskiotimemillistotal` (cumulative counter)
+- `pletor_proc_processmetrics_residentsetbytes`
 - `pletor_proc_fdmetrics_openfiledescriptorcount`
 - `pletor_agent_observability_queuefillratio`
 
