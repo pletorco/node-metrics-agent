@@ -6,7 +6,8 @@ package co.pletor.nodemetrics.metrics;
 public interface CgroupMemMetricsMBean {
 
   /**
-   * Returns the memory limit in bytes for the cgroup.
+   * Returns the effective memory limit in bytes: the tightest finite limit of this cgroup and its
+   * ancestors (for example the Kubernetes pod), or {@code -1} if no level is limited.
    *
    * @return the memory limit in bytes
    */

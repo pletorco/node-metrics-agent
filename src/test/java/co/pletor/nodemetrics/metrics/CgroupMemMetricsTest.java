@@ -238,4 +238,90 @@ class CgroupMemMetricsTest {
             assertEquals(-1L, metrics.getMemoryWorkingSetBytes());
         }
     }
+
+    // ------- effective limit: tightest limit of the cgroup and its ancestors -------
+
+    private CgroupMemMetrics metricsInHierarchy(String version, Path root, Path leaf) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
+        CgroupMemMetrics metrics = new CgroupMemMetrics();
+        setCgroupInfo(metrics, version, leaf, "/pod/container");
+        Field cgField = CgroupMemMetrics.class.getDeclaredField("cg");
+        cgField.setAccessible(true);
+        Object cg = cgField.get(metrics);
+        Field baseDir = cg.getClass().getDeclaredField("baseDir");
+        baseDir.setAccessible(true);
+        baseDir.set(cg, root);
+        return metrics;
+    }
+
+    @Test
+    void limit_v2_usesTheAncestorLimitWhenTheContainerHasNone(@org.junit.jupiter.api.io.TempDir Path tmp)
+            throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("cgroup"));
+        Path pod = Files.createDirectories(root.resolve("kubepods/pod1"));
+        Path leaf = Files.createDirectories(pod.resolve("container"));
+        Files.writeString(root.resolve("memory.max"), "max\n");
+        Files.writeString(pod.resolve("memory.max"), "2000\n");
+        Files.writeString(leaf.resolve("memory.max"), "max\n");
+        Files.writeString(leaf.resolve("memory.current"), "500\n");
+        // Above the mount root: must be ignored.
+        Files.writeString(tmp.resolve("memory.max"), "1\n");
+
+        CgroupMemMetrics m = metricsInHierarchy("v2", root, leaf);
+        m.poll();
+        m.setReadRefreshEnabled(false);
+
+        assertEquals(2000L, m.getMemoryLimitBytes());
+    }
+
+    @Test
+    void limit_v2_usesTheTightestLimitOfAllLevels(@org.junit.jupiter.api.io.TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("cgroup"));
+        Path pod = Files.createDirectories(root.resolve("pod"));
+        Path leaf = Files.createDirectories(pod.resolve("container"));
+        Files.writeString(pod.resolve("memory.max"), "2000\n");
+        Files.writeString(leaf.resolve("memory.max"), "5000\n");
+        Files.writeString(leaf.resolve("memory.current"), "500\n");
+
+        CgroupMemMetrics m = metricsInHierarchy("v2", root, leaf);
+        m.poll();
+        m.setReadRefreshEnabled(false);
+        assertEquals(2000L, m.getMemoryLimitBytes(), "A container limit above its pod's is unreachable");
+
+        Files.writeString(leaf.resolve("memory.max"), "1000\n");
+        m.poll();
+        assertEquals(1000L, m.getMemoryLimitBytes(), "The container's own limit wins when it is tighter");
+    }
+
+    @Test
+    void limit_v2_isUnlimitedWhenNoLevelHasALimit(@org.junit.jupiter.api.io.TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("cgroup"));
+        Path leaf = Files.createDirectories(root.resolve("pod/container"));
+        Files.writeString(root.resolve("pod/memory.max"), "max\n");
+        Files.writeString(leaf.resolve("memory.max"), "max\n");
+        Files.writeString(leaf.resolve("memory.current"), "500\n");
+
+        CgroupMemMetrics m = metricsInHierarchy("v2", root, leaf);
+        m.poll();
+        m.setReadRefreshEnabled(false);
+
+        assertEquals(-1L, m.getMemoryLimitBytes());
+    }
+
+    @Test
+    void limit_v1_ignoresUnlimitedSentinelAtEveryLevel(@org.junit.jupiter.api.io.TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("memory"));
+        Path pod = Files.createDirectories(root.resolve("pod"));
+        Path leaf = Files.createDirectories(pod.resolve("container"));
+        Files.writeString(root.resolve("memory.limit_in_bytes"), "9223372036854771712\n");
+        Files.writeString(pod.resolve("memory.limit_in_bytes"), "4000\n");
+        Files.writeString(leaf.resolve("memory.limit_in_bytes"), "9223372036854771712\n");
+        Files.writeString(leaf.resolve("memory.usage_in_bytes"), "500\n");
+
+        CgroupMemMetrics m = metricsInHierarchy("v1", root, leaf);
+        m.poll();
+        m.setReadRefreshEnabled(false);
+
+        assertEquals(4000L, m.getMemoryLimitBytes());
+    }
 }

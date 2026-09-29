@@ -10,7 +10,8 @@ import java.util.Map;
  * <p>
  * Exposes the following attributes:
  * <ul>
- *   <li><b>MemoryLimitBytes</b> – container (cgroup) memory limit in bytes, or -1 when unlimited/unsupported</li>
+ *   <li><b>MemoryLimitBytes</b> – effective container (cgroup) memory limit in bytes, i.e. the tightest finite
+ *       limit of the cgroup and its ancestors, or -1 when unlimited/unsupported</li>
  *   <li><b>MemoryUsageBytes</b> – container (cgroup) current memory usage in bytes, or -1 when unsupported.
  *       Includes reclaimable page cache.</li>
  *   <li><b>MemoryWorkingSetBytes</b> – usage minus inactive file cache (the figure Kubernetes/cAdvisor
@@ -89,7 +90,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
             : Path.of("/sys/fs/cgroup");
 
         // Helper handles "max" -> -1 internally.
-        long lim = LinuxProcFs.readFirstNumber(base.resolve("memory.max"));
+        long lim = effectiveLimit(base, "memory.max", false);
         long cur = LinuxProcFs.readFirstNumber(base.resolve("memory.current"));
 
         limit = lim;
@@ -103,14 +104,8 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
             ? cg.resolved
             : Path.of("/sys/fs/cgroup/memory");
 
-        long lim = LinuxProcFs.readFirstNumber(base.resolve("memory.limit_in_bytes"));
+        long lim = effectiveLimit(base, "memory.limit_in_bytes", true);
         long cur = LinuxProcFs.readFirstNumber(base.resolve("memory.usage_in_bytes"));
-
-        // Some v1 setups use extremely large numbers to represent "unlimited".
-        // Heuristic: treat values close to Long.MAX_VALUE as unlimited (-1).
-        if (lim >= Long.MAX_VALUE / 2) {
-          lim = -1L;
-        }
 
         limit = lim;
         usage = cur;
@@ -126,6 +121,45 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
       recordRefreshFailure(t);
       limit = usage = workingSet = -1L;
     }
+  }
+
+  /**
+   * Effective memory limit: the tightest finite limit of this cgroup and its ancestors.
+   * <p>
+   * The kernel enforces every level, so a container without its own limit is still bounded by its
+   * pod (or slice), and a container limit larger than the pod's is never reachable. Ancestors are
+   * only considered up to the cgroup mount root; inside a cgroup namespace the mount root is
+   * already this cgroup and nothing is walked.
+   *
+   * @param base       this cgroup's directory
+   * @param limitFile  {@code memory.max} (v2) or {@code memory.limit_in_bytes} (v1)
+   * @param v1         whether huge values mean "unlimited" (cgroup v1 convention)
+   * @return the effective limit in bytes, or -1 if no level has a finite limit
+   */
+  private long effectiveLimit(Path base, String limitFile, boolean v1) {
+    long best = readLimit(base, limitFile, v1);
+    Path root = cg.baseDir;
+    if (root == null || !base.startsWith(root)) {
+      return best;
+    }
+    for (Path dir = base; !dir.equals(root) && dir.getParent() != null; ) {
+      dir = dir.getParent();
+      long ancestor = readLimit(dir, limitFile, v1);
+      if (ancestor > 0L && (best < 0L || ancestor < best)) {
+        best = ancestor;
+      }
+    }
+    return best;
+  }
+
+  private static long readLimit(Path dir, String limitFile, boolean v1) {
+    long value = LinuxProcFs.readFirstNumber(dir.resolve(limitFile));
+    // Some v1 setups use extremely large numbers to represent "unlimited".
+    // Heuristic: treat values close to Long.MAX_VALUE as unlimited (-1).
+    if (v1 && value >= Long.MAX_VALUE / 2) {
+      return -1L;
+    }
+    return value;
   }
 
   /**

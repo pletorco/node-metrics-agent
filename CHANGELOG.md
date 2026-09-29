@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- `MemoryLimitBytes` is now the effective cgroup limit: the tightest finite limit of the cgroup and
+  its ancestors. Previously a container without its own limit inside a limited Kubernetes pod (or
+  with a limit larger than the pod's) reported `-1` / an unreachable value, so limit-based alerts
+  and ratios were wrong.
 - Applying a configuration no longer blocks on an unresponsive filesystem. The `stat` calls made
   for configured paths run on bounded probe threads with a 2 s per-call and 5 s per-apply budget;
   a path that does not answer is still registered (and then reported as a stuck task) instead of
