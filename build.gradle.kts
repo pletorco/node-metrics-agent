@@ -38,7 +38,7 @@ description = "JVM agent for exposing host and container node metrics through JM
 // Dependency versions
 // -----------------------------------------------------------------------------
 val junitJupiterVersion = "5.10.2"
-val mockitoVersion = "5.14.2"
+val mockitoVersion = "5.24.0"
 
 // -----------------------------------------------------------------------------
 // Java / toolchain configuration
