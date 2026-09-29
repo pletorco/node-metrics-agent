@@ -11,6 +11,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,17 +23,28 @@ jobs:
           java-version: "21"
           cache: gradle
 
-      - name: Build distribution
-        run: ./gradlew --no-daemon clean shadowJar cyclonedxBom
-
+      # Fail fast, before spending time on the build.
       - name: Verify tag matches project version
         run: |
-          VERSION="$(./gradlew -q printVersion | tr -d '\r')"
+          VERSION="$(./gradlew -q --no-daemon printVersion | tr -d '\r')"
           test "v${VERSION}" = "${GITHUB_REF_NAME}"
+
+      - name: Test, lint and build distribution
+        run: ./gradlew --no-daemon clean check shadowJar cyclonedxBom
+
+      - name: Smoke test the release jar
+        run: scripts/smoke-test.sh build/libs/*-all.jar
+
+      - name: Write checksums
+        run: |
+          cd build/libs
+          sha256sum -- *-all.jar > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            build/libs/*.jar
+            build/libs/*-all.jar
+            build/libs/SHA256SUMS
             build/reports/bom.json

@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Build and CI
+
+- Compile with `--release 11` so the Java 11 API is enforced, not just Java 11 bytecode. This
+  immediately caught `Stream.toList()` (Java 16) in tests.
+- CI runs the tests on Java 11 and 17 (`-PtestJavaVersion`) in addition to the Java 21 build, and
+  smoke-tests the shaded jar as a `-javaagent` on Java 11, 17 and 21 (`scripts/smoke-test.sh`). The
+  smoke test covers the CLI, MBean registration, refresh pipeline health and that the agent creates
+  no files in the application's working directory.
+- Checkstyle warnings are capped by a ratchet (`maxWarnings`): new warnings fail the build.
+- `shadowJar` no longer depends on `test`; CI and the release workflow run `check` explicitly.
+- Release workflow verifies the tag before building, runs `check` and the smoke test, and publishes
+  a `SHA256SUMS` file next to the jar and SBOM.
+- CI validates the Gradle wrapper, cancels superseded runs, and jobs have timeouts.
+- Added Dependabot for GitHub Actions and Gradle.
+
 ### Added
 
 - Cumulative counters so rates can be computed over any time range with Prometheus `rate()`:
