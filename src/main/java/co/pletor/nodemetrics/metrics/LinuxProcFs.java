@@ -1,5 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
+import co.pletor.nodemetrics.agent.AgentLog;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -15,7 +16,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 /**
@@ -44,7 +44,7 @@ final class LinuxProcFs {
   private static final long PHYSICAL_IFACE_CACHE_TTL_NANOS = TimeUnit.SECONDS.toNanos(30L);
   private static final Map<String, Boolean> PHYSICAL_IFACE_CACHE = new ConcurrentHashMap<>();
   private static volatile long physicalIfaceCacheStartNanos = System.nanoTime();
-  private static final Logger LOGGER = Logger.getLogger(LinuxProcFs.class.getName());
+  private static final AgentLog LOGGER = AgentLog.getLogger(LinuxProcFs.class.getName());
 
   private LinuxProcFs() {
     // Utility class; no instances.

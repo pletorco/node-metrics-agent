@@ -39,11 +39,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.management.InstanceAlreadyExistsException;
 import javax.management.InstanceNotFoundException;
 import javax.management.MBeanRegistrationException;
 import javax.management.MBeanServer;
+import javax.management.MBeanServerFactory;
 import javax.management.MalformedObjectNameException;
 import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectName;
@@ -74,7 +74,7 @@ public class MetricsAgent {
   }
 
   /** Underlying JUL logger used by the agent. */
-  private static final Logger LOGGER = Logger.getLogger(MetricsAgent.class.getName());
+  private static final AgentLog LOGGER = AgentLog.getLogger(MetricsAgent.class.getName());
 
   private static final ThrottledLogger THROTTLED_LOGGER = new ThrottledLogger(LOGGER, 60_000L);
 
@@ -114,6 +114,12 @@ public class MetricsAgent {
   private static final long FS_REFRESH_INTERVAL_MS = 10_000L;
   private static final long OS_RUNTIME_REFRESH_INTERVAL_MS = 10_000L;
   private static final long OS_INFO_REFRESH_INTERVAL_MS = 300_000L;
+
+  /** How long to wait for an existing MBeanServer before creating the platform one. */
+  private static final long JMX_SERVER_WAIT_MS = 5_000L;
+
+  // Not final so tests do not wait for a server that no test creates.
+  private static long jmxServerWaitMs = JMX_SERVER_WAIT_MS;
 
   /** Refresh interval of the fast metrics; guarded by {@link #APPLY_LOCK}. */
   private static long fastRefreshIntervalMs =
@@ -244,7 +250,7 @@ public class MetricsAgent {
     }
 
     try {
-      svr = ManagementFactory.getPlatformMBeanServer();
+      svr = awaitPlatformMBeanServer(jmxServerWaitMs);
     } catch (Throwable t) { // NOSONAR
       initStepFailed("obtain the platform MBeanServer (nothing can be registered)", t);
       return;
@@ -411,7 +417,31 @@ public class MetricsAgent {
     if (cfg == null || cfg.fsmetricsMaxPartitions == null || cfg.fsmetricsMaxPartitions < 1) {
       return Config.DEFAULT_FSMETRICS_MAX_PARTITIONS;
     }
-    return cfg.fsmetricsMaxPartitions;
+    return Math.min(cfg.fsmetricsMaxPartitions, Config.MAX_FSMETRICS_MAX_PARTITIONS);
+  }
+
+  /**
+   * Returns the platform MBeanServer, without being the one that creates it if it can be avoided.
+   *
+   * <p>Creating it reads {@code javax.management.builder.initial} for the whole JVM, and an
+   * application may set that from {@code main}, after this agent has started. Any JMX use before
+   * that (a JMX exporter agent, {@code -Dcom.sun.management.jmxremote}) creates the server at JVM
+   * startup, so it usually exists already. Otherwise wait up to {@code waitMs} for it to appear,
+   * then create it: with no server nobody can read the MBeans anyway.
+   */
+  static MBeanServer awaitPlatformMBeanServer(long waitMs) {
+    try {
+      long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(waitMs);
+      while (MBeanServerFactory.findMBeanServer(null).isEmpty()
+          && System.nanoTime() - deadline < 0L) {
+        Thread.sleep(100L);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (RuntimeException e) {
+      // Not allowed to look (security manager): fall through and create it.
+    }
+    return ManagementFactory.getPlatformMBeanServer();
   }
 
   private static long resolveFastRefreshIntervalMs(Config cfg) {

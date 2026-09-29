@@ -15,7 +15,6 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Asynchronous metric refresh engine.
@@ -34,7 +33,7 @@ import java.util.logging.Logger;
  * </ul>
  */
 final class MetricsRefreshEngine implements AutoCloseable {
-  private static final Logger LOGGER = Logger.getLogger(MetricsRefreshEngine.class.getName());
+  private static final AgentLog LOGGER = AgentLog.getLogger(MetricsRefreshEngine.class.getName());
   private static final ThrottledLogger THROTTLED_LOGGER = new ThrottledLogger(LOGGER, 60_000L);
   private static final String LOG_KEY_REFRESH_FAILED = "metric-refresh-failed";
   private static final String LOG_KEY_LOOP_FAILED = "engine-loop-failed";
@@ -339,6 +338,7 @@ final class MetricsRefreshEngine implements AutoCloseable {
       try {
         updateMode();
         dispatchCycle(tasksRef.get());
+        AgentLog.flushIfDue();
       } catch (Throwable t) { // NOSONAR - the dispatcher must survive anything and keep going
         logLoopFailure("dispatcher", t);
       }

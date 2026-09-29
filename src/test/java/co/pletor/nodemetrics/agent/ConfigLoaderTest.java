@@ -238,6 +238,26 @@ class ConfigLoaderTest {
   }
 
   @Test
+  void load_lowersMaxPartitionsAboveTheHardLimit() throws Exception {
+    Config c =
+        ConfigLoader.load(
+            writeYaml("config-max-huge.yml", "fsmetrics_max_partitions: 2000000000\n"));
+
+    assertEquals(Config.MAX_FSMETRICS_MAX_PARTITIONS, c.fsmetricsMaxPartitions);
+  }
+
+  @Test
+  void load_keepsMaxPartitionsAtTheHardLimit() throws Exception {
+    Config c =
+        ConfigLoader.load(
+            writeYaml(
+                "config-max-limit.yml",
+                "fsmetrics_max_partitions: " + Config.MAX_FSMETRICS_MAX_PARTITIONS + "\n"));
+
+    assertEquals(Config.MAX_FSMETRICS_MAX_PARTITIONS, c.fsmetricsMaxPartitions);
+  }
+
+  @Test
   void load_throwsIllegalArgumentException_whenYamlIsNotMap() {
     // 루트가 리스트인 YAML -> Map 아님
     String yaml = "- 1\n" + " 2";

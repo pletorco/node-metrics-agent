@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -33,7 +32,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 final class ConfigLoader {
 
   /** Prevent instantiation of this utility class. */
-  private static final Logger LOGGER = Logger.getLogger(ConfigLoader.class.getName());
+  private static final AgentLog LOGGER = AgentLog.getLogger(ConfigLoader.class.getName());
 
   /** Prevent instantiation of this utility class. */
   private ConfigLoader() {
@@ -121,6 +120,13 @@ final class ConfigLoader {
               1L,
               Integer.MAX_VALUE,
               Config.DEFAULT_FSMETRICS_MAX_PARTITIONS);
+      if (c.fsmetricsMaxPartitions > Config.MAX_FSMETRICS_MAX_PARTITIONS) {
+        LOGGER.log(
+            Level.WARNING,
+            "Config key ''fsmetrics_max_partitions'' is above the maximum: {0}. Using: {1}",
+            new Object[] {c.fsmetricsMaxPartitions, Config.MAX_FSMETRICS_MAX_PARTITIONS});
+        c.fsmetricsMaxPartitions = Config.MAX_FSMETRICS_MAX_PARTITIONS;
+      }
 
       // ---- refresh_interval_seconds ----
       c.refreshIntervalSeconds =

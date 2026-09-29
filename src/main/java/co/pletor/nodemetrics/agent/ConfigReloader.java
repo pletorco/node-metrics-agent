@@ -15,7 +15,6 @@ import java.nio.file.WatchService;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Watches the configuration file and reloads it when it changes.
@@ -46,7 +45,7 @@ final class ConfigReloader implements Runnable {
   /** Last applied configuration checksum, used to detect real content changes. */
   private String lastChecksum = null;
 
-  private static final Logger LOGGER = Logger.getLogger(ConfigReloader.class.getName());
+  private static final AgentLog LOGGER = AgentLog.getLogger(ConfigReloader.class.getName());
   private static final ThrottledLogger THROTTLED_LOGGER = new ThrottledLogger(LOGGER, 60_000L);
   private static final String LOG_KEY_WATCHER_REGISTRATION_FAILED = "watcher-registration-failed";
   private static final String LOG_KEY_CONFIG_RELOAD_FAILED = "config-reload-failed";

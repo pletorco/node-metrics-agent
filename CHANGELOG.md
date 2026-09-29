@@ -28,6 +28,15 @@ All notable changes to this project will be documented in this file.
     `Throwable` (the watcher restarts itself with backoff).
   - Startup is split into independent steps; one metric that fails to initialize is skipped and the
     rest still start.
+  - The agent no longer creates the JVM-wide `java.util.logging` `LogManager` or the platform
+    MBeanServer ahead of the application. An application that sets `java.util.logging.manager` or
+    `javax.management.builder.initial` from `main()` had those settings silently ignored when the
+    agent got there first (reproduced with a custom `LogManager`). Records below `WARNING` are now
+    held back for 10 s (keeping their time) and `WARNING`+ are published at once; when no
+    MBeanServer exists yet the agent waits up to 5 s for the application to create it.
+- `fsmetrics_max_partitions` is capped at 256; larger values were accepted up to `Integer.MAX_VALUE`,
+  so a typo could register an unbounded number of MBeans and refresh tasks. A larger value is now
+  lowered to 256 with a warning.
 
 ### Build and CI
 

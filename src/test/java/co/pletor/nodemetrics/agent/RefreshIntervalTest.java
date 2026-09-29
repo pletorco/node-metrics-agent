@@ -100,4 +100,14 @@ class RefreshIntervalTest {
   void fileDescriptorsFollowSlowerConfiguredInterval() throws Exception {
     assertEquals(45_000L, taskIntervals(45_000L).get("fd"));
   }
+
+  @Test
+  void maxPartitionsIsCappedForConfigBuiltInCode() throws Exception {
+    Config c = Config.defaults();
+    c.fsmetricsMaxPartitions = Integer.MAX_VALUE;
+    Method m = MetricsAgent.class.getDeclaredMethod("resolveMaxFsPartitions", Config.class);
+    m.setAccessible(true);
+
+    assertEquals(Config.MAX_FSMETRICS_MAX_PARTITIONS, m.invoke(null, c));
+  }
 }

@@ -16,6 +16,12 @@ public class Config {
   /** Default hard limit for unique filesystem partitions to monitor. */
   public static final int DEFAULT_FSMETRICS_MAX_PARTITIONS = 32;
 
+  /**
+   * Upper bound for {@code fsmetrics_max_partitions}. Every partition costs an MBean, a refresh
+   * task and periodic filesystem calls, so the count is capped whatever the file asks for.
+   */
+  public static final int MAX_FSMETRICS_MAX_PARTITIONS = 256;
+
   /** Default refresh interval, in seconds, of the fast metrics (CPU, memory, I/O rates). */
   public static final int DEFAULT_REFRESH_INTERVAL_SECONDS = 2;
 
@@ -46,7 +52,8 @@ public class Config {
   /**
    * Hard limit for unique filesystem partitions to monitor.
    *
-   * <p>Values less than 1 are treated as invalid and replaced by defaults.
+   * <p>Values less than 1 are treated as invalid and replaced by defaults; values above {@link
+   * #MAX_FSMETRICS_MAX_PARTITIONS} are lowered to it.
    */
   Integer fsmetricsMaxPartitions;
 

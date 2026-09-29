@@ -16,7 +16,7 @@ import java.util.logging.Logger;
  * silently dropped and counted in {@link #overflowCount()} so operators can detect misuse.
  */
 final class ThrottledLogger {
-  private final Logger logger;
+  private final AgentLog logger;
   private final long intervalMs;
   private final int maxKeys;
   private final ConcurrentHashMap<String, State> states = new ConcurrentHashMap<>();
@@ -30,11 +30,21 @@ final class ThrottledLogger {
     long suppressedCount;
   }
 
-  ThrottledLogger(Logger logger, long intervalMs) {
+  ThrottledLogger(AgentLog logger, long intervalMs) {
     this(logger, intervalMs, DEFAULT_MAX_KEYS);
   }
 
+  // Visible for testing: publishes straight to the given JUL logger.
+  ThrottledLogger(Logger logger, long intervalMs) {
+    this(AgentLog.wrap(logger), intervalMs, DEFAULT_MAX_KEYS);
+  }
+
+  // Visible for testing: publishes straight to the given JUL logger.
   ThrottledLogger(Logger logger, long intervalMs, int maxKeys) {
+    this(AgentLog.wrap(logger), intervalMs, maxKeys);
+  }
+
+  ThrottledLogger(AgentLog logger, long intervalMs, int maxKeys) {
     this.logger = logger;
     this.intervalMs = intervalMs;
     this.maxKeys = maxKeys;

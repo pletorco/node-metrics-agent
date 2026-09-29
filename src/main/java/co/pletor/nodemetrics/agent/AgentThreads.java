@@ -1,7 +1,6 @@
 package co.pletor.nodemetrics.agent;
 
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Creates the agent's background threads.
@@ -28,7 +27,7 @@ final class AgentThreads {
     @Override
     public void uncaughtException(Thread thread, Throwable error) {
       try {
-        Logger.getLogger(AgentThreads.class.getName())
+        AgentLog.getLogger(AgentThreads.class.getName())
             .log(
                 Level.WARNING,
                 "[node-metrics-agent] thread '" + thread.getName() + "' stopped by an error",

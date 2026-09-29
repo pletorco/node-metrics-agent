@@ -65,4 +65,20 @@ echo "$OUT" | grep -q '^APPLICATION STARTED$' || {
   exit 1
 }
 
+echo "== the agent must not initialize JVM-wide singletons before the application configures them"
+JAVAC_BIN="$(dirname "$JAVA_BIN")/javac"
+[ -x "$JAVAC_BIN" ] || JAVAC_BIN=javac
+mkdir -p "$WORK/late-classes" "$WORK/app-late"
+"$JAVAC_BIN" -d "$WORK/late-classes" "$HERE/LateGlobalSetup.java"
+OUT="$(cd "$WORK/app-late" && "$JAVA_BIN" "-javaagent:$JAR" -cp "$WORK/late-classes" LateGlobalSetup 2>&1)" || {
+  echo "SMOKE FAILURE: the agent interfered with the application's own setup:" >&2
+  echo "$OUT" >&2
+  exit 1
+}
+echo "$OUT" | grep -q '^LATE SETUP OK$' || {
+  echo "SMOKE FAILURE: unexpected output:" >&2
+  echo "$OUT" >&2
+  exit 1
+}
+
 echo "smoke test passed"

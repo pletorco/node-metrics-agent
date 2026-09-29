@@ -79,6 +79,17 @@ reach the application:
 - Startup is split into independent steps: a metric that cannot start (for example a missing JDK
   class on an unusual JVM) is skipped and logged as `startup step failed`, and the other metrics
   still start.
+- The agent does not create JVM-wide singletons ahead of the application. An application may set
+  `java.util.logging.manager` or `javax.management.builder.initial` from `main()`; if the agent
+  had initialized `java.util.logging` or the platform MBeanServer first, the JVM would silently
+  ignore those settings.
+  - Logging: records below `WARNING` (startup information) are held in a small in-memory queue
+    with their original time and published 10 s after startup, or sooner when a `WARNING` occurs.
+    `WARNING` and above are published immediately. So `INFO` lines such as `config applied` show
+    up about 10 s late, and a JVM that exits within 10 s of starting does not print them.
+  - JMX: if no MBeanServer exists yet (no JMX exporter agent, no `-Dcom.sun.management.jmxremote`),
+    the agent waits up to 5 s for the application to create one before creating it itself, so the
+    MBeans then appear up to 5 s after startup. When one already exists there is no wait.
 
 ## Configuration Reload
 
@@ -147,7 +158,8 @@ Filesystem MBeans:
 
 - Missing paths are logged but do not crash the agent.
 - Paths on the same partition are deduplicated.
-- `fsmetrics_max_partitions` caps unique filesystem partitions.
+- `fsmetrics_max_partitions` caps unique filesystem partitions (default `32`, at most `256`; a
+  larger value is lowered to 256 with a warning).
 
 Rates and ratios (prefer counters):
 
