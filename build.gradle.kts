@@ -3,6 +3,8 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.tasks.TaskProvider
 import java.io.File
+import org.cyclonedx.Version
+import org.cyclonedx.gradle.CyclonedxDirectTask
 
 plugins {
     // Core Java support
@@ -18,7 +20,7 @@ plugins {
     jacoco
 
     // SBOM generation
-    id("org.cyclonedx.bom") version "1.10.0"
+    id("org.cyclonedx.bom") version "3.4.1"
 
     // Checkstyle for linting
     checkstyle
@@ -337,16 +339,22 @@ tasks.named("sonar") {
 // -----------------------------------------------------------------------------
 // CycloneDX SBOM Configuration
 // -----------------------------------------------------------------------------
-tasks.cyclonedxBom {
+// In cyclonedx-gradle-plugin 3.x, `cyclonedxDirectBom` generates the BOM of this project and
+// `cyclonedxBom` aggregates the direct BOMs (of one project here). Which configurations end up in
+// the BOM is decided by the direct task; without `includeConfigs` it would list every configuration
+// (test and build tooling included), not just what is packaged in the shaded jar.
+tasks.named<CyclonedxDirectTask>("cyclonedxDirectBom") {
     // Scope the SBOM to runtime dependencies that are packaged in the shaded artifact.
     // This excludes compileOnly/provided/test-only dependencies.
     includeConfigs.set(listOf(deploymentRuntimeConfigName))
-    // Use the standard CycloneDX format
-    schemaVersion.set("1.5")
-    val outputFile = layout.buildDirectory.file("reports/bom.json")
-    destination.set(outputFile.map { it.asFile.parentFile })
-    outputName.set("bom")
-    outputFormat.set("json")
+    // Use the standard CycloneDX format (the plugin default is newer).
+    schemaVersion.set(Version.VERSION_15)
+}
+
+tasks.cyclonedxBom {
+    schemaVersion.set(Version.VERSION_15)
+    // Consumers (shadowJar, Trivy, the release workflow) read build/reports/bom.json.
+    jsonOutput.set(layout.buildDirectory.file("reports/bom.json"))
 }
 
 // -----------------------------------------------------------------------------
