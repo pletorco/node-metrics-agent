@@ -37,12 +37,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.management.InstanceAlreadyExistsException;
 import javax.management.InstanceNotFoundException;
 import javax.management.MBeanRegistrationException;
 import javax.management.MBeanServer;
+import javax.management.MBeanServerFactory;
 import javax.management.MalformedObjectNameException;
 import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectName;
@@ -73,7 +74,7 @@ public class MetricsAgent {
   }
 
   /** Underlying JUL logger used by the agent. */
-  private static final Logger LOGGER = Logger.getLogger(MetricsAgent.class.getName());
+  private static final AgentLog LOGGER = AgentLog.getLogger(MetricsAgent.class.getName());
 
   private static final ThrottledLogger THROTTLED_LOGGER = new ThrottledLogger(LOGGER, 60_000L);
 
@@ -107,13 +108,22 @@ public class MetricsAgent {
   private static final long REFRESH_DISPATCH_INTERVAL_MS = 500L;
   private static final int REFRESH_QUEUE_CAPACITY = 1024;
 
-  // Per-task refresh intervals. Fast metrics (0) are refreshed on every dispatch cycle; metrics
-  // that are expensive to read or change slowly are refreshed less often.
-  private static final long FAST_REFRESH_INTERVAL_MS = 0L;
-  private static final long FD_REFRESH_INTERVAL_MS = 5_000L;
+  // Per-task refresh intervals. The fast metrics use the configured refresh_interval_seconds;
+  // metrics that are expensive to read or change slowly are refreshed less often.
+  private static final long FD_REFRESH_INTERVAL_MS = 30_000L;
   private static final long FS_REFRESH_INTERVAL_MS = 10_000L;
   private static final long OS_RUNTIME_REFRESH_INTERVAL_MS = 10_000L;
   private static final long OS_INFO_REFRESH_INTERVAL_MS = 300_000L;
+
+  /** How long to wait for an existing MBeanServer before creating the platform one. */
+  private static final long JMX_SERVER_WAIT_MS = 5_000L;
+
+  // Not final so tests do not wait for a server that no test creates.
+  private static long jmxServerWaitMs = JMX_SERVER_WAIT_MS;
+
+  /** Refresh interval of the fast metrics; guarded by {@link #APPLY_LOCK}. */
+  private static long fastRefreshIntervalMs =
+      TimeUnit.SECONDS.toMillis(Config.DEFAULT_REFRESH_INTERVAL_SECONDS);
 
   private static CgroupMemMetrics cgroupMemBean;
   private static CpuMetrics cpuBean;
@@ -205,82 +215,9 @@ public class MetricsAgent {
    */
   public static void premain(String agentArgs, Instrumentation inst) {
     try {
-      // Resolve configuration file and load initial configuration (or defaults).
-      Path cfgPath = resolveConfigPath(agentArgs);
-      // Capture the mtime before loading so a modification during startup is still picked up.
-      final long startupMtime = configMtimeOrUnknown(cfgPath);
-      current = ConfigLoader.loadOrDefault(cfgPath);
-
-      // Get the platform MBeanServer.
-      svr = ManagementFactory.getPlatformMBeanServer();
-
-      // ----- Register fixed, non-filesystem MBeans -----
-      cgroupMemBean = new CgroupMemMetrics();
-      registerStandardMBeanSafely(
-          cgroupMemBean,
-          CgroupMemMetricsMBean.class,
-          fixedObjectName("co.pletor.cgroup:type=MemMetrics"));
-
-      cpuBean = new CpuMetrics();
-      registerStandardMBeanSafely(
-          cpuBean, CpuMetricsMBean.class, fixedObjectName("co.pletor.node:type=CpuMetrics"));
-
-      fdBean = new FdMetrics();
-      registerStandardMBeanSafely(
-          fdBean, FdMetricsMBean.class, fixedObjectName("co.pletor.proc:type=FdMetrics"));
-
-      ioRatesBean = new IoRates();
-      registerStandardMBeanSafely(
-          ioRatesBean, IoRatesMBean.class, fixedObjectName("co.pletor.node:type=IoRates"));
-
-      nodeMemBean = new NodeMemMetrics();
-      registerStandardMBeanSafely(
-          nodeMemBean,
-          NodeMemMetricsMBean.class,
-          fixedObjectName("co.pletor.node:type=MemMetrics"));
-
-      osInfoBean = new OsInfoMetrics();
-      registerStandardMBeanSafely(
-          osInfoBean,
-          OsInfoMetricsMBean.class,
-          fixedObjectName("co.pletor.node:type=OsInfoMetrics"));
-
-      osRuntimeBean = new OsRuntimeMetrics();
-      registerStandardMBeanSafely(
-          osRuntimeBean,
-          OsRuntimeMetricsMBean.class,
-          fixedObjectName("co.pletor.node:type=OsRuntimeMetrics"));
-
-      registerStandardMBeanSafely(
-          TELEMETRY_MODE_METRICS,
-          TelemetryModeMetricsMBean.class,
-          fixedObjectName("co.pletor.agent:type=TelemetryMode"));
-      registerStandardMBeanSafely(
-          AGENT_OBSERVABILITY_METRICS,
-          AgentObservabilityMetricsMBean.class,
-          fixedObjectName("co.pletor.agent:type=Observability"));
-
-      // ----- Apply initial config (filesystem MBeans + scheduler) -----
-      applyConfig(current);
-      initializeRefreshEngine();
-
-      // ----- Start configuration watcher -----
-      // If cfgPath is null, watch the default config location (for hot creation).
-      Path watchTarget = (cfgPath != null) ? cfgPath : Paths.get("./config/node-metrics.yml");
-      ConfigReloader reloader =
-          new ConfigReloader(
-              watchTarget, MetricsAgent::applyConfig, current.checksum, startupMtime);
-
-      Thread watcherThread = new Thread(reloader, "node-metrics-config-watcher");
-      watcherThread.setDaemon(true);
-      watcherThread.start();
-
-      LOGGER.log(
-          Level.INFO,
-          "[node-metrics-agent] started. cfg={0}",
-          new Object[] {cfgPath != null ? cfgPath : "(default)"});
+      initialize(agentArgs);
     } catch (Throwable t) { // NOSONAR
-      // Prevent the agent from crashing the main application startup.
+      // Last resort: prevent the agent from ever crashing the application.
       THROTTLED_LOGGER.log(
           Level.SEVERE,
           LOG_KEY_AGENT_STARTUP_FAILURE,
@@ -289,6 +226,136 @@ public class MetricsAgent {
               "[node-metrics-agent] Failed to start agent. The application will continue without"
                   + " metrics.");
     }
+  }
+
+  /**
+   * Initializes the agent in independent steps. A failure in one step (for example a missing class
+   * for one metric on an unusual JVM) is logged and only costs that step; everything else still
+   * starts.
+   */
+  private static void initialize(String agentArgs) {
+    // Resolve configuration file and load initial configuration (or defaults).
+    Path cfgPath = null;
+    long startupMtime = -1L;
+    try {
+      cfgPath = resolveConfigPath(agentArgs);
+      // Capture the mtime before loading so a modification during startup is still picked up.
+      startupMtime = configMtimeOrUnknown(cfgPath);
+      current = ConfigLoader.loadOrDefault(cfgPath);
+    } catch (Throwable t) { // NOSONAR
+      initStepFailed("load configuration (using defaults)", t);
+    }
+    if (current == null) {
+      current = Config.defaults();
+    }
+
+    try {
+      svr = awaitPlatformMBeanServer(jmxServerWaitMs);
+    } catch (Throwable t) { // NOSONAR
+      initStepFailed("obtain the platform MBeanServer (nothing can be registered)", t);
+      return;
+    }
+
+    // ----- Register fixed, non-filesystem MBeans -----
+    cgroupMemBean =
+        createAndRegister(
+            "cgroup memory metrics",
+            CgroupMemMetrics::new,
+            CgroupMemMetricsMBean.class,
+            "co.pletor.cgroup:type=MemMetrics");
+    cpuBean =
+        createAndRegister(
+            "cpu metrics",
+            CpuMetrics::new,
+            CpuMetricsMBean.class,
+            "co.pletor.node:type=CpuMetrics");
+    fdBean =
+        createAndRegister(
+            "file descriptor metrics",
+            FdMetrics::new,
+            FdMetricsMBean.class,
+            "co.pletor.proc:type=FdMetrics");
+    ioRatesBean =
+        createAndRegister(
+            "I/O rate metrics", IoRates::new, IoRatesMBean.class, "co.pletor.node:type=IoRates");
+    nodeMemBean =
+        createAndRegister(
+            "node memory metrics",
+            NodeMemMetrics::new,
+            NodeMemMetricsMBean.class,
+            "co.pletor.node:type=MemMetrics");
+    osInfoBean =
+        createAndRegister(
+            "OS info metrics",
+            OsInfoMetrics::new,
+            OsInfoMetricsMBean.class,
+            "co.pletor.node:type=OsInfoMetrics");
+    osRuntimeBean =
+        createAndRegister(
+            "OS runtime metrics",
+            OsRuntimeMetrics::new,
+            OsRuntimeMetricsMBean.class,
+            "co.pletor.node:type=OsRuntimeMetrics");
+    createAndRegister(
+        "telemetry mode metrics",
+        () -> TELEMETRY_MODE_METRICS,
+        TelemetryModeMetricsMBean.class,
+        "co.pletor.agent:type=TelemetryMode");
+    createAndRegister(
+        "agent observability metrics",
+        () -> AGENT_OBSERVABILITY_METRICS,
+        AgentObservabilityMetricsMBean.class,
+        "co.pletor.agent:type=Observability");
+
+    // ----- Apply initial config (filesystem MBeans), then start the scheduler -----
+    runStep("apply configuration", () -> applyConfig(current));
+    runStep("start the refresh engine", MetricsAgent::initializeRefreshEngine);
+
+    // ----- Start configuration watcher -----
+    // If cfgPath is null, watch the default config location (for hot creation).
+    final Path watchTarget = (cfgPath != null) ? cfgPath : Paths.get("./config/node-metrics.yml");
+    final long mtime = startupMtime;
+    runStep(
+        "start the configuration watcher",
+        () -> {
+          ConfigReloader reloader =
+              new ConfigReloader(watchTarget, MetricsAgent::applyConfig, current.checksum, mtime);
+          AgentThreads.daemon("node-metrics-config-watcher", reloader).start();
+        });
+
+    final Path startedWith = cfgPath;
+    LOGGER.log(
+        Level.INFO,
+        "[node-metrics-agent] started. cfg={0}",
+        new Object[] {startedWith != null ? startedWith : "(default)"});
+  }
+
+  private static <T> T createAndRegister(
+      String what, Supplier<T> factory, Class<?> mbeanInterface, String objectName) {
+    try {
+      T bean = factory.get();
+      registerStandardMBeanSafely(bean, mbeanInterface, fixedObjectName(objectName));
+      return bean;
+    } catch (Throwable t) { // NOSONAR
+      initStepFailed(what, t);
+      return null;
+    }
+  }
+
+  private static void runStep(String what, Runnable step) {
+    try {
+      step.run();
+    } catch (Throwable t) { // NOSONAR
+      initStepFailed(what, t);
+    }
+  }
+
+  private static void initStepFailed(String what, Throwable error) {
+    // Happens at most once per step at startup, so it is not throttled.
+    LOGGER.log(
+        Level.WARNING,
+        "[node-metrics-agent] startup step failed, continuing without it: " + what,
+        error);
   }
 
   private static long configMtimeOrUnknown(Path cfgPath) {
@@ -350,7 +417,41 @@ public class MetricsAgent {
     if (cfg == null || cfg.fsmetricsMaxPartitions == null || cfg.fsmetricsMaxPartitions < 1) {
       return Config.DEFAULT_FSMETRICS_MAX_PARTITIONS;
     }
-    return cfg.fsmetricsMaxPartitions;
+    return Math.min(cfg.fsmetricsMaxPartitions, Config.MAX_FSMETRICS_MAX_PARTITIONS);
+  }
+
+  /**
+   * Returns the platform MBeanServer, without being the one that creates it if it can be avoided.
+   *
+   * <p>Creating it reads {@code javax.management.builder.initial} for the whole JVM, and an
+   * application may set that from {@code main}, after this agent has started. Any JMX use before
+   * that (a JMX exporter agent, {@code -Dcom.sun.management.jmxremote}) creates the server at JVM
+   * startup, so it usually exists already. Otherwise wait up to {@code waitMs} for it to appear,
+   * then create it: with no server nobody can read the MBeans anyway.
+   */
+  static MBeanServer awaitPlatformMBeanServer(long waitMs) {
+    try {
+      long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(waitMs);
+      while (MBeanServerFactory.findMBeanServer(null).isEmpty()
+          && System.nanoTime() - deadline < 0L) {
+        Thread.sleep(100L);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (RuntimeException e) {
+      // Not allowed to look (security manager): fall through and create it.
+    }
+    return ManagementFactory.getPlatformMBeanServer();
+  }
+
+  private static long resolveFastRefreshIntervalMs(Config cfg) {
+    Integer seconds = cfg == null ? null : cfg.refreshIntervalSeconds;
+    if (seconds == null
+        || seconds < Config.MIN_REFRESH_INTERVAL_SECONDS
+        || seconds > Config.MAX_REFRESH_INTERVAL_SECONDS) {
+      seconds = Config.DEFAULT_REFRESH_INTERVAL_SECONDS;
+    }
+    return TimeUnit.SECONDS.toMillis(seconds);
   }
 
   private static LinkedHashSet<String> applyPartitionDedupAndCap(
@@ -602,7 +703,7 @@ public class MetricsAgent {
     try {
       StandardMBean wrapped = new StandardMBean(bean, (Class) mbeanInterface);
       svr.registerMBean(wrapped, objectName);
-    } catch (Exception e) {
+    } catch (Throwable e) { // NOSONAR
       THROTTLED_LOGGER.log(
           Level.WARNING,
           LOG_KEY_FIXED_MBEAN_REGISTRATION_FAILURE,
@@ -660,11 +761,12 @@ public class MetricsAgent {
 
   private static List<MetricsRefreshEngine.RefreshTask> buildRefreshTasksLocked() {
     List<MetricsRefreshEngine.RefreshTask> tasks = new ArrayList<>();
-    addHighPriorityTask(tasks, "cgroup-mem", cgroupMemBean, FAST_REFRESH_INTERVAL_MS);
-    addHighPriorityTask(tasks, "cpu", cpuBean, FAST_REFRESH_INTERVAL_MS);
-    addHighPriorityTask(tasks, "fd", fdBean, FD_REFRESH_INTERVAL_MS);
-    addHighPriorityTask(tasks, "io-rates", ioRatesBean, FAST_REFRESH_INTERVAL_MS);
-    addHighPriorityTask(tasks, "node-mem", nodeMemBean, FAST_REFRESH_INTERVAL_MS);
+    long fastMs = fastRefreshIntervalMs;
+    addHighPriorityTask(tasks, "cgroup-mem", cgroupMemBean, fastMs);
+    addHighPriorityTask(tasks, "cpu", cpuBean, fastMs);
+    addHighPriorityTask(tasks, "fd", fdBean, Math.max(FD_REFRESH_INTERVAL_MS, fastMs));
+    addHighPriorityTask(tasks, "io-rates", ioRatesBean, fastMs);
+    addHighPriorityTask(tasks, "node-mem", nodeMemBean, fastMs);
     addHighPriorityTask(tasks, "os-info", osInfoBean, OS_INFO_REFRESH_INTERVAL_MS);
     addHighPriorityTask(tasks, "os-runtime", osRuntimeBean, OS_RUNTIME_REFRESH_INTERVAL_MS);
 
@@ -730,6 +832,7 @@ public class MetricsAgent {
         unregisterRemovedFsBeans(newPaths);
 
         // 4) Update async refresh targets.
+        fastRefreshIntervalMs = resolveFastRefreshIntervalMs(newCfg);
         updateRefreshEngineTasksLocked();
 
         // 5) Update current config and log.

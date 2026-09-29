@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- New setting `refresh_interval_seconds` (1-60, default 2) for how often CPU, memory, cgroup memory
+  and I/O rates are refreshed in the background. They were refreshed every 500 ms, about 30 times
+  per 15 s scrape; values are now at most 2 s old by default. The ratio gauges (I/O wait, steal,
+  cgroup throttling) and `*BytesPerSec` now describe the last 2 s window instead of 500 ms, which
+  is less noisy; the counters are unchanged. File descriptors are refreshed every 30 s instead of
+  5 s (counting them costs about 1.3 ms at 5,000 and 9 ms at 15,000 open descriptors).
+
+### Fixed
+
+- The agent can no longer take the application down or stall it at startup:
+  - The `Premain-Class` is now `AgentLauncher`, a tiny class without static state that starts one
+    daemon thread and returns. Previously a failure while initializing `MetricsAgent` (e.g. a
+    missing class after the agent jar was replaced during a deployment) aborted the whole JVM
+    (exit 134) before the application started, and the initialization ran on the application's main
+    thread: about 370 ms versus about 57 ms now (10 ms without the agent). The MBeans now appear
+    shortly after `main()` starts.
+  - Agent threads had no uncaught-exception handler, so an `Error` escaping one of them was passed
+    to the application's default handler, which many applications use to exit the JVM. Every agent
+    thread now has its own handler, and the dispatcher, workers and config watcher survive any
+    `Throwable` (the watcher restarts itself with backoff).
+  - Startup is split into independent steps; one metric that fails to initialize is skipped and the
+    rest still start.
+  - The agent no longer creates the JVM-wide `java.util.logging` `LogManager` or the platform
+    MBeanServer ahead of the application. An application that sets `java.util.logging.manager` or
+    `javax.management.builder.initial` from `main()` had those settings silently ignored when the
+    agent got there first (reproduced with a custom `LogManager`). Records below `WARNING` are now
+    held back for 10 s (keeping their time) and `WARNING`+ are published at once; when no
+    MBeanServer exists yet the agent waits up to 5 s for the application to create it.
+- `fsmetrics_max_partitions` is capped at 256; larger values were accepted up to `Integer.MAX_VALUE`,
+  so a typo could register an unbounded number of MBeans and refresh tasks. A larger value is now
+  lowered to 256 with a warning.
+
 ### Build and CI
 
 - Upgraded `org.cyclonedx.bom` from 1.10.0 to 3.4.1 and moved the SBOM configuration to its new API:

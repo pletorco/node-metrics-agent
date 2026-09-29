@@ -60,6 +60,37 @@ If the JMX exporter is attached, confirm the scrape endpoint responds:
 curl -s http://localhost:9404/metrics | grep '^pletor_' | head
 ```
 
+## Isolation From The Application
+
+The agent is designed never to be on the application's hot path and never to let its own failures
+reach the application:
+
+- It does not instrument or transform application classes, and application threads never run agent
+  code. JMX attribute reads return cached values.
+- `-javaagent` startup is asynchronous. The entry point (`AgentLauncher`) only starts one daemon
+  thread and returns, adding roughly 50 ms to JVM startup (measured: about 10 ms without the
+  agent, about 57 ms with it). The MBeans therefore appear a short moment after `main()` starts, so
+  do not treat their absence in the first second as a failure.
+- The entry class has no static state. If anything the agent needs cannot be loaded (for example
+  the agent jar was replaced or truncated during a deployment), one line is printed to stderr and
+  the application starts normally.
+- Every agent thread has its own uncaught-exception handler and its loops survive any `Throwable`,
+  so errors on agent threads never reach the application's default uncaught-exception handler.
+- Startup is split into independent steps: a metric that cannot start (for example a missing JDK
+  class on an unusual JVM) is skipped and logged as `startup step failed`, and the other metrics
+  still start.
+- The agent does not create JVM-wide singletons ahead of the application. An application may set
+  `java.util.logging.manager` or `javax.management.builder.initial` from `main()`; if the agent
+  had initialized `java.util.logging` or the platform MBeanServer first, the JVM would silently
+  ignore those settings.
+  - Logging: records below `WARNING` (startup information) are held in a small in-memory queue
+    with their original time and published 10 s after startup, or sooner when a `WARNING` occurs.
+    `WARNING` and above are published immediately. So `INFO` lines such as `config applied` show
+    up about 10 s late, and a JVM that exits within 10 s of starting does not print them.
+  - JMX: if no MBeanServer exists yet (no JMX exporter agent, no `-Dcom.sun.management.jmxremote`),
+    the agent waits up to 5 s for the application to create one before creating it itself, so the
+    MBeans then appear up to 5 s after startup. When one already exists there is no wait.
+
 ## Configuration Reload
 
 The agent watches the active config file and also polls as a fallback.
@@ -114,20 +145,26 @@ Stuck filesystem calls:
 
 Refresh intervals:
 
-- CPU, memory, cgroup memory and I/O rates refresh every dispatch cycle (`500 ms`).
-- File descriptors refresh every `5 s`, filesystem and OS runtime (uptime, mounts) every `10 s`,
-  and static OS info every `5 min`.
+- Values are refreshed by background threads, never by a scrape: reading an MBean attribute only
+  returns the last stored value, so scrape frequency (or the number of scrapers) does not change
+  the agent's work.
+- CPU, memory, cgroup memory and I/O rates refresh every `refresh_interval_seconds` (default `2 s`,
+  range 1-60). Keep it well below your scrape interval; values are at most this old.
+- File descriptors refresh every `30 s` (or `refresh_interval_seconds` if that is larger), filesystem
+  and OS runtime (uptime, mounts) every `10 s`, and static OS info every `5 min`.
+- The setting is reloaded with the rest of the configuration file.
 
 Filesystem MBeans:
 
 - Missing paths are logged but do not crash the agent.
 - Paths on the same partition are deduplicated.
-- `fsmetrics_max_partitions` caps unique filesystem partitions.
+- `fsmetrics_max_partitions` caps unique filesystem partitions (default `32`, at most `256`; a
+  larger value is lowered to 256 with a warning).
 
 Rates and ratios (prefer counters):
 
 - `SystemCpuIoWaitRatio`, `SystemCpuStealRatio`, `CgroupCpuThrottledRatio` and the
-  `*BytesPerSec` values describe only the last refresh window (about 500 ms), so a scrape every
+  `*BytesPerSec` values describe only the last refresh window (`refresh_interval_seconds`, 2 s by default), so a scrape every
   15-60 s samples one arbitrary window. The cumulative counters give exact averages over any range:
   - I/O wait ratio: `rate(pletor_node_cpumetrics_systemcpuiowaitticks[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks[5m])`
   - steal ratio: same with `systemcpustealticks`

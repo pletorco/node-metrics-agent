@@ -17,6 +17,21 @@ public class Config {
   public static final int DEFAULT_FSMETRICS_MAX_PARTITIONS = 32;
 
   /**
+   * Upper bound for {@code fsmetrics_max_partitions}. Every partition costs an MBean, a refresh
+   * task and periodic filesystem calls, so the count is capped whatever the file asks for.
+   */
+  public static final int MAX_FSMETRICS_MAX_PARTITIONS = 256;
+
+  /** Default refresh interval, in seconds, of the fast metrics (CPU, memory, I/O rates). */
+  public static final int DEFAULT_REFRESH_INTERVAL_SECONDS = 2;
+
+  /** Smallest accepted refresh interval, in seconds. */
+  public static final int MIN_REFRESH_INTERVAL_SECONDS = 1;
+
+  /** Largest accepted refresh interval, in seconds. */
+  public static final int MAX_REFRESH_INTERVAL_SECONDS = 60;
+
+  /**
    * Creates an empty {@code Config} instance.
    *
    * <p>Fields are initialized to their default Java values and are expected to be populated either
@@ -37,9 +52,19 @@ public class Config {
   /**
    * Hard limit for unique filesystem partitions to monitor.
    *
-   * <p>Values less than 1 are treated as invalid and replaced by defaults.
+   * <p>Values less than 1 are treated as invalid and replaced by defaults; values above {@link
+   * #MAX_FSMETRICS_MAX_PARTITIONS} are lowered to it.
    */
   Integer fsmetricsMaxPartitions;
+
+  /**
+   * How often the fast metrics (CPU, memory, cgroup memory, I/O rates) are refreshed, in seconds.
+   *
+   * <p>Values outside {@link #MIN_REFRESH_INTERVAL_SECONDS}..{@link #MAX_REFRESH_INTERVAL_SECONDS}
+   * are treated as invalid and replaced by the default. File descriptors are refreshed at most as
+   * often as every 30 seconds, whatever this value is.
+   */
+  Integer refreshIntervalSeconds;
 
   /**
    * Internal checksum used to detect configuration changes.
@@ -60,6 +85,7 @@ public class Config {
     // Monitor the root filesystem by default
     c.fsmetricsPaths = List.of("/");
     c.fsmetricsMaxPartitions = DEFAULT_FSMETRICS_MAX_PARTITIONS;
+    c.refreshIntervalSeconds = DEFAULT_REFRESH_INTERVAL_SECONDS;
     c.checksum = "DEFAULT";
     return c;
   }
@@ -72,12 +98,13 @@ public class Config {
     Config c = (Config) o;
     return Objects.equals(fsmetricsPaths, c.fsmetricsPaths)
         && Objects.equals(fsmetricsMaxPartitions, c.fsmetricsMaxPartitions)
+        && Objects.equals(refreshIntervalSeconds, c.refreshIntervalSeconds)
         && Objects.equals(checksum, c.checksum);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(fsmetricsPaths, fsmetricsMaxPartitions, checksum);
+    return Objects.hash(fsmetricsPaths, fsmetricsMaxPartitions, refreshIntervalSeconds, checksum);
   }
 
   @Override
@@ -87,6 +114,8 @@ public class Config {
         + fsmetricsPaths
         + ", fsmetrics_max_partitions="
         + fsmetricsMaxPartitions
+        + ", refresh_interval_seconds="
+        + refreshIntervalSeconds
         + '}';
   }
 }

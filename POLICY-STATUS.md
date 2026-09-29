@@ -8,13 +8,23 @@ Target: `node-metrics-agent` `0.8.0`
 - Class: Telemetry module
 - Company namespace: Pletor Co., Ltd. / `co.pletor.nodemetrics`
 - Host entry points:
-  - `co.pletor.nodemetrics.agent.MetricsAgent.premain(...)`
-  - JMX getter paths in metric MBeans
-  - `ConfigReloader` watcher thread
+  - `co.pletor.nodemetrics.agent.AgentLauncher.premain(...)`: no static state; starts one daemon
+    thread and returns. The actual initialization (`MetricsAgent.premain(...)`) runs on that thread.
+  - JMX getter paths in metric MBeans (return cached values; no I/O when the refresh engine runs)
+  - Agent daemon threads: initialization, refresh dispatcher and workers, filesystem probes, and the
+    `ConfigReloader` watcher
 
 ## Current Status
 
 - Fail-open startup and metric refresh behavior is preserved.
+- Nothing the agent needs to load or run can stop the application: the entry class has no static
+  state, initialization is asynchronous and split into independent steps, and every agent thread
+  has its own uncaught-exception handler, so errors never reach the application's default handler.
+- The agent does not initialize JVM-wide singletons (`java.util.logging` `LogManager`, platform
+  MBeanServer) ahead of the application; see `RUNBOOK.md`, "Isolation From The Application".
+- Metrics are refreshed by background threads at a configurable interval
+  (`refresh_interval_seconds`); a scrape only reads stored values.
+- `fsmetrics_max_partitions` has a hard upper limit (256).
 - The refresh pipeline uses a bounded queue and daemon worker threads.
 - Runtime modes are exposed through `co.pletor.agent:type=TelemetryMode`.
 - Pipeline counters and staleness signals are exposed through `co.pletor.agent:type=Observability`.

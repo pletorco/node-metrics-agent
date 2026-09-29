@@ -247,7 +247,7 @@ tasks.jar {
             // CLI entrypoint
             "Main-Class" to "co.pletor.nodemetrics.agent.ConfigCli",
             // Java agent premain entrypoint
-            "Premain-Class" to "co.pletor.nodemetrics.agent.MetricsAgent",
+            "Premain-Class" to "co.pletor.nodemetrics.agent.AgentLauncher",
             "Can-Redefine-Classes" to "false",
             "Can-Retransform-Classes" to "false"
         )
@@ -276,7 +276,7 @@ tasks.shadowJar {
     manifest {
         attributes(
             "Main-Class" to "co.pletor.nodemetrics.agent.ConfigCli",
-            "Premain-Class" to "co.pletor.nodemetrics.agent.MetricsAgent",
+            "Premain-Class" to "co.pletor.nodemetrics.agent.AgentLauncher",
             "Can-Redefine-Classes" to "false",
             "Can-Retransform-Classes" to "false"
         )

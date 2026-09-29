@@ -12,9 +12,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Asynchronous metric refresh engine.
@@ -33,9 +33,10 @@ import java.util.logging.Logger;
  * </ul>
  */
 final class MetricsRefreshEngine implements AutoCloseable {
-  private static final Logger LOGGER = Logger.getLogger(MetricsRefreshEngine.class.getName());
+  private static final AgentLog LOGGER = AgentLog.getLogger(MetricsRefreshEngine.class.getName());
   private static final ThrottledLogger THROTTLED_LOGGER = new ThrottledLogger(LOGGER, 60_000L);
   private static final String LOG_KEY_REFRESH_FAILED = "metric-refresh-failed";
+  private static final String LOG_KEY_LOOP_FAILED = "engine-loop-failed";
   static final int BACKGROUND_WORKERS = 3;
   static final long DEFAULT_STUCK_THRESHOLD_MS = 30_000L;
 
@@ -295,17 +296,14 @@ final class MetricsRefreshEngine implements AutoCloseable {
     if (!running.compareAndSet(false, true)) {
       return;
     }
-    dispatcherThread = new Thread(this::dispatchLoop, "node-metrics-refresh-dispatcher");
-    dispatcherThread.setDaemon(true);
-    workerThread = new Thread(() -> workerLoop(queue), "node-metrics-refresh-worker");
-    workerThread.setDaemon(true);
+    dispatcherThread = AgentThreads.daemon("node-metrics-refresh-dispatcher", this::dispatchLoop);
+    workerThread = AgentThreads.daemon("node-metrics-refresh-worker", () -> workerLoop(queue));
     dispatcherThread.start();
     workerThread.start();
     for (int i = 0; i < backgroundThreads.length; i++) {
       Thread t =
-          new Thread(
-              () -> workerLoop(backgroundQueue), "node-metrics-refresh-bg-worker-" + (i + 1));
-      t.setDaemon(true);
+          AgentThreads.daemon(
+              "node-metrics-refresh-bg-worker-" + (i + 1), () -> workerLoop(backgroundQueue));
       backgroundThreads[i] = t;
       t.start();
     }
@@ -337,12 +335,25 @@ final class MetricsRefreshEngine implements AutoCloseable {
 
   private void dispatchLoop() {
     while (running.get()) {
-      updateMode();
-      dispatchCycle(tasksRef.get());
+      try {
+        updateMode();
+        dispatchCycle(tasksRef.get());
+        AgentLog.flushIfDue();
+      } catch (Throwable t) { // NOSONAR - the dispatcher must survive anything and keep going
+        logLoopFailure("dispatcher", t);
+      }
       if (sleepDispatchInterval()) {
         return;
       }
     }
+  }
+
+  private void logLoopFailure(String loop, Throwable error) {
+    THROTTLED_LOGGER.log(
+        Level.WARNING,
+        LOG_KEY_LOOP_FAILED,
+        error,
+        () -> "[node-metrics-agent] refresh " + loop + " hit an error and continues");
   }
 
   private void workerLoop(ArrayBlockingQueue<QueuedTask> source) {
@@ -355,6 +366,10 @@ final class MetricsRefreshEngine implements AutoCloseable {
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         return;
+      } catch (Throwable t) { // NOSONAR - a worker must survive anything and keep going
+        logLoopFailure("worker", t);
+        LockSupport.parkNanos(
+            TimeUnit.MILLISECONDS.toNanos(100L)); // never spin on a persistent error
       }
     }
   }

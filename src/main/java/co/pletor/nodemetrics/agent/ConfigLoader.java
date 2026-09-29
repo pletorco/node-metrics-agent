@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -33,7 +32,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 final class ConfigLoader {
 
   /** Prevent instantiation of this utility class. */
-  private static final Logger LOGGER = Logger.getLogger(ConfigLoader.class.getName());
+  private static final AgentLog LOGGER = AgentLog.getLogger(ConfigLoader.class.getName());
 
   /** Prevent instantiation of this utility class. */
   private ConfigLoader() {
@@ -114,7 +113,29 @@ final class ConfigLoader {
       }
 
       // ---- fsmetrics_max_partitions ----
-      c.fsmetricsMaxPartitions = parseMaxPartitionsOrDefault(m.get("fsmetrics_max_partitions"));
+      c.fsmetricsMaxPartitions =
+          parseIntOrDefault(
+              "fsmetrics_max_partitions",
+              m.get("fsmetrics_max_partitions"),
+              1L,
+              Integer.MAX_VALUE,
+              Config.DEFAULT_FSMETRICS_MAX_PARTITIONS);
+      if (c.fsmetricsMaxPartitions > Config.MAX_FSMETRICS_MAX_PARTITIONS) {
+        LOGGER.log(
+            Level.WARNING,
+            "Config key ''fsmetrics_max_partitions'' is above the maximum: {0}. Using: {1}",
+            new Object[] {c.fsmetricsMaxPartitions, Config.MAX_FSMETRICS_MAX_PARTITIONS});
+        c.fsmetricsMaxPartitions = Config.MAX_FSMETRICS_MAX_PARTITIONS;
+      }
+
+      // ---- refresh_interval_seconds ----
+      c.refreshIntervalSeconds =
+          parseIntOrDefault(
+              "refresh_interval_seconds",
+              m.get("refresh_interval_seconds"),
+              Config.MIN_REFRESH_INTERVAL_SECONDS,
+              Config.MAX_REFRESH_INTERVAL_SECONDS,
+              Config.DEFAULT_REFRESH_INTERVAL_SECONDS);
 
       // ---- checksum ----
       // Use file bytes as the source for a SHA-256 checksum
@@ -125,7 +146,7 @@ final class ConfigLoader {
   }
 
   private static final Set<String> KNOWN_KEYS =
-      Set.of("fsmetrics_paths", "fsmetrics_max_partitions");
+      Set.of("fsmetrics_paths", "fsmetrics_max_partitions", "refresh_interval_seconds");
 
   /**
    * Warn about keys we do not understand, so typos such as {@code fsmetric_paths} do not silently
@@ -165,9 +186,10 @@ final class ConfigLoader {
     }
   }
 
-  private static int parseMaxPartitionsOrDefault(Object raw) {
+  private static int parseIntOrDefault(
+      String key, Object raw, long min, long max, int defaultValue) {
     if (raw == null) {
-      return Config.DEFAULT_FSMETRICS_MAX_PARTITIONS;
+      return defaultValue;
     }
 
     long parsed;
@@ -179,18 +201,18 @@ final class ConfigLoader {
       } catch (NumberFormatException e) {
         LOGGER.log(
             Level.WARNING,
-            "Config key ''fsmetrics_max_partitions'' is invalid: {0}. Using default: {1}",
-            new Object[] {raw, Config.DEFAULT_FSMETRICS_MAX_PARTITIONS});
-        return Config.DEFAULT_FSMETRICS_MAX_PARTITIONS;
+            "Config key ''{0}'' is invalid: {1}. Using default: {2}",
+            new Object[] {key, raw, defaultValue});
+        return defaultValue;
       }
     }
 
-    if (parsed < 1L || parsed > Integer.MAX_VALUE) {
+    if (parsed < min || parsed > max) {
       LOGGER.log(
           Level.WARNING,
-          "Config key ''fsmetrics_max_partitions'' out of range: {0}. Using default: {1}",
-          new Object[] {raw, Config.DEFAULT_FSMETRICS_MAX_PARTITIONS});
-      return Config.DEFAULT_FSMETRICS_MAX_PARTITIONS;
+          "Config key ''{0}'' out of range ({1}..{2}): {3}. Using default: {4}",
+          new Object[] {key, min, max, raw, defaultValue});
+      return defaultValue;
     }
 
     return (int) parsed;

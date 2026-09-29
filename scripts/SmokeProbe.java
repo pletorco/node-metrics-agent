@@ -26,16 +26,26 @@ public class SmokeProbe {
     MBeanServer server = ManagementFactory.getPlatformMBeanServer();
     List<String> problems = new ArrayList<>();
 
-    for (String name : REQUIRED) {
-      if (!server.isRegistered(new ObjectName(name))) {
-        problems.add("MBean not registered: " + name);
+    // The agent initializes on its own thread so it never delays the application's startup;
+    // its MBeans therefore appear shortly after main() starts.
+    long registrationDeadline = System.nanoTime() + 20_000_000_000L;
+    while (true) {
+      problems.clear();
+      for (String name : REQUIRED) {
+        if (!server.isRegistered(new ObjectName(name))) {
+          problems.add("MBean not registered: " + name);
+        }
       }
-    }
-    if (server.queryNames(new ObjectName("co.pletor.node:type=FsMetrics,*"), null).isEmpty()) {
-      problems.add("No FsMetrics MBean registered");
-    }
-    if (!problems.isEmpty()) {
-      fail(problems);
+      if (server.queryNames(new ObjectName("co.pletor.node:type=FsMetrics,*"), null).isEmpty()) {
+        problems.add("No FsMetrics MBean registered");
+      }
+      if (problems.isEmpty()) {
+        break;
+      }
+      if (System.nanoTime() > registrationDeadline) {
+        fail(problems);
+      }
+      Thread.sleep(50L);
     }
 
     ObjectName obs = new ObjectName("co.pletor.agent:type=Observability");
@@ -63,8 +73,15 @@ public class SmokeProbe {
       problems.add("CpuMetrics.AvailableProcessors = " + cpus);
     }
     if (System.getProperty("os.name", "").toLowerCase().contains("linux")) {
-      long memTotal = ((Number) server.getAttribute(
-          new ObjectName("co.pletor.node:type=MemMetrics"), "TotalMemoryBytes")).longValue();
+      // Values appear when the refresh engine has polled that metric, which may be a moment
+      // after the first refresh of any metric completed.
+      ObjectName mem = new ObjectName("co.pletor.node:type=MemMetrics");
+      long memDeadline = System.nanoTime() + 20_000_000_000L;
+      long memTotal = ((Number) server.getAttribute(mem, "TotalMemoryBytes")).longValue();
+      while (memTotal <= 0L && System.nanoTime() < memDeadline) {
+        Thread.sleep(100L);
+        memTotal = ((Number) server.getAttribute(mem, "TotalMemoryBytes")).longValue();
+      }
       if (memTotal <= 0L) {
         problems.add("MemMetrics.TotalMemoryBytes = " + memTotal);
       }
