@@ -2,13 +2,22 @@
 package co.pletor.nodemetrics.agent;
 
 import co.pletor.nodemetrics.metrics.CgroupMemMetrics;
+import co.pletor.nodemetrics.metrics.CgroupMemMetricsMBean;
 import co.pletor.nodemetrics.metrics.CpuMetrics;
+import co.pletor.nodemetrics.metrics.CpuMetricsMBean;
 import co.pletor.nodemetrics.metrics.FdMetrics;
+import co.pletor.nodemetrics.metrics.FdMetricsMBean;
 import co.pletor.nodemetrics.metrics.FsMetrics;
+import co.pletor.nodemetrics.metrics.FsMetricsMBean;
 import co.pletor.nodemetrics.metrics.IoRates;
+import co.pletor.nodemetrics.metrics.IoRatesMBean;
 import co.pletor.nodemetrics.metrics.NodeMemMetrics;
+import co.pletor.nodemetrics.metrics.NodeMemMetricsMBean;
 import co.pletor.nodemetrics.metrics.OsInfoMetrics;
+import co.pletor.nodemetrics.metrics.OsInfoMetricsMBean;
 import co.pletor.nodemetrics.metrics.OsRuntimeMetrics;
+import co.pletor.nodemetrics.metrics.OsRuntimeMetricsMBean;
+import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
 
 import javax.management.InstanceAlreadyExistsException;
 import javax.management.InstanceNotFoundException;
@@ -34,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -145,7 +155,7 @@ public class MetricsAgent {
   private static long probeDeadlineNanos = 0L;
 
   /** Seam for tests: the partition-key lookup that is run through {@link #FS_PROBE}. */
-  static java.util.function.Function<Path, String> partitionKeyDetector =
+  static Function<Path, String> partitionKeyDetector =
       MetricsAgent::detectPartitionKeyUnguarded;
 
   /**
@@ -221,31 +231,31 @@ public class MetricsAgent {
 
       // ----- Register fixed, non-filesystem MBeans -----
       cgroupMemBean = new CgroupMemMetrics();
-      registerStandardMBeanSafely(cgroupMemBean, co.pletor.nodemetrics.metrics.CgroupMemMetricsMBean.class,
+      registerStandardMBeanSafely(cgroupMemBean, CgroupMemMetricsMBean.class,
           fixedObjectName("co.pletor.cgroup:type=MemMetrics"));
 
       cpuBean = new CpuMetrics();
-      registerStandardMBeanSafely(cpuBean, co.pletor.nodemetrics.metrics.CpuMetricsMBean.class,
+      registerStandardMBeanSafely(cpuBean, CpuMetricsMBean.class,
           fixedObjectName("co.pletor.node:type=CpuMetrics"));
 
       fdBean = new FdMetrics();
-      registerStandardMBeanSafely(fdBean, co.pletor.nodemetrics.metrics.FdMetricsMBean.class,
+      registerStandardMBeanSafely(fdBean, FdMetricsMBean.class,
           fixedObjectName("co.pletor.proc:type=FdMetrics"));
 
       ioRatesBean = new IoRates();
-      registerStandardMBeanSafely(ioRatesBean, co.pletor.nodemetrics.metrics.IoRatesMBean.class,
+      registerStandardMBeanSafely(ioRatesBean, IoRatesMBean.class,
           fixedObjectName("co.pletor.node:type=IoRates"));
 
       nodeMemBean = new NodeMemMetrics();
-      registerStandardMBeanSafely(nodeMemBean, co.pletor.nodemetrics.metrics.NodeMemMetricsMBean.class,
+      registerStandardMBeanSafely(nodeMemBean, NodeMemMetricsMBean.class,
           fixedObjectName("co.pletor.node:type=MemMetrics"));
 
       osInfoBean = new OsInfoMetrics();
-      registerStandardMBeanSafely(osInfoBean, co.pletor.nodemetrics.metrics.OsInfoMetricsMBean.class,
+      registerStandardMBeanSafely(osInfoBean, OsInfoMetricsMBean.class,
           fixedObjectName("co.pletor.node:type=OsInfoMetrics"));
 
       osRuntimeBean = new OsRuntimeMetrics();
-      registerStandardMBeanSafely(osRuntimeBean, co.pletor.nodemetrics.metrics.OsRuntimeMetricsMBean.class,
+      registerStandardMBeanSafely(osRuntimeBean, OsRuntimeMetricsMBean.class,
           fixedObjectName("co.pletor.node:type=OsRuntimeMetrics"));
 
       registerStandardMBeanSafely(
@@ -308,8 +318,8 @@ public class MetricsAgent {
    */
   private static LinkedHashSet<String> buildPathSet(Config cfg) {
     LinkedHashSet<String> paths = new LinkedHashSet<>();
-    java.util.List<String> configured = (cfg.fsmetricsPaths == null)
-        ? java.util.List.of("/")
+    List<String> configured = (cfg.fsmetricsPaths == null)
+        ? List.of("/")
         : cfg.fsmetricsPaths;
 
     for (String raw : configured) {
@@ -490,7 +500,7 @@ public class MetricsAgent {
       throws InstanceAlreadyExistsException, MBeanRegistrationException, NotCompliantMBeanException {
     FsMetrics bean = new FsMetrics(path);
     ObjectName on = buildFsObjectName(path);
-    svr.registerMBean(new StandardMBean(bean, co.pletor.nodemetrics.metrics.FsMetricsMBean.class), on);
+    svr.registerMBean(new StandardMBean(bean, FsMetricsMBean.class), on);
     fsMap.put(configuredPath, new FsEntry(bean, on, path));
     LOGGER.log(Level.INFO, "Registered MBean: {0}", on);
   }
@@ -682,7 +692,7 @@ public class MetricsAgent {
   private static void addHighPriorityTask(
       List<MetricsRefreshEngine.RefreshTask> tasks,
       String name,
-      co.pletor.nodemetrics.metrics.RefreshManagedMetric metric,
+      RefreshManagedMetric metric,
       long intervalMs
   ) {
     if (metric == null) {

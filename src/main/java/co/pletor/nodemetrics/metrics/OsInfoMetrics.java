@@ -28,10 +28,10 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
    */
   private static final int INFO_FLAG = 1;
 
-  private static final String OSVERSION_1 = "os.version";
-  private static final String CONTAINER_1 = "container";
-  private static final String KUBERNETES_1 = "kubernetes";
-  private static final String UNKNOWN_1 = "unknown";
+  private static final String OS_VERSION_PROPERTY = "os.version";
+  private static final String ENV_CONTAINER = "container";
+  private static final String ENV_KUBERNETES = "kubernetes";
+  private static final String ENV_UNKNOWN = "unknown";
 
   private final SystemAccess sys;
 
@@ -39,7 +39,7 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
   private volatile String kernelVersion = "";
   private volatile String osName = "";
   private volatile String osArch = "";
-  private volatile String environmentType = UNKNOWN_1;
+  private volatile String environmentType = ENV_UNKNOWN;
 
   /**
    * Creates a new {@code OsInfoMetrics} instance with default values.
@@ -109,7 +109,7 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
       kernelVersion = "";
     }
     if (environmentType == null || environmentType.isEmpty()) {
-      environmentType = UNKNOWN_1;
+      environmentType = ENV_UNKNOWN;
     }
   }
 
@@ -173,7 +173,7 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
 
   private String buildFallbackOsRelease() {
     String name = safeProperty("os.name");
-    String version = safeProperty(OSVERSION_1);
+    String version = safeProperty(OS_VERSION_PROPERTY);
     if (!name.isEmpty() && !version.isEmpty()) {
       return name + " " + version;
     }
@@ -194,7 +194,7 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
     }
 
     // 3) Final fallback: JVM os.version
-    return safeProperty(OSVERSION_1);
+    return safeProperty(OS_VERSION_PROPERTY);
   }
 
   /**
@@ -247,7 +247,7 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
 
   private void pollNonLinux() {
     osRelease = buildFallbackOsRelease();
-    kernelVersion = safeProperty(OSVERSION_1);
+    kernelVersion = safeProperty(OS_VERSION_PROPERTY);
   }
 
   // ----- Environment type detection -----
@@ -270,17 +270,17 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
   private String detectEnvironmentType() {
     // We only try container/Kubernetes heuristics on Linux.
     if (!sys.isLinux()) {
-      return UNKNOWN_1;
+      return ENV_UNKNOWN;
     }
 
     boolean kubernetesLike = hasKubernetesMarker();
     boolean containerLike = hasContainerMarker(kubernetesLike);
 
     if (kubernetesLike) {
-      return KUBERNETES_1; // "kubernetes"
+      return ENV_KUBERNETES; // "kubernetes"
     }
     if (containerLike) {
-      return CONTAINER_1;  // "container"
+      return ENV_CONTAINER;  // "container"
     }
 
     // If we reach here, we did not see strong container markers.

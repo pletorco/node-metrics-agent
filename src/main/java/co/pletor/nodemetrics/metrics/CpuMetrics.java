@@ -158,7 +158,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
    * Resolve the platform OperatingSystemMXBean and cast to the
    * {@link com.sun.management.OperatingSystemMXBean} extension if possible.
    * <p>
-   * This method uses Java 17 pattern matching for {@code instanceof}.
+   * Returns {@code null} when the platform bean is not the extended implementation.
    */
   private static OperatingSystemMXBean resolveOsBean() {
     var base = ManagementFactory.getOperatingSystemMXBean();

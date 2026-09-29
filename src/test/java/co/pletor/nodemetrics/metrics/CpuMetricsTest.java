@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *   <li>Linux-specific extended metrics branches (best-effort)</li>
  *   <li>Private helper methods via reflection (for higher coverage)</li>
  *   <li>Behavior on non-Linux OS names</li>
- *   <li>Java 17 pattern matching for instanceof</li>
+ *   <li>instanceof checks on the platform MXBean</li>
  * </ul>
  */
 @SuppressWarnings("deprecation")
@@ -362,7 +362,7 @@ class CpuMetricsTest {
   }
 
   /**
-   * Use Java 17 pattern matching for instanceof to satisfy the required style.
+   * Verify the returned object is a CpuMetrics via instanceof.
    * The variable name is intentionally 'tv' as requested.
    */
   @Test
@@ -370,7 +370,7 @@ class CpuMetricsTest {
   void patternMatchingInstanceOfShouldWork() {
     Object o = new CpuMetrics();
 
-    // Java 17 pattern matching for instanceof: o instanceof CpuMetrics tv
+    // instanceof check: o instanceof CpuMetrics
     if (o instanceof CpuMetrics) {
       CpuMetrics tv = (CpuMetrics) o;
       // Call poll() on the pattern variable and assert it is usable.

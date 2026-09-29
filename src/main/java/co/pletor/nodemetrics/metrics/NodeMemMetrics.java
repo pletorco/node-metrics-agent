@@ -211,10 +211,8 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     }
   }
 
-  // No changes to computeFreeBytes logic needed if it strictly returns MemFree?
-  // User asked for "Free와 available을 둘다 정확한 원래 값을 반환하도록".
-  // So computeFreeBytes should return MemFree.
-  // computeAvailableBytes should return MemAvailable (or estimate).
+  // Free and available are reported exactly as the kernel does:
+  // free = MemFree, available = MemAvailable (or an estimate on kernels without it).
 
   /**
    * Return strict {@code MemFree} in bytes.

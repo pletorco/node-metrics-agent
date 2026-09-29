@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * - Verifying CLI behavior for init-config and init-kafka-config
  * - Ensuring that YAML files are generated correctly
  * - Covering error paths in generateConfigFromKafka() and generateConfigFromCli()
- * - Using Java 17 features such as text blocks and pattern matching
+ * - Exercising the CLI end to end against temporary files
  */
 class ConfigCliTest {
 

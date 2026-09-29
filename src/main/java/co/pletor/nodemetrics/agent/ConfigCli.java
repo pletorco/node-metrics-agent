@@ -22,8 +22,8 @@ import java.util.Properties;
  * When the JAR is executed with {@code java -jar}, the {@link #main(String[])} method is used.
  */
 public final class ConfigCli {
-  private static final String CONFIG_DIR_1 = "config";
-  private static final String OUTPUT_OPT_1 = "--output";
+  private static final String DEFAULT_CONFIG_DIR = "config";
+  private static final String OUTPUT_OPTION = "--output";
 
   private ConfigCli() {
     // Utility class; no instances.
@@ -31,10 +31,10 @@ public final class ConfigCli {
 
   /**
    * Common base for CLI option containers that share
-   * output path, poll interval, and help flag.
+   * output path and help flag.
    */
   private abstract static class CommonOptions {
-    Path outputConfigPath = Path.of(CONFIG_DIR_1, "node-metrics.yml");
+    Path outputConfigPath = Path.of(DEFAULT_CONFIG_DIR, "node-metrics.yml");
 
     boolean helpRequested;
   }
@@ -109,8 +109,8 @@ public final class ConfigCli {
   private static int applyCommonOption(String[] args, int index, CommonOptions options) {
     String arg = args[index];
 
-    if (OUTPUT_OPT_1.equals(arg)) {
-      String value = requireOptionValue(args, index, OUTPUT_OPT_1);
+    if (OUTPUT_OPTION.equals(arg)) {
+      String value = requireOptionValue(args, index, OUTPUT_OPTION);
       options.outputConfigPath = Path.of(value);
       return index + 2;
     }
@@ -186,10 +186,9 @@ public final class ConfigCli {
 
   /**
    * Core logic for init-config:
-   * - Use CLI-provided poll_interval_sec
-   * - Use CLI-provided list of fsmetrics_paths (or default if none given)
-   * - Generate minimal YAML file
-   * - Existing file is overwritten if present
+   * - Use the CLI-provided list of fsmetrics_paths (the caller substitutes "/" when none is given)
+   * - Generate a minimal YAML file
+   * - An existing file is overwritten
    */
   static void generateConfigFromCli(
       Path outputConfigPath,
@@ -220,7 +219,7 @@ public final class ConfigCli {
   }
 
   private static final class KafkaInitOptions extends CommonOptions {
-    Path serverPropertiesPath = Path.of(CONFIG_DIR_1, "server.properties");
+    Path serverPropertiesPath = Path.of(DEFAULT_CONFIG_DIR, "server.properties");
   }
 
   static KafkaInitOptions parseKafkaInitOptions(String[] args) {
