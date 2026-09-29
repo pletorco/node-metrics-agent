@@ -15,7 +15,7 @@ import java.util.function.LongSupplier;
  * </ul>
  * On non-Linux platforms, all metrics are reported as {@code 0.0}.
  */
-public class IoRates implements IoRatesMBean, RefreshManagedMetric {
+public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
 
   /**
    * Last computed disk read throughput (bytes per second).
@@ -75,21 +75,14 @@ public class IoRates implements IoRatesMBean, RefreshManagedMetric {
   }
 
   // ------------------------------------------------------------------------
-  // Polling / Refeshing
+  // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  private static final long REFRESH_INTERVAL_MS = 500L;
-  private final RefreshCadence refreshCadence = new RefreshCadence(REFRESH_INTERVAL_MS);
-  private volatile boolean readRefreshEnabled = true;
-
   /**
-   * Refresh I/O rates if the cache is stale.
+   * Refresh the I/O rates.
    */
-  private void refresh() {
-    if (!refreshCadence.tryAcquire()) {
-      return;
-    }
-
+  @Override
+  protected void doRefresh() {
     // If the current OS is not Linux, we cannot read /proc or /sys,
     // so simply reset the rates and return.
     if (!LinuxProcFs.isLinux()) {
@@ -101,8 +94,10 @@ public class IoRates implements IoRatesMBean, RefreshManagedMetric {
       refreshLinuxSnapshot();
     } catch (SnapshotReadException e) {
       // On snapshot read failure, keep the last known rates.
+      recordRefreshFailure(e);
     } catch (Exception e) {
       // Never propagate metric refresh failures to JMX callers.
+      recordRefreshFailure(e);
       resetRates();
     }
   }
@@ -112,25 +107,6 @@ public class IoRates implements IoRatesMBean, RefreshManagedMetric {
     Snapshot snapshot = readSnapshot();
     updateRates(snapshot);
     storeSnapshot(snapshot);
-  }
-
-  /**
-   * Force refresh of metrics (for testing).
-   */
-  public void poll() {
-    refreshCadence.force();
-    refresh();
-  }
-
-  @Override
-  public void setReadRefreshEnabled(boolean enabled) {
-    readRefreshEnabled = enabled;
-  }
-
-  private void refreshOnRead() {
-    if (readRefreshEnabled) {
-      refresh();
-    }
   }
 
   /**

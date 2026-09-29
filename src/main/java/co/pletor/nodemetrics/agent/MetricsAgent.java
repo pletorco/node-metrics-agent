@@ -105,6 +105,14 @@ public class MetricsAgent {
   private static final long REFRESH_DISPATCH_INTERVAL_MS = 500L;
   private static final int REFRESH_QUEUE_CAPACITY = 1024;
 
+  // Per-task refresh intervals. Fast metrics (0) are refreshed on every dispatch cycle; metrics
+  // that are expensive to read or change slowly are refreshed less often.
+  private static final long FAST_REFRESH_INTERVAL_MS = 0L;
+  private static final long FD_REFRESH_INTERVAL_MS = 5_000L;
+  private static final long FS_REFRESH_INTERVAL_MS = 10_000L;
+  private static final long OS_RUNTIME_REFRESH_INTERVAL_MS = 10_000L;
+  private static final long OS_INFO_REFRESH_INTERVAL_MS = 300_000L;
+
   private static CgroupMemMetrics cgroupMemBean;
   private static CpuMetrics cpuBean;
   private static FdMetrics fdBean;
@@ -605,19 +613,20 @@ public class MetricsAgent {
 
   private static List<MetricsRefreshEngine.RefreshTask> buildRefreshTasksLocked() {
     List<MetricsRefreshEngine.RefreshTask> tasks = new ArrayList<>();
-    addHighPriorityTask(tasks, "cgroup-mem", cgroupMemBean);
-    addHighPriorityTask(tasks, "cpu", cpuBean);
-    addHighPriorityTask(tasks, "fd", fdBean);
-    addHighPriorityTask(tasks, "io-rates", ioRatesBean);
-    addHighPriorityTask(tasks, "node-mem", nodeMemBean);
-    addHighPriorityTask(tasks, "os-info", osInfoBean);
-    addHighPriorityTask(tasks, "os-runtime", osRuntimeBean);
+    addHighPriorityTask(tasks, "cgroup-mem", cgroupMemBean, FAST_REFRESH_INTERVAL_MS);
+    addHighPriorityTask(tasks, "cpu", cpuBean, FAST_REFRESH_INTERVAL_MS);
+    addHighPriorityTask(tasks, "fd", fdBean, FD_REFRESH_INTERVAL_MS);
+    addHighPriorityTask(tasks, "io-rates", ioRatesBean, FAST_REFRESH_INTERVAL_MS);
+    addHighPriorityTask(tasks, "node-mem", nodeMemBean, FAST_REFRESH_INTERVAL_MS);
+    addHighPriorityTask(tasks, "os-info", osInfoBean, OS_INFO_REFRESH_INTERVAL_MS);
+    addHighPriorityTask(tasks, "os-runtime", osRuntimeBean, OS_RUNTIME_REFRESH_INTERVAL_MS);
 
     for (Map.Entry<String, FsEntry> entry : fsMap.entrySet()) {
       FsMetrics fsBean = entry.getValue().getBean();
       if (fsBean != null) {
         fsBean.setReadRefreshEnabled(false);
-        tasks.add(new MetricsRefreshEngine.RefreshTask("fs:" + entry.getKey(), fsBean, true));
+        tasks.add(new MetricsRefreshEngine.RefreshTask(
+            "fs:" + entry.getKey(), fsBean, true, FS_REFRESH_INTERVAL_MS));
       }
     }
     return tasks;
@@ -626,13 +635,14 @@ public class MetricsAgent {
   private static void addHighPriorityTask(
       List<MetricsRefreshEngine.RefreshTask> tasks,
       String name,
-      co.pletor.nodemetrics.metrics.RefreshManagedMetric metric
+      co.pletor.nodemetrics.metrics.RefreshManagedMetric metric,
+      long intervalMs
   ) {
     if (metric == null) {
       return;
     }
     metric.setReadRefreshEnabled(false);
-    tasks.add(new MetricsRefreshEngine.RefreshTask(name, metric, false));
+    tasks.add(new MetricsRefreshEngine.RefreshTask(name, metric, false, intervalMs));
   }
 
 

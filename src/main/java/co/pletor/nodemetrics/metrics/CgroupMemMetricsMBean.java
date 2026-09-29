@@ -24,6 +24,19 @@ public interface CgroupMemMetricsMBean {
   long getMemoryUsageBytes();
 
   /**
+   * Returns the cgroup memory working set in bytes: current usage minus inactive file cache.
+   * <p>
+   * Usage includes reclaimable page cache, so a page-cache-heavy process (Kafka, databases) looks
+   * close to its limit even when it is not. The working set is the better basis for memory
+   * pressure alerts. {@code -1} when {@code memory.stat} is unavailable.
+   *
+   * @return the working set in bytes
+   */
+  @JmxMetricHint("gauge")
+  @JmxMetricUnit("bytes")
+  long getMemoryWorkingSetBytes();
+
+  /**
    * Returns the cgroup version (e.g. v1 or v2).
    *
    * @return the cgroup version string

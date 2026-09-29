@@ -76,9 +76,13 @@ If reload fails, the previous working configuration remains active.
 - `pletor_agent_observability_droppedcount` increases above baseline
 - `pletor_agent_observability_queuefillratio >= 0.80`
 - `pletor_agent_observability_maxtaskstalenessms` rises for a sustained period
+  (seconds behind schedule; healthy tasks stay near `0` whatever their refresh interval)
+- `pletor_agent_observability_failingtaskcount > 0` for a sustained period
+- `pletor_agent_observability_stucktaskcount > 0` (a filesystem call is blocked, usually a dead mount)
 - filesystem usable bytes drops below service thresholds
 - FD usage approaches max FD limit
-- cgroup memory usage/limit ratio stays above `0.90`
+- cgroup memory working set / limit ratio stays above `0.90`
+  (`memoryworkingsetbytes / memorylimitbytes`, only when the limit is not `-1`)
 
 ## Troubleshooting
 
@@ -87,6 +91,32 @@ Queue pressure:
 - Check `QueueFillRatio`, `DroppedCount`, `EndToEndLatencyMillis`, and `MaxTaskStalenessMs`.
 - `DEGRADED` drops low-priority filesystem refresh first.
 - `BYPASS` drops all refresh work until pressure falls.
+
+Failing metric refreshes:
+
+- `FailingTaskCount > 0` means at least one metric could not be read on its last refresh (for
+  example an unreadable `/proc` file or an unavailable filesystem). The affected MBean exposes
+  sentinel values (`-1`) or its last known values.
+- `FailingTasks` (JMX only, a string attribute) lists the task names, e.g. `fs:/data,cpu`.
+- `ErrorCount` / `SinkFailureCount` count every failed refresh. The first failure of each
+  minute is also logged at WARNING with a stack trace.
+
+Stuck filesystem calls:
+
+- Filesystem metrics run on their own worker threads, separate from CPU, memory and I/O metrics. A
+  filesystem call that blocks (typically `statvfs` on an unresponsive NFS mount) therefore only
+  freezes that one filesystem's MBean, which keeps its last values.
+- `StuckTaskCount > 0` / `StuckTasks` names the tasks whose current refresh has been running for
+  more than 30 seconds. `MaxTaskStalenessMs` rises for the same task.
+- A blocked call cannot be interrupted from Java; it clears when the mount recovers. Each stuck
+  task holds one of 3 background threads, and while it is stuck it is skipped (counted in
+  `DroppedCount`, once per refresh interval) instead of being queued again.
+
+Refresh intervals:
+
+- CPU, memory, cgroup memory and I/O rates refresh every dispatch cycle (`500 ms`).
+- File descriptors refresh every `5 s`, filesystem and OS runtime (uptime, mounts) every `10 s`,
+  and static OS info every `5 min`.
 
 Filesystem MBeans:
 
@@ -97,6 +127,10 @@ Filesystem MBeans:
 Cgroup metrics:
 
 - `MemoryLimitBytes = -1` means unlimited or unavailable.
+- `MemoryUsageBytes` includes reclaimable page cache, so page-cache-heavy workloads such as Kafka
+  sit close to the limit by design. Alert on `MemoryWorkingSetBytes` (usage minus inactive file
+  cache, the same figure Kubernetes/cAdvisor uses) instead. It is `-1` when `memory.stat` is
+  unavailable.
 - `CgroupVersion` is `v1`, `v2`, or `none`.
 
 Rollback:

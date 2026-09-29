@@ -17,7 +17,7 @@ import java.nio.file.Path;
  * </ul>
  * On failure, numeric values are set to {@code -1} and names to {@code "unknown"}.
  */
-public class FsMetrics implements FsMetricsMBean, RefreshManagedMetric {
+public class FsMetrics extends AbstractRefreshingMetric implements FsMetricsMBean {
 
   /**
    * Path whose underlying filesystem is being monitored.
@@ -65,20 +65,14 @@ public class FsMetrics implements FsMetricsMBean, RefreshManagedMetric {
   }
 
   // ------------------------------------------------------------------------
-  // Polling / Refeshing
+  // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  private static final long REFRESH_INTERVAL_MS = 500L;
-  private final RefreshCadence refreshCadence = new RefreshCadence(REFRESH_INTERVAL_MS);
-  private volatile boolean readRefreshEnabled = true;
-
   /**
-   * Refresh metrics if the cache is stale.
+   * Refresh the metric values.
    */
-  private void refresh() {
-    if (!refreshCadence.tryAcquire()) {
-      return;
-    }
+  @Override
+  protected void doRefresh() {
     try {
       FileStore fs = Files.getFileStore(path);
       fsName = fs.name();
@@ -87,30 +81,12 @@ public class FsMetrics implements FsMetricsMBean, RefreshManagedMetric {
       usable = fs.getUsableSpace();
       unallocated = fs.getUnallocatedSpace();
     } catch (Exception e) {
+      recordRefreshFailure(e);
       fsName = "unknown";
       fsType = "unknown";
       total = -1L;
       usable = -1L;
       unallocated = -1L;
-    }
-  }
-
-  /**
-   * Force refresh of metrics (for testing).
-   */
-  public void poll() {
-    refreshCadence.force();
-    refresh();
-  }
-
-  @Override
-  public void setReadRefreshEnabled(boolean enabled) {
-    readRefreshEnabled = enabled;
-  }
-
-  private void refreshOnRead() {
-    if (readRefreshEnabled) {
-      refresh();
     }
   }
 

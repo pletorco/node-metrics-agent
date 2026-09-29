@@ -273,4 +273,220 @@ class MetricsRefreshEngineTest {
       engine.stop();
     }
   }
+
+  /** Metric that absorbs failures like the real beans: poll() never throws, the error is reported. */
+  static class AbsorbingMetric implements RefreshManagedMetric {
+    final AtomicInteger pollCount = new AtomicInteger();
+    final AtomicReference<Throwable> error = new AtomicReference<>();
+
+    @Override
+    public void poll() {
+      pollCount.incrementAndGet();
+    }
+
+    @Override
+    public void setReadRefreshEnabled(boolean enabled) {
+      // no-op for test double
+    }
+
+    @Override
+    public Throwable lastRefreshError() {
+      return error.get();
+    }
+  }
+
+  @Test
+  void engine_shouldCountAbsorbedRefreshFailuresAndRecover() {
+    AbsorbingMetric metric = new AbsorbingMetric();
+    metric.error.set(new java.io.IOException("cannot read /proc/stat"));
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("cpu", metric, false)));
+
+    try {
+      engine.start();
+      waitUntil(() -> engine.sinkFailureCount() >= 3, 2_000L);
+      assertTrue(engine.sinkFailureCount() >= 3L, "Absorbed failures must be counted");
+      assertEquals(0L, engine.sinkSuccessCount(), "A failed refresh is not a success");
+      assertEquals(List.of("cpu"), engine.failingTaskNames());
+
+      metric.error.set(null);
+      waitUntil(() -> engine.failingTaskNames().isEmpty(), 2_000L);
+      assertTrue(engine.failingTaskNames().isEmpty(), "Task should be healthy again after a clean poll");
+      assertTrue(engine.sinkSuccessCount() > 0L);
+    } finally {
+      engine.stop();
+    }
+  }
+
+  @Test
+  void engine_shouldHonourPerTaskRefreshInterval() {
+    CountingMetric fast = new CountingMetric();
+    CountingMetric slow = new CountingMetric();
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 256);
+    engine.setTasks(List.of(
+        new MetricsRefreshEngine.RefreshTask("fast", fast, false),
+        new MetricsRefreshEngine.RefreshTask("slow", slow, false, 60_000L)
+    ));
+
+    try {
+      engine.start();
+      waitUntil(() -> fast.pollCount.get() >= 20, 3_000L);
+      assertTrue(fast.pollCount.get() >= 20, "Interval-less task runs every dispatch cycle");
+      assertEquals(1, slow.pollCount.get(), "Task with a long interval runs once, immediately");
+    } finally {
+      engine.stop();
+    }
+  }
+
+  @Test
+  void engine_stalenessShouldBeRelativeToTaskInterval() {
+    CountingMetric slow = new CountingMetric();
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("slow", slow, false, 60_000L)));
+
+    try {
+      engine.start();
+      waitUntil(() -> engine.sinkSuccessCount() >= 1, 2_000L);
+      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(100L));
+      assertEquals(0L, engine.maxTaskStalenessMs(),
+          "A task refreshed within its own interval is not stale, however long the interval");
+    } finally {
+      engine.stop();
+    }
+  }
+
+  @Test
+  void engine_stalenessShouldRiseForTaskThatNeverSucceeds() {
+    AbsorbingMetric metric = new AbsorbingMetric();
+    metric.error.set(new java.io.IOException("boom"));
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("broken", metric, false)));
+
+    try {
+      engine.start();
+      waitUntil(() -> engine.sinkFailureCount() >= 1, 2_000L);
+      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(150L));
+      assertTrue(engine.maxTaskStalenessMs() >= 100L,
+          "A task that keeps failing from the start must show up as stale");
+    } finally {
+      engine.stop();
+    }
+  }
+
+  @Test
+  void engine_setTasksShouldKeepStateOfUnchangedTasks() {
+    AbsorbingMetric metric = new AbsorbingMetric();
+    metric.error.set(new java.io.IOException("boom"));
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("broken", metric, false)));
+
+    try {
+      engine.start();
+      waitUntil(() -> !engine.failingTaskNames().isEmpty(), 2_000L);
+
+      // Same task re-registered (as on every config reload) keeps its failure history.
+      engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("broken", metric, false)));
+      assertEquals(List.of("broken"), engine.failingTaskNames());
+    } finally {
+      engine.stop();
+    }
+  }
+
+  /** Metric whose poll() blocks like a statvfs on a dead NFS mount: it ignores interrupts. */
+  static class HangingMetric implements RefreshManagedMetric {
+    final AtomicInteger pollCount = new AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean();
+
+    @Override
+    public void poll() {
+      pollCount.incrementAndGet();
+      while (!released.get()) {
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(5L));
+        Thread.interrupted(); // uninterruptible I/O does not react to interrupts
+      }
+    }
+
+    void release() {
+      released.set(true);
+    }
+
+    @Override
+    public void setReadRefreshEnabled(boolean enabled) {
+      // no-op for test double
+    }
+  }
+
+  @Test
+  void engine_hungBackgroundTaskShouldNotBlockCriticalOrOtherBackgroundTasks() {
+    HangingMetric hung = new HangingMetric();
+    CountingMetric otherFs = new CountingMetric();
+    CountingMetric critical = new CountingMetric();
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setStuckThresholdMs(100L);
+    engine.setTasks(List.of(
+        new MetricsRefreshEngine.RefreshTask("cpu", critical, false),
+        new MetricsRefreshEngine.RefreshTask("fs:/dead-nfs", hung, true),
+        new MetricsRefreshEngine.RefreshTask("fs:/data", otherFs, true)
+    ));
+
+    try {
+      engine.start();
+      waitUntil(() -> hung.pollCount.get() >= 1, 2_000L);
+      int criticalBefore = critical.pollCount.get();
+      int otherFsBefore = otherFs.pollCount.get();
+
+      waitUntil(() -> critical.pollCount.get() >= criticalBefore + 20
+          && otherFs.pollCount.get() >= otherFsBefore + 20, 3_000L);
+      assertTrue(critical.pollCount.get() >= criticalBefore + 20, "Critical metrics must keep refreshing");
+      assertTrue(otherFs.pollCount.get() >= otherFsBefore + 20, "Other filesystems must keep refreshing");
+      assertEquals(1, hung.pollCount.get(), "A hung task must not be enqueued on top of itself");
+      assertEquals(TelemetryMode.NORMAL, engine.currentMode(), "A hung filesystem must not trigger overload modes");
+      assertTrue(engine.queueSize() <= 3, "Queues must not fill up behind a hung task");
+
+      waitUntil(() -> !engine.stuckTaskNames().isEmpty(), 2_000L);
+      assertEquals(List.of("fs:/dead-nfs"), engine.stuckTaskNames());
+    } finally {
+      hung.release();
+      engine.stop();
+    }
+  }
+
+  @Test
+  void engine_hungTaskShouldRecoverOnceTheCallReturns() {
+    HangingMetric hung = new HangingMetric();
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setStuckThresholdMs(50L);
+    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("fs:/dead-nfs", hung, true, 20L)));
+
+    try {
+      engine.start();
+      waitUntil(() -> !engine.stuckTaskNames().isEmpty(), 2_000L);
+      assertEquals(List.of("fs:/dead-nfs"), engine.stuckTaskNames());
+
+      hung.release();
+      waitUntil(() -> hung.pollCount.get() >= 3 && engine.stuckTaskNames().isEmpty(), 3_000L);
+      assertTrue(hung.pollCount.get() >= 3, "Task must be scheduled again after the hang ends");
+      assertTrue(engine.stuckTaskNames().isEmpty(), "Stuck flag must clear");
+    } finally {
+      hung.release();
+      engine.stop();
+    }
+  }
+
+  @Test
+  void engine_shouldCountSkippedRunsOfAHungTaskAsDropped() {
+    HangingMetric hung = new HangingMetric();
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("fs:/dead-nfs", hung, true, 20L)));
+
+    try {
+      engine.start();
+      waitUntil(() -> engine.droppedCount() >= 3, 3_000L);
+      assertTrue(engine.droppedCount() >= 3L, "Skipped runs must be visible in DroppedCount");
+      assertEquals(1, hung.pollCount.get());
+    } finally {
+      hung.release();
+      engine.stop();
+    }
+  }
 }
