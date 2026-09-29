@@ -44,6 +44,8 @@ Confirm these MBeans exist:
 - `co.pletor.node:type=CpuMetrics`
 - `co.pletor.node:type=MemMetrics`
 - `co.pletor.cgroup:type=MemMetrics`
+- `co.pletor.node:type=PressureMetrics`
+- `co.pletor.cgroup:type=PressureMetrics`
 - `co.pletor.proc:type=FdMetrics`
 - `co.pletor.node:type=IoRates`
 - `co.pletor.node:type=OsInfoMetrics`
@@ -114,6 +116,9 @@ If reload fails, the previous working configuration remains active.
 - FD usage approaches max FD limit
 - cgroup memory working set / limit ratio stays above `0.90`
   (`memoryworkingsetbytes / memorylimitbytes`, only when the limit is not `-1`)
+- pressure: sustained `rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros[5m]) / 1e6` above
+  zero means the container's tasks are stalled on memory (reclaim or swapping); the same for
+  `iofull` and `cpusome` points at storage or CPU contention (see "Pressure stall information")
 
 ## Troubleshooting
 
@@ -160,6 +165,23 @@ Filesystem MBeans:
 - Paths on the same partition are deduplicated.
 - `fsmetrics_max_partitions` caps unique filesystem partitions (default `32`, at most `256`; a
   larger value is lowered to 256 with a warning).
+
+Pressure stall information (PSI):
+
+- `PressureMetrics` reports how much of the time tasks were stalled waiting for CPU, memory or
+  I/O. `some` means at least one task was stalled, `full` means all non-idle tasks were stalled at
+  once (a stronger sign). It usually rises before latency or throughput visibly degrade, which
+  load average and I/O wait do not.
+- Two MBeans with the same attributes: `co.pletor.node:type=PressureMetrics` reads
+  `/proc/pressure` and describes the whole host (also inside a container), and
+  `co.pletor.cgroup:type=PressureMetrics` reads the container's own `*.pressure` files (cgroup v2).
+- `*Avg10` is the kernel's 10-second average in percent (0-100). `*TotalMicros` is a cumulative
+  counter of stalled microseconds: `rate(x[5m]) / 1e6` is the stalled share of any window, e.g.
+  `rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros[5m]) / 1e6`. The 60 s and 300 s
+  kernel averages are not exposed because the counter gives the same over any window.
+- Every attribute is `-1` when PSI is unavailable: kernel older than 4.20, PSI disabled
+  (`psi=0`), cgroup v1 (the cgroup MBean only), non-Linux, or the CPU `full` line on kernels older
+  than 5.13. This is not reported as a failing task.
 
 Rates and ratios (prefer counters):
 

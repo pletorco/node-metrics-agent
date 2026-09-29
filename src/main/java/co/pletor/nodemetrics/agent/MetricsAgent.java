@@ -18,6 +18,8 @@ import co.pletor.nodemetrics.metrics.OsInfoMetrics;
 import co.pletor.nodemetrics.metrics.OsInfoMetricsMBean;
 import co.pletor.nodemetrics.metrics.OsRuntimeMetrics;
 import co.pletor.nodemetrics.metrics.OsRuntimeMetricsMBean;
+import co.pletor.nodemetrics.metrics.PressureMetrics;
+import co.pletor.nodemetrics.metrics.PressureMetricsMBean;
 import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
@@ -132,6 +134,8 @@ public class MetricsAgent {
   private static NodeMemMetrics nodeMemBean;
   private static OsInfoMetrics osInfoBean;
   private static OsRuntimeMetrics osRuntimeBean;
+  private static PressureMetrics nodePressureBean;
+  private static PressureMetrics cgroupPressureBean;
 
   private static final String LOG_KEY_AGENT_STARTUP_FAILURE = "agent-startup-failure";
   private static final String LOG_KEY_BLANK_FSMETRICS_PATH = "blank-fsmetrics-path";
@@ -296,6 +300,18 @@ public class MetricsAgent {
             OsRuntimeMetrics::new,
             OsRuntimeMetricsMBean.class,
             "co.pletor.node:type=OsRuntimeMetrics");
+    nodePressureBean =
+        createAndRegister(
+            "node pressure metrics",
+            PressureMetrics::forNode,
+            PressureMetricsMBean.class,
+            "co.pletor.node:type=PressureMetrics");
+    cgroupPressureBean =
+        createAndRegister(
+            "cgroup pressure metrics",
+            PressureMetrics::forCgroup,
+            PressureMetricsMBean.class,
+            "co.pletor.cgroup:type=PressureMetrics");
     createAndRegister(
         "telemetry mode metrics",
         () -> TELEMETRY_MODE_METRICS,
@@ -769,6 +785,8 @@ public class MetricsAgent {
     addHighPriorityTask(tasks, "node-mem", nodeMemBean, fastMs);
     addHighPriorityTask(tasks, "os-info", osInfoBean, OS_INFO_REFRESH_INTERVAL_MS);
     addHighPriorityTask(tasks, "os-runtime", osRuntimeBean, OS_RUNTIME_REFRESH_INTERVAL_MS);
+    addHighPriorityTask(tasks, "pressure-node", nodePressureBean, fastMs);
+    addHighPriorityTask(tasks, "pressure-cgroup", cgroupPressureBean, fastMs);
 
     for (Map.Entry<String, FsEntry> entry : fsMap.entrySet()) {
       FsMetrics fsBean = entry.getValue().getBean();

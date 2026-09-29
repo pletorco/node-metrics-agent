@@ -24,6 +24,8 @@ The agent registers these MBeans:
 - `co.pletor.node:type=CpuMetrics`
 - `co.pletor.node:type=MemMetrics`
 - `co.pletor.cgroup:type=MemMetrics`
+- `co.pletor.node:type=PressureMetrics` and `co.pletor.cgroup:type=PressureMetrics` (pressure stall
+  information, see `RUNBOOK.md`)
 - `co.pletor.proc:type=FdMetrics`
 - `co.pletor.node:type=IoRates`
 - `co.pletor.node:type=OsInfoMetrics`
@@ -110,6 +112,7 @@ Exported Prometheus metric names use the `pletor_*` prefix, for example:
 - `pletor_cgroup_memmetrics_memoryworkingsetbytes`
 - `pletor_node_iorates_diskreadbytestotal` (cumulative counters: use `rate()`)
 - `pletor_node_cpumetrics_systemcpuiowaitticks` (cumulative counter)
+- `pletor_node_pressuremetrics_memoryfulltotalmicros` (cumulative counter: stalled microseconds)
 - `pletor_proc_fdmetrics_openfiledescriptorcount`
 - `pletor_agent_observability_queuefillratio`
 

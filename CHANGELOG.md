@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Pressure stall information (PSI) metrics: `co.pletor.node:type=PressureMetrics` (from
+  `/proc/pressure`, host-wide) and `co.pletor.cgroup:type=PressureMetrics` (the container's own
+  `cpu.pressure`, `memory.pressure` and `io.pressure`, cgroup v2). For CPU, memory and I/O, each
+  with `some` and `full`: the kernel's 10-second average in percent (`*Avg10`) and the cumulative
+  stalled time in microseconds (`*TotalMicros`, a counter for `rate()`). `-1` when PSI is
+  unavailable. Exporter rules updated so the totals are exported as counters.
+
 ## [0.9.0] - 2026-09-29
 
 Behavior changes to know before upgrading: MBeans appear about 0.5 s after `main()` starts (up to

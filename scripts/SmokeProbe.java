@@ -17,6 +17,8 @@ public class SmokeProbe {
       "co.pletor.node:type=OsInfoMetrics",
       "co.pletor.node:type=OsRuntimeMetrics",
       "co.pletor.cgroup:type=MemMetrics",
+      "co.pletor.cgroup:type=PressureMetrics",
+      "co.pletor.node:type=PressureMetrics",
       "co.pletor.proc:type=FdMetrics",
       "co.pletor.agent:type=TelemetryMode",
       "co.pletor.agent:type=Observability",
