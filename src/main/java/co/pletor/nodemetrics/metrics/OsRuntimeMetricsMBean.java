@@ -1,8 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
-/**
- * MBean interface for runtime OS metrics (uptime and mounts).
- */
+/** MBean interface for runtime OS metrics (uptime and mounts). */
 public interface OsRuntimeMetricsMBean {
 
   /**

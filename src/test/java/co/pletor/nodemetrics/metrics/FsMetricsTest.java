@@ -1,31 +1,36 @@
 // src/test/java/co/pletor/nodemetrics/metrics/FsMetricsTest.java
 package co.pletor.nodemetrics.metrics;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
+import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.lang.reflect.Field;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Unit tests for {@link FsMetrics}.
- * <p>
- * These tests cover:
+ *
+ * <p>These tests cover:
+ *
  * <ul>
- *   <li>Initial state right after construction</li>
- *   <li>Successful poll() on a real filesystem path</li>
- *   <li>Failure path of poll() when an exception is thrown</li>
- *   <li>Basic instanceof pattern matching against FsMetricsMBean</li>
+ *   <li>Initial state right after construction
+ *   <li>Successful poll() on a real filesystem path
+ *   <li>Failure path of poll() when an exception is thrown
+ *   <li>Basic instanceof pattern matching against FsMetricsMBean
  * </ul>
  */
 class FsMetricsTest {
 
-  @TempDir
-  Path tempDir;
+  @TempDir Path tempDir;
 
   @Test
   @DisplayName("Constructor should keep path and initialize fields to default values")
@@ -41,8 +46,7 @@ class FsMetricsTest {
     assertEquals(
         dir.toString(),
         metrics.getPath(),
-        "getPath() should return the original Path's string representation"
-    );
+        "getPath() should return the original Path's string representation");
 
     // And: numeric fields should be at their default zero value before any poll()
     assertEquals(0L, metrics.getTotalBytes(), "Initial total bytes should be zero");
@@ -61,8 +65,7 @@ class FsMetricsTest {
       assertEquals(
           metrics.getPath(),
           tv.getPath(),
-          "Path from FsMetricsMBean view should match concrete FsMetrics implementation"
-      );
+          "Path from FsMetricsMBean view should match concrete FsMetrics implementation");
     } else {
       fail("FsMetrics must implement FsMetricsMBean");
     }
@@ -76,17 +79,10 @@ class FsMetricsTest {
     FsMetrics metrics = new FsMetrics(dir);
 
     // When: poll() is invoked
-    assertDoesNotThrow(
-        metrics::poll,
-        "poll() should not throw when FileStore lookup succeeds"
-    );
+    assertDoesNotThrow(metrics::poll, "poll() should not throw when FileStore lookup succeeds");
 
     // Then: path should remain stable
-    assertEquals(
-        dir.toString(),
-        metrics.getPath(),
-        "Path should not change after poll()"
-    );
+    assertEquals(dir.toString(), metrics.getPath(), "Path should not change after poll()");
 
     // And: file store name and type should be non-empty strings
     String fsName = metrics.getFileStoreName();
@@ -104,7 +100,8 @@ class FsMetricsTest {
 
     assertTrue(total >= 0L, "Total bytes should be non-negative after successful poll()");
     assertTrue(usable >= 0L, "Usable bytes should be non-negative after successful poll()");
-    assertTrue(unallocated >= 0L, "Unallocated bytes should be non-negative after successful poll()");
+    assertTrue(
+        unallocated >= 0L, "Unallocated bytes should be non-negative after successful poll()");
 
     // Optional sanity check: usable + unallocated should not exceed total in normal environments
     // (We tolerate violation here to avoid flakiness on exotic file systems.)
@@ -115,9 +112,9 @@ class FsMetricsTest {
   void pollShouldResetFieldsOnException() {
     // Prepare a multi-line description using a text block as requested
     String description =
-        "FsMetrics should report \"unknown\" and -1\n" +
-        "when an exception is thrown during poll().\n" +
-        "This test forces a NullPointerException by using a null Path.\n";
+        "FsMetrics should report \"unknown\" and -1\n"
+            + "when an exception is thrown during poll().\n"
+            + "This test forces a NullPointerException by using a null Path.\n";
 
     // Given: an FsMetrics instance created with a null path
     // This is intentionally invalid to trigger an exception in poll().
@@ -125,36 +122,27 @@ class FsMetricsTest {
 
     // When: poll() is called, Files.getFileStore(null) will throw a NullPointerException
     assertDoesNotThrow(
-        metrics::poll,
-        "poll() should catch exceptions internally and not rethrow them"
-    );
+        metrics::poll, "poll() should catch exceptions internally and not rethrow them");
 
     // Then: error sentinel values should be set as described in the class JavaDoc
     assertEquals(
         "unknown",
         metrics.getFileStoreName(),
-        "On failure, file store name should be 'unknown' (" + description + ")"
-    );
+        "On failure, file store name should be 'unknown' (" + description + ")");
     assertEquals(
         "unknown",
         metrics.getFileSystemType(),
-        "On failure, file system type should be 'unknown' (" + description + ")"
-    );
+        "On failure, file system type should be 'unknown' (" + description + ")");
     assertEquals(
-        -1L,
-        metrics.getTotalBytes(),
-        "On failure, total bytes should be -1 (" + description + ")"
-    );
+        -1L, metrics.getTotalBytes(), "On failure, total bytes should be -1 (" + description + ")");
     assertEquals(
         -1L,
         metrics.getUsableBytes(),
-        "On failure, usable bytes should be -1 (" + description + ")"
-    );
+        "On failure, usable bytes should be -1 (" + description + ")");
     assertEquals(
         -1L,
         metrics.getUnallocatedBytes(),
-        "On failure, unallocated bytes should be -1 (" + description + ")"
-    );
+        "On failure, unallocated bytes should be -1 (" + description + ")");
 
     // Note: getPath() would throw NullPointerException here because the underlying path is null.
     // We intentionally do not call getPath() in this failure scenario test.
@@ -176,8 +164,7 @@ class FsMetricsTest {
     assertEquals(
         12345L,
         metrics.getTotalBytes(),
-        "Getter should return cached value without forcing refresh when read refresh is disabled"
-    );
+        "Getter should return cached value without forcing refresh when read refresh is disabled");
   }
 
   private void bypassRefresh(FsMetrics metrics) {
@@ -185,13 +172,14 @@ class FsMetricsTest {
   }
 
   @Test
-  void poll_shouldReportRefreshErrorForMissingPathAndClearItOnceItExists(@org.junit.jupiter.api.io.TempDir Path tmp)
-      throws Exception {
+  void poll_shouldReportRefreshErrorForMissingPathAndClearItOnceItExists(
+      @org.junit.jupiter.api.io.TempDir Path tmp) throws Exception {
     Path dir = tmp.resolve("later");
     FsMetrics metrics = new FsMetrics(dir);
 
     metrics.poll();
-    assertNotNull(metrics.lastRefreshError(), "Unreadable path must be reported, not silently absorbed");
+    assertNotNull(
+        metrics.lastRefreshError(), "Unreadable path must be reported, not silently absorbed");
     metrics.setReadRefreshEnabled(false);
     assertEquals(-1L, metrics.getTotalBytes());
 

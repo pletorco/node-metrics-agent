@@ -1,8 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
-/**
- * JMX MBean interface for file descriptor metrics.
- */
+/** JMX MBean interface for file descriptor metrics. */
 public interface FdMetricsMBean {
 
   /**

@@ -1,24 +1,22 @@
 // src/test/java/co/pletor/nodemetrics/agent/MetricsAgentTest.java
 package co.pletor.nodemetrics.agent;
 
-import co.pletor.nodemetrics.metrics.FsMetrics;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import co.pletor.nodemetrics.metrics.CgroupMemMetrics;
 import co.pletor.nodemetrics.metrics.CpuMetrics;
 import co.pletor.nodemetrics.metrics.FdMetrics;
+import co.pletor.nodemetrics.metrics.FsMetrics;
 import co.pletor.nodemetrics.metrics.IoRates;
 import co.pletor.nodemetrics.metrics.NodeMemMetrics;
 import co.pletor.nodemetrics.metrics.OsInfoMetrics;
 import co.pletor.nodemetrics.metrics.OsRuntimeMetrics;
-
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Mockito;
-
-import javax.management.MBeanRegistrationException;
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -28,20 +26,24 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashSet;
 import java.util.Map;
-
-
-import static org.junit.jupiter.api.Assertions.*;
+import javax.management.MBeanRegistrationException;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 /**
  * High coverage unit tests for {@link MetricsAgent}.
- * <p>
- * This test class uses reflection in order to exercise private static
- * methods and fields without modifying production code.
+ *
+ * <p>This test class uses reflection in order to exercise private static methods and fields without
+ * modifying production code.
  */
 class MetricsAgentTest {
 
-  @TempDir
-  Path tempDir;
+  @TempDir Path tempDir;
 
   // ------------------------------------------------------------------------
   // Reflection helpers
@@ -60,10 +62,7 @@ class MetricsAgentTest {
   }
 
   private static Object invokePrivateStatic(
-      String methodName,
-      Class<?>[] paramTypes,
-      Object... args
-  ) throws Exception {
+      String methodName, Class<?>[] paramTypes, Object... args) throws Exception {
     Method m = MetricsAgent.class.getDeclaredMethod(methodName, paramTypes);
     m.setAccessible(true);
     return m.invoke(null, args);
@@ -80,7 +79,8 @@ class MetricsAgentTest {
     return ctor.newInstance();
   }
 
-  private static void setConfigPaths(Object cfg, java.util.List<String> fsmetrics_paths) throws Exception {
+  private static void setConfigPaths(Object cfg, java.util.List<String> fsmetrics_paths)
+      throws Exception {
     Field f = cfg.getClass().getDeclaredField("fsmetricsPaths");
     f.setAccessible(true);
     f.set(cfg, fsmetrics_paths);
@@ -92,7 +92,8 @@ class MetricsAgentTest {
     f.set(cfg, maxPartitions);
   }
 
-  private static Field declaredFieldInHierarchy(Class<?> type, String fieldName) throws NoSuchFieldException {
+  private static Field declaredFieldInHierarchy(Class<?> type, String fieldName)
+      throws NoSuchFieldException {
     for (Class<?> c = type; c != null; c = c.getSuperclass()) {
       try {
         return c.getDeclaredField(fieldName);
@@ -130,11 +131,7 @@ class MetricsAgentTest {
   void buildFsObjectName_shouldUseCorrectDomainAndProperties() throws Exception {
     Path path = Paths.get("/tmp/metrics-agent-fs-test").toAbsolutePath();
 
-    Object result = invokePrivateStatic(
-        "buildFsObjectName",
-        new Class<?>[]{Path.class},
-        path
-    );
+    Object result = invokePrivateStatic("buildFsObjectName", new Class<?>[] {Path.class}, path);
 
     assertNotNull(result, "ObjectName result must not be null");
 
@@ -144,7 +141,8 @@ class MetricsAgentTest {
       ObjectName tv = (ObjectName) o;
       assertEquals("co.pletor.node", tv.getDomain(), "Domain should be co.pletor.node");
       assertEquals("FsMetrics", tv.getKeyProperty("type"), "Type property should be FsMetrics");
-      assertEquals(path.toString(), tv.getKeyProperty("path"), "Path property should match input path");
+      assertEquals(
+          path.toString(), tv.getKeyProperty("path"), "Path property should match input path");
     } else {
       fail("Result is not an ObjectName instance");
     }
@@ -159,11 +157,7 @@ class MetricsAgentTest {
   void fixedObjectName_shouldCreateValidObjectName() throws Exception {
     String name = "co.pletor.node:type=TestMetrics";
 
-    Object result = invokePrivateStatic(
-        "fixedObjectName",
-        new Class<?>[]{String.class},
-        name
-    );
+    Object result = invokePrivateStatic("fixedObjectName", new Class<?>[] {String.class}, name);
 
     assertTrue(result instanceof ObjectName, "fixedObjectName should return an ObjectName");
     ObjectName on = (ObjectName) result;
@@ -177,20 +171,15 @@ class MetricsAgentTest {
     // Malformed name without key properties
     String invalid = "invalid";
 
-    InvocationTargetException ex = assertThrows(
-        InvocationTargetException.class,
-        () -> invokePrivateStatic(
-            "fixedObjectName",
-            new Class<?>[]{String.class},
-            invalid
-        ),
-        "fixedObjectName should rethrow malformed names as IllegalStateException"
-    );
+    InvocationTargetException ex =
+        assertThrows(
+            InvocationTargetException.class,
+            () -> invokePrivateStatic("fixedObjectName", new Class<?>[] {String.class}, invalid),
+            "fixedObjectName should rethrow malformed names as IllegalStateException");
 
     assertTrue(
         ex.getCause() instanceof IllegalStateException,
-        "Underlying cause should be IllegalStateException"
-    );
+        "Underlying cause should be IllegalStateException");
   }
 
   // ------------------------------------------------------------------------
@@ -205,16 +194,11 @@ class MetricsAgentTest {
 
     Path expected = Paths.get(arg);
 
-    Object result = invokePrivateStatic(
-        "resolveConfigPath",
-        new Class<?>[]{String.class},
-        arg
-    );
+    Object result = invokePrivateStatic("resolveConfigPath", new Class<?>[] {String.class}, arg);
 
     assertTrue(
         result instanceof Path,
-        "resolveConfigPath should return a Path when explicit argument is provided"
-    );
+        "resolveConfigPath should return a Path when explicit argument is provided");
     assertEquals(expected, result, "Explicit path should be returned when agentArgs is provided.");
   }
 
@@ -223,13 +207,10 @@ class MetricsAgentTest {
   void resolveConfigPath_shouldTreatBlankArgsAsNoConfig() throws Exception {
     String blank = "   ";
 
-    Object result = invokePrivateStatic(
-        "resolveConfigPath",
-        new Class<?>[]{String.class},
-        blank
-    );
+    Object result = invokePrivateStatic("resolveConfigPath", new Class<?>[] {String.class}, blank);
 
-    // We only check that the call returns either null or a Path; behavior is covered via other tests
+    // We only check that the call returns either null or a Path; behavior is covered via other
+    // tests
     if (result != null) {
       assertTrue(result instanceof Path, "When not null, result must be a Path");
     }
@@ -240,13 +221,13 @@ class MetricsAgentTest {
   void resolveConfigPath_shouldHandleNullWithoutCrash() {
     // When agentArgs is null, method should just search defaults and either return a Path or null.
     assertDoesNotThrow(
-        () -> invokePrivateStatic(
-            "resolveConfigPath",
-            new Class<?>[]{String.class},
-            (Object) null   // cast to Object to avoid varargs warning
-        ),
-        "resolveConfigPath(null) should never throw"
-    );
+        () ->
+            invokePrivateStatic(
+                "resolveConfigPath",
+                new Class<?>[] {String.class},
+                (Object) null // cast to Object to avoid varargs warning
+                ),
+        "resolveConfigPath(null) should never throw");
   }
 
   // ------------------------------------------------------------------------
@@ -258,36 +239,32 @@ class MetricsAgentTest {
   void resolveAndValidatePath_shouldReturnAbsolutePathForExistingPath() throws Exception {
     Path existing = Files.createDirectory(tempDir.resolve("existing-dir")).toAbsolutePath();
 
-    Object result = invokePrivateStatic(
-        "resolveAndValidatePath",
-        new Class<?>[]{String.class},
-        existing.toString()
-    );
+    Object result =
+        invokePrivateStatic(
+            "resolveAndValidatePath", new Class<?>[] {String.class}, existing.toString());
 
     assertTrue(result instanceof Path, "Result should be a Path");
     Path returned = (Path) result;
     assertTrue(returned.isAbsolute(), "Returned path should be absolute");
-    assertEquals(existing.normalize(), returned.normalize(), "Returned path should match normalized input");
+    assertEquals(
+        existing.normalize(), returned.normalize(), "Returned path should match normalized input");
   }
 
   @Test
-  @DisplayName("resolveAndValidatePath should warn but not fail when missing path and strict is false")
+  @DisplayName(
+      "resolveAndValidatePath should warn but not fail when missing path and strict is false")
   void resolveAndValidatePath_shouldWarnButNotFailForMissingPathWhenNotStrict() throws Exception {
     String missing = tempDir.resolve("definitely-missing-" + System.nanoTime()).toString();
 
-    Object result = invokePrivateStatic(
-        "resolveAndValidatePath",
-        new Class<?>[]{String.class},
-        missing
-    );
+    Object result =
+        invokePrivateStatic("resolveAndValidatePath", new Class<?>[] {String.class}, missing);
 
     assertTrue(result instanceof Path, "Result should be a Path even for missing target");
     Path returned = (Path) result;
     assertEquals(
         Paths.get(missing).toAbsolutePath().normalize(),
         returned.normalize(),
-        "Returned path should be normalized absolute path for the missing input"
-    );
+        "Returned path should be normalized absolute path for the missing input");
   }
 
   // ------------------------------------------------------------------------
@@ -300,11 +277,7 @@ class MetricsAgentTest {
     Object cfg = newConfigInstance();
     setConfigPaths(cfg, java.util.List.of("/data", "/logs"));
 
-    Object result = invokePrivateStatic(
-        "buildPathSet",
-        new Class<?>[]{configClass()},
-        cfg
-    );
+    Object result = invokePrivateStatic("buildPathSet", new Class<?>[] {configClass()}, cfg);
 
     assertTrue(result instanceof LinkedHashSet, "Result should be a LinkedHashSet");
     @SuppressWarnings("unchecked")
@@ -329,11 +302,7 @@ class MetricsAgentTest {
       return;
     }
 
-    Object result = invokePrivateStatic(
-        "buildPathSet",
-        new Class<?>[]{configClass()},
-        cfg
-    );
+    Object result = invokePrivateStatic("buildPathSet", new Class<?>[] {configClass()}, cfg);
 
     assertTrue(result instanceof LinkedHashSet, "Result should be a LinkedHashSet");
     @SuppressWarnings("unchecked")
@@ -349,11 +318,7 @@ class MetricsAgentTest {
     Object cfg = newConfigInstance();
     setConfigPaths(cfg, java.util.Arrays.asList("/data", "/data/", "   ", null));
 
-    Object result = invokePrivateStatic(
-        "buildPathSet",
-        new Class<?>[]{configClass()},
-        cfg
-    );
+    Object result = invokePrivateStatic("buildPathSet", new Class<?>[] {configClass()}, cfg);
 
     assertTrue(result instanceof LinkedHashSet, "Result should be a LinkedHashSet");
     @SuppressWarnings("unchecked")
@@ -374,12 +339,12 @@ class MetricsAgentTest {
     normalizedPaths.add(p1.toString());
     normalizedPaths.add(p2.toString());
 
-    Object result = invokePrivateStatic(
-        "applyPartitionDedupAndCap",
-        new Class<?>[]{LinkedHashSet.class, int.class},
-        normalizedPaths,
-        10
-    );
+    Object result =
+        invokePrivateStatic(
+            "applyPartitionDedupAndCap",
+            new Class<?>[] {LinkedHashSet.class, int.class},
+            normalizedPaths,
+            10);
 
     assertTrue(result instanceof LinkedHashSet, "Result should be a LinkedHashSet");
     @SuppressWarnings("unchecked")
@@ -401,12 +366,12 @@ class MetricsAgentTest {
     normalizedPaths.add(missing2.toString());
     normalizedPaths.add(missing3.toString());
 
-    Object result = invokePrivateStatic(
-        "applyPartitionDedupAndCap",
-        new Class<?>[]{LinkedHashSet.class, int.class},
-        normalizedPaths,
-        2
-    );
+    Object result =
+        invokePrivateStatic(
+            "applyPartitionDedupAndCap",
+            new Class<?>[] {LinkedHashSet.class, int.class},
+            normalizedPaths,
+            2);
 
     assertTrue(result instanceof LinkedHashSet, "Result should be a LinkedHashSet");
     @SuppressWarnings("unchecked")
@@ -419,30 +384,24 @@ class MetricsAgentTest {
   }
 
   @Test
-  @DisplayName("resolveMaxFsPartitions should use config value and fall back to default for invalid values")
+  @DisplayName(
+      "resolveMaxFsPartitions should use config value and fall back to default for invalid values")
   void resolveMaxFsPartitions_shouldUseConfigValueOrDefault() throws Exception {
     Object cfg = newConfigInstance();
     setConfigPaths(cfg, java.util.List.of("/"));
     setConfigMaxPartitions(cfg, 7);
 
-    Object valid = invokePrivateStatic(
-        "resolveMaxFsPartitions",
-        new Class<?>[]{configClass()},
-        cfg
-    );
+    Object valid =
+        invokePrivateStatic("resolveMaxFsPartitions", new Class<?>[] {configClass()}, cfg);
     assertEquals(7, valid, "Configured max partition value should be used");
 
     setConfigMaxPartitions(cfg, 0);
-    Object invalid = invokePrivateStatic(
-        "resolveMaxFsPartitions",
-        new Class<?>[]{configClass()},
-        cfg
-    );
+    Object invalid =
+        invokePrivateStatic("resolveMaxFsPartitions", new Class<?>[] {configClass()}, cfg);
     assertEquals(
         Config.DEFAULT_FSMETRICS_MAX_PARTITIONS,
         invalid,
-        "Invalid max partition value should fall back to default"
-    );
+        "Invalid max partition value should fall back to default");
   }
 
   // ------------------------------------------------------------------------
@@ -459,11 +418,8 @@ class MetricsAgentTest {
     String presentKey = "/present";
     fsMap.put(presentKey, new Object());
 
-    Object result = invokePrivateStatic(
-        "shouldReuseExistingEntry",
-        new Class<?>[]{String.class},
-        presentKey
-    );
+    Object result =
+        invokePrivateStatic("shouldReuseExistingEntry", new Class<?>[] {String.class}, presentKey);
 
     assertTrue(result instanceof Boolean && (Boolean) result, "Should return true when key exists");
   }
@@ -475,13 +431,12 @@ class MetricsAgentTest {
     Map<String, Object> fsMap = (Map<String, Object>) getStaticField("fsMap");
     fsMap.clear();
 
-    Object result = invokePrivateStatic(
-        "shouldReuseExistingEntry",
-        new Class<?>[]{String.class},
-        "/absent"
-    );
+    Object result =
+        invokePrivateStatic("shouldReuseExistingEntry", new Class<?>[] {String.class}, "/absent");
 
-    assertTrue(result instanceof Boolean && !((Boolean) result), "Should return false when key does not exist");
+    assertTrue(
+        result instanceof Boolean && !((Boolean) result),
+        "Should return false when key does not exist");
   }
 
   // ------------------------------------------------------------------------
@@ -505,11 +460,7 @@ class MetricsAgentTest {
     paths.add(p.toString());
 
     // First registration
-    invokePrivateStatic(
-        "registerOrReuseFsBeans",
-        new Class<?>[]{LinkedHashSet.class},
-        paths
-    );
+    invokePrivateStatic("registerOrReuseFsBeans", new Class<?>[] {LinkedHashSet.class}, paths);
 
     assertEquals(1, fsMap.size(), "One filesystem entry should be registered after first call");
 
@@ -521,11 +472,7 @@ class MetricsAgentTest {
     assertTrue(mbs.isRegistered(on), "MBean should be registered in the MBeanServer");
 
     // Second call with the same path should reuse existing entry
-    invokePrivateStatic(
-        "registerOrReuseFsBeans",
-        new Class<?>[]{LinkedHashSet.class},
-        paths
-    );
+    invokePrivateStatic("registerOrReuseFsBeans", new Class<?>[] {LinkedHashSet.class}, paths);
 
     assertEquals(1, fsMap.size(), "Entry count should remain 1 when reusing existing FsEntry");
   }
@@ -552,11 +499,7 @@ class MetricsAgentTest {
     allPaths.add(p2.toString());
 
     // Register both paths
-    invokePrivateStatic(
-        "registerOrReuseFsBeans",
-        new Class<?>[]{LinkedHashSet.class},
-        allPaths
-    );
+    invokePrivateStatic("registerOrReuseFsBeans", new Class<?>[] {LinkedHashSet.class}, allPaths);
 
     assertEquals(2, fsMap.size(), "Two filesystem entries should be registered");
 
@@ -570,25 +513,19 @@ class MetricsAgentTest {
     LinkedHashSet<String> newPaths = new LinkedHashSet<>();
     newPaths.add(p1.toString());
 
-    invokePrivateStatic(
-        "unregisterRemovedFsBeans",
-        new Class<?>[]{LinkedHashSet.class},
-        newPaths
-    );
+    invokePrivateStatic("unregisterRemovedFsBeans", new Class<?>[] {LinkedHashSet.class}, newPaths);
 
     assertEquals(1, fsMap.size(), "Only one filesystem entry should remain after removal");
     assertFalse(
         fsMap.containsKey(p2.toString()),
-        "Entry for second path should have been removed from fsMap"
-    );
+        "Entry for second path should have been removed from fsMap");
     assertFalse(
-        mbs.isRegistered(secondOn),
-        "Second MBean should have been unregistered from MBeanServer"
-    );
+        mbs.isRegistered(secondOn), "Second MBean should have been unregistered from MBeanServer");
   }
 
   @Test
-  @DisplayName("unregisterRemovedFsBeans should ignore exceptions thrown by MBeanServer.unregisterMBean")
+  @DisplayName(
+      "unregisterRemovedFsBeans should ignore exceptions thrown by MBeanServer.unregisterMBean")
   void unregisterRemovedFsBeans_shouldIgnoreUnregisterExceptions() throws Exception {
     // Use a mock MBeanServer to force an MBeanRegistrationException
     MBeanServer mockSvr = Mockito.mock(MBeanServer.class);
@@ -600,11 +537,9 @@ class MetricsAgentTest {
 
     // Construct FsEntry via reflection: FsEntry(FsMetrics, ObjectName, Path)
     Class<?> fsEntryClass = Class.forName("co.pletor.nodemetrics.agent.MetricsAgent$FsEntry");
-    Constructor<?> ctor = fsEntryClass.getDeclaredConstructor(
-        co.pletor.nodemetrics.metrics.FsMetrics.class,
-        ObjectName.class,
-        Path.class
-    );
+    Constructor<?> ctor =
+        fsEntryClass.getDeclaredConstructor(
+            co.pletor.nodemetrics.metrics.FsMetrics.class, ObjectName.class, Path.class);
     ctor.setAccessible(true);
 
     FsMetrics dummyBean = Mockito.mock(FsMetrics.class);
@@ -616,24 +551,20 @@ class MetricsAgentTest {
     fsMap.put(key, fsEntry);
 
     Mockito.doThrow(new MBeanRegistrationException(new Exception("boom")))
-        .when(mockSvr).unregisterMBean(on);
+        .when(mockSvr)
+        .unregisterMBean(on);
 
     LinkedHashSet<String> newPaths = new LinkedHashSet<>();
     // newPaths does NOT contain "/dummy", so unregister should be invoked
 
     assertDoesNotThrow(
-        () -> invokePrivateStatic(
-            "unregisterRemovedFsBeans",
-            new Class<?>[]{LinkedHashSet.class},
-            newPaths
-        ),
-        "unregisterRemovedFsBeans should swallow MBeanRegistrationException"
-    );
+        () ->
+            invokePrivateStatic(
+                "unregisterRemovedFsBeans", new Class<?>[] {LinkedHashSet.class}, newPaths),
+        "unregisterRemovedFsBeans should swallow MBeanRegistrationException");
 
     assertTrue(fsMap.isEmpty(), "Entry should be removed from fsMap even when unregister fails");
   }
-
-
 
   // ------------------------------------------------------------------------
   // applyConfig tests (integration of several helpers)
@@ -654,7 +585,6 @@ class MetricsAgentTest {
     Object cfg = newConfigInstance();
     // poll_interval_sec is ignored now, but we can set it
 
-
     Path fsDir = Files.createDirectory(tempDir.resolve("apply-config-fs")).toAbsolutePath();
     setConfigPaths(cfg, java.util.List.of(fsDir.toString()));
 
@@ -662,11 +592,7 @@ class MetricsAgentTest {
     setStaticField("current", null);
 
     // Call applyConfig via reflection
-    invokePrivateStatic(
-        "applyConfig",
-        new Class<?>[]{configClass()},
-        cfg
-    );
+    invokePrivateStatic("applyConfig", new Class<?>[] {configClass()}, cfg);
 
     // FsMap should now contain an entry
     assertFalse(fsMap.isEmpty(), "applyConfig should register at least one filesystem entry");
@@ -684,13 +610,8 @@ class MetricsAgentTest {
     setStaticField("current", null);
 
     assertDoesNotThrow(
-        () -> invokePrivateStatic(
-            "applyConfig",
-            new Class<?>[]{configClass()},
-            (Object) null
-        ),
-        "applyConfig should never throw when null config is provided"
-    );
+        () -> invokePrivateStatic("applyConfig", new Class<?>[] {configClass()}, (Object) null),
+        "applyConfig should never throw when null config is provided");
 
     Object current = getStaticField("current");
     assertNotNull(current, "Current config should be set to defaults when input is null");
@@ -704,7 +625,8 @@ class MetricsAgentTest {
   }
 
   @Test
-  @DisplayName("initializeRefreshEngine should disable getter-triggered refresh for registered metrics")
+  @DisplayName(
+      "initializeRefreshEngine should disable getter-triggered refresh for registered metrics")
   void initializeRefreshEngine_shouldDisableReadRefreshOnRegisteredMetrics() throws Exception {
     MBeanServer mbs = java.lang.management.ManagementFactory.getPlatformMBeanServer();
     setStaticField("svr", mbs);
@@ -727,21 +649,13 @@ class MetricsAgentTest {
     setConfigPaths(cfg, java.util.List.of(fsDir.toString()));
     setConfigMaxPartitions(cfg, 32);
 
-    invokePrivateStatic(
-        "applyConfig",
-        new Class<?>[]{configClass()},
-        cfg
-    );
-    invokePrivateStatic(
-        "initializeRefreshEngine",
-        new Class<?>[]{}
-    );
+    invokePrivateStatic("applyConfig", new Class<?>[] {configClass()}, cfg);
+    invokePrivateStatic("initializeRefreshEngine", new Class<?>[] {});
 
     CpuMetrics cpu = (CpuMetrics) getStaticField("cpuBean");
     assertFalse(
         getBooleanField(cpu, "readRefreshEnabled"),
-        "CpuMetrics should use asynchronous refresh when engine is initialized"
-    );
+        "CpuMetrics should use asynchronous refresh when engine is initialized");
 
     Object fsEntry = fsMap.values().iterator().next();
     Method beanMethod = fsEntry.getClass().getDeclaredMethod("getBean");
@@ -750,8 +664,7 @@ class MetricsAgentTest {
     assertTrue(fsBean instanceof FsMetrics, "FsEntry should contain FsMetrics bean");
     assertFalse(
         getBooleanField(fsBean, "readRefreshEnabled"),
-        "FsMetrics should use asynchronous refresh when engine is initialized"
-    );
+        "FsMetrics should use asynchronous refresh when engine is initialized");
   }
 
   @Test
@@ -761,18 +674,18 @@ class MetricsAgentTest {
     setStaticField("svr", mockSvr);
 
     Mockito.doThrow(new MBeanRegistrationException(new Exception("boom")))
-        .when(mockSvr).registerMBean(Mockito.any(), Mockito.any(ObjectName.class));
+        .when(mockSvr)
+        .registerMBean(Mockito.any(), Mockito.any(ObjectName.class));
 
     assertDoesNotThrow(
-        () -> invokePrivateStatic(
-            "registerStandardMBeanSafely",
-            new Class<?>[]{Object.class, Class.class, ObjectName.class},
-            new co.pletor.nodemetrics.metrics.FdMetrics(),
-            co.pletor.nodemetrics.metrics.FdMetricsMBean.class,
-            new ObjectName("co.pletor.node:type=FdMetricsTest")
-        ),
-        "registerStandardMBeanSafely should swallow registration-time failures"
-    );
+        () ->
+            invokePrivateStatic(
+                "registerStandardMBeanSafely",
+                new Class<?>[] {Object.class, Class.class, ObjectName.class},
+                new co.pletor.nodemetrics.metrics.FdMetrics(),
+                co.pletor.nodemetrics.metrics.FdMetricsMBean.class,
+                new ObjectName("co.pletor.node:type=FdMetricsTest")),
+        "registerStandardMBeanSafely should swallow registration-time failures");
 
     Mockito.verify(mockSvr, Mockito.atLeastOnce())
         .registerMBean(Mockito.any(), Mockito.any(ObjectName.class));
@@ -789,26 +702,29 @@ class MetricsAgentTest {
 
     // Mock static ManagementFactory to return our mock server
     try (var mockedFactory = Mockito.mockStatic(java.lang.management.ManagementFactory.class);
-         var mockedLoader = Mockito.mockStatic(ConfigLoader.class)) {
+        var mockedLoader = Mockito.mockStatic(ConfigLoader.class)) {
 
-      mockedFactory.when(java.lang.management.ManagementFactory::getPlatformMBeanServer)
+      mockedFactory
+          .when(java.lang.management.ManagementFactory::getPlatformMBeanServer)
           .thenReturn(mockSvr);
 
       // Mock ConfigLoader to return a default config
       Object mockConfig = newConfigInstance();
-      // Ensure fsmetrics_paths is set (even if empty) to avoid null pointers if logic assumes non-null
+      // Ensure fsmetrics_paths is set (even if empty) to avoid null pointers if logic assumes
+      // non-null
       setConfigPaths(mockConfig, java.util.List.of("/"));
 
-      mockedLoader.when(() -> ConfigLoader.loadOrDefault(Mockito.any()))
-          .thenReturn(mockConfig);
+      mockedLoader.when(() -> ConfigLoader.loadOrDefault(Mockito.any())).thenReturn(mockConfig);
 
       // Execute premain
       MetricsAgent.premain(null, null);
 
       // Verify MBean registrations
-      // We expect at least the fixed MBeans (CgroupMem, Cpu, Fd, IoRates, NodeMem, OsInfo, OsRuntime)
+      // We expect at least the fixed MBeans (CgroupMem, Cpu, Fd, IoRates, NodeMem, OsInfo,
+      // OsRuntime)
       // plus the initial filesystem MBean (root path)
-      Mockito.verify(mockSvr, Mockito.atLeast(7)).registerMBean(Mockito.any(), Mockito.any(ObjectName.class));
+      Mockito.verify(mockSvr, Mockito.atLeast(7))
+          .registerMBean(Mockito.any(), Mockito.any(ObjectName.class));
 
       // Verify ConfigLoader was called
       mockedLoader.verify(() -> ConfigLoader.loadOrDefault(Mockito.any()));
@@ -823,7 +739,8 @@ class MetricsAgentTest {
   @DisplayName("premain should catch exceptions and log error without crashing")
   void premain_shouldCatchExceptionAndNotCrash() {
     try (var mockedFactory = Mockito.mockStatic(java.lang.management.ManagementFactory.class)) {
-      mockedFactory.when(java.lang.management.ManagementFactory::getPlatformMBeanServer)
+      mockedFactory
+          .when(java.lang.management.ManagementFactory::getPlatformMBeanServer)
           .thenThrow(new RuntimeException("Simulated Startup Failure"));
 
       // Should not throw
@@ -834,13 +751,15 @@ class MetricsAgentTest {
   @Test
   @DisplayName("buildFsObjectName should quote paths containing ObjectName-reserved characters")
   void buildFsObjectName_shouldQuoteReservedCharacters() throws Exception {
-    for (String raw : new String[]{"/data/a,b", "/data/a=b", "/data/a:b", "/data/a*b", "/data/a?b"}) {
+    for (String raw :
+        new String[] {"/data/a,b", "/data/a=b", "/data/a:b", "/data/a*b", "/data/a?b"}) {
       Path path = Paths.get(raw);
 
-      Object result = invokePrivateStatic("buildFsObjectName", new Class<?>[]{Path.class}, path);
+      Object result = invokePrivateStatic("buildFsObjectName", new Class<?>[] {Path.class}, path);
 
       ObjectName name = (ObjectName) result;
-      assertEquals(ObjectName.quote(raw), name.getKeyProperty("path"), "Path should be quoted: " + raw);
+      assertEquals(
+          ObjectName.quote(raw), name.getKeyProperty("path"), "Path should be quoted: " + raw);
       assertFalse(name.isPattern(), "Quoted name must not be a pattern: " + raw);
     }
   }
@@ -850,34 +769,41 @@ class MetricsAgentTest {
   void applyPartitionDedupAndCap_shouldNotBlockOnUnresponsiveFilesystem() throws Exception {
     java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
     java.util.function.Function<Path, String> original = MetricsAgent.partitionKeyDetector;
-    MetricsAgent.partitionKeyDetector = path -> {
-      if (path.toString().contains("dead-nfs")) {
-        while (release.getCount() > 0) {
-          try {
-            release.await();
-          } catch (InterruptedException ignored) {
-            // uninterruptible I/O does not react to interrupts
+    MetricsAgent.partitionKeyDetector =
+        path -> {
+          if (path.toString().contains("dead-nfs")) {
+            while (release.getCount() > 0) {
+              try {
+                release.await();
+              } catch (InterruptedException ignored) {
+                // uninterruptible I/O does not react to interrupts
+              }
+            }
           }
-        }
-      }
-      return "dev:" + path;
-    };
+          return "dev:" + path;
+        };
     try {
       LinkedHashSet<String> paths = new LinkedHashSet<>();
       paths.add("/healthy");
       paths.add("/mnt/dead-nfs/data");
 
       long start = System.nanoTime();
-      Object result = invokePrivateStatic(
-          "applyPartitionDedupAndCap",
-          new Class<?>[]{LinkedHashSet.class, int.class},
-          paths,
-          32
-      );
-      long elapsedMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+      Object result =
+          invokePrivateStatic(
+              "applyPartitionDedupAndCap",
+              new Class<?>[] {LinkedHashSet.class, int.class},
+              paths,
+              32);
+      long elapsedMs =
+          java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 
-      assertTrue(elapsedMs < 10_000L, "Unresponsive mount must not stall config application: " + elapsedMs + " ms");
-      assertEquals(paths, result, "The unresponsive path is still registered so it can be reported as stuck");
+      assertTrue(
+          elapsedMs < 10_000L,
+          "Unresponsive mount must not stall config application: " + elapsedMs + " ms");
+      assertEquals(
+          paths,
+          result,
+          "The unresponsive path is still registered so it can be reported as stuck");
     } finally {
       MetricsAgent.partitionKeyDetector = original;
       release.countDown();

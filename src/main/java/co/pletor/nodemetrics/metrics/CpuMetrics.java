@@ -1,7 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
 import com.sun.management.OperatingSystemMXBean;
-
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,19 +12,20 @@ import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Implementation of {@link CpuMetricsMBean} backed by the platform
- * {@link java.lang.management.OperatingSystemMXBean} and Linux
- * {@code /proc} and {@code /sys/fs/cgroup} files.
- * <p>
- * This class:
+ * Implementation of {@link CpuMetricsMBean} backed by the platform {@link
+ * java.lang.management.OperatingSystemMXBean} and Linux {@code /proc} and {@code /sys/fs/cgroup}
+ * files.
+ *
+ * <p>This class:
+ *
  * <ul>
- *   <li>Polls system and process CPU usage from the platform MXBean</li>
- *   <li>Computes extended CPU state ratios (I/O wait, steal) from
- *       {@code /proc/stat} on Linux</li>
- *   <li>Reads 1m/5m/15m load averages from {@code /proc/loadavg} on Linux</li>
- *   <li>Reads cgroup CPU throttling counters from {@code cpu.stat} when available</li>
- *   <li>Falls back to sentinel values (e.g. -1) when metrics are not supported</li>
+ *   <li>Polls system and process CPU usage from the platform MXBean
+ *   <li>Computes extended CPU state ratios (I/O wait, steal) from {@code /proc/stat} on Linux
+ *   <li>Reads 1m/5m/15m load averages from {@code /proc/loadavg} on Linux
+ *   <li>Reads cgroup CPU throttling counters from {@code cpu.stat} when available
+ *   <li>Falls back to sentinel values (e.g. -1) when metrics are not supported
  * </ul>
+ *
  * The refresh mechanism is invoked on-demand when JMX attributes are queried.
  */
 public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMBean {
@@ -42,69 +42,53 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   private static final String CPUACCT_CONTROLLER = "cpuacct";
   private static final String CPU_CPUACCT_CONTROLLER = "cpu,cpuacct";
 
-  /**
-   * Base operating system MXBean from the Java platform.
-   */
+  /** Base operating system MXBean from the Java platform. */
   private final OperatingSystemMXBean osBean;
 
   /**
-   * Last computed system CPU load in the range {@code 0.0}–{@code 1.0},
-   * or {@code -1.0} when unavailable.
+   * Last computed system CPU load in the range {@code 0.0}–{@code 1.0}, or {@code -1.0} when
+   * unavailable.
    */
   private volatile double systemCpuLoad = -1.0;
 
   /**
-   * Last computed JVM process CPU load in the range {@code 0.0}–{@code 1.0},
-   * or {@code -1.0} when unavailable.
+   * Last computed JVM process CPU load in the range {@code 0.0}–{@code 1.0}, or {@code -1.0} when
+   * unavailable.
    */
   private volatile double processCpuLoad = -1.0;
 
-  /**
-   * Last reported system-wide 1-minute load average, or {@code -1.0} when unsupported.
-   */
+  /** Last reported system-wide 1-minute load average, or {@code -1.0} when unsupported. */
   private volatile double systemLoadAverage = -1.0;
 
-  /**
-   * Number of available logical processors as reported by the OS.
-   */
-  private volatile int availableProcessors =
-      Runtime.getRuntime().availableProcessors();
+  /** Number of available logical processors as reported by the OS. */
+  private volatile int availableProcessors = Runtime.getRuntime().availableProcessors();
 
-  /**
-   * JVM process CPU time in nanoseconds, or {@code 0L} when unsupported.
-   */
+  /** JVM process CPU time in nanoseconds, or {@code 0L} when unsupported. */
   private volatile long processCpuTimeNanos = 0L;
 
   // ------------------------------------------------------------------------
   // Extended CPU state metrics (Linux-only; -1.0 / -1L when unsupported)
   // ------------------------------------------------------------------------
 
-  /**
-   * Fraction of time CPUs spent in I/O wait state since the last successful poll.
-   */
+  /** Fraction of time CPUs spent in I/O wait state since the last successful poll. */
   private volatile double ioWaitRatio = -1.0;
 
-  /**
-   * Fraction of time CPUs spent in steal state since the last successful poll.
-   */
+  /** Fraction of time CPUs spent in steal state since the last successful poll. */
   private volatile double stealRatio = -1.0;
 
   /**
-   * 1, 5 and 15 minute load averages.
-   * The 1-minute value typically matches {@link #systemLoadAverage}.
+   * 1, 5 and 15 minute load averages. The 1-minute value typically matches {@link
+   * #systemLoadAverage}.
    */
   private volatile double loadAvg1m = -1.0;
+
   private volatile double loadAvg5m = -1.0;
   private volatile double loadAvg15m = -1.0;
 
-  /**
-   * Fraction of cgroup CPU time that was throttled during the last polling window.
-   */
+  /** Fraction of cgroup CPU time that was throttled during the last polling window. */
   private volatile double cgroupThrottledRatio = -1.0;
 
-  /**
-   * Number of cgroup CPU throttling events during the last polling window.
-   */
+  /** Number of cgroup CPU throttling events during the last polling window. */
   private volatile long cgroupThrottledCount = 0L;
 
   // Cumulative counters (monotonic; -1 when unavailable)
@@ -136,17 +120,12 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   // Construction
   // ------------------------------------------------------------------------
 
-  /**
-   * Create a new CpuMetrics instance backed by the platform MXBean.
-   */
+  /** Create a new CpuMetrics instance backed by the platform MXBean. */
   public CpuMetrics() {
     this(resolveOsBean());
   }
 
-  /**
-   * Create a new CpuMetrics instance with a specific MXBean.
-   * Primarily intended for tests.
-   */
+  /** Create a new CpuMetrics instance with a specific MXBean. Primarily intended for tests. */
   CpuMetrics(OperatingSystemMXBean osBean) {
     this.osBean = osBean;
     if (osBean != null) {
@@ -155,10 +134,10 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   }
 
   /**
-   * Resolve the platform OperatingSystemMXBean and cast to the
-   * {@link com.sun.management.OperatingSystemMXBean} extension if possible.
-   * <p>
-   * Returns {@code null} when the platform bean is not the extended implementation.
+   * Resolve the platform OperatingSystemMXBean and cast to the {@link
+   * com.sun.management.OperatingSystemMXBean} extension if possible.
+   *
+   * <p>Returns {@code null} when the platform bean is not the extended implementation.
    */
   private static OperatingSystemMXBean resolveOsBean() {
     var base = ManagementFactory.getOperatingSystemMXBean();
@@ -173,9 +152,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  /**
-   * Refresh the metric values.
-   */
+  /** Refresh the metric values. */
   @Override
   protected void doRefresh() {
     // Update common MXBean-backed metrics
@@ -185,9 +162,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     updateExtendedLinuxMetrics();
   }
 
-  /**
-   * Update metrics that are backed by the OperatingSystemMXBean.
-   */
+  /** Update metrics that are backed by the OperatingSystemMXBean. */
   @SuppressWarnings("deprecation")
   private void updateMxBeanMetrics() {
     if (osBean == null) {
@@ -214,9 +189,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
   }
 
-  /**
-   * Normalize MXBean ratio values to {@code -1.0} when outside [0.0, 1.0].
-   */
+  /** Normalize MXBean ratio values to {@code -1.0} when outside [0.0, 1.0]. */
   private static double normalizeRatio(double value) {
     if (value < 0.0 || value > 1.0 || Double.isNaN(value)) {
       return -1.0;
@@ -224,10 +197,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     return value;
   }
 
-  /**
-   * Update Linux-specific extended CPU metrics.
-   * On non-Linux platforms this method is a no-op.
-   */
+  /** Update Linux-specific extended CPU metrics. On non-Linux platforms this method is a no-op. */
   private void updateExtendedLinuxMetrics() {
     if (!isLinux()) {
       // Keep default sentinel values (-1.0 / -1L) on non-Linux systems.
@@ -270,9 +240,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
   }
 
-  /**
-   * Lightweight OS check so we do not attempt to read /proc on non-Linux systems.
-   */
+  /** Lightweight OS check so we do not attempt to read /proc on non-Linux systems. */
   private static boolean isLinux() {
     try {
       String osName = System.getProperty("os.name", "");
@@ -286,9 +254,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   // /proc/stat helpers (CPU times, iowait / steal ratios)
   // ------------------------------------------------------------------------
 
-  /**
-   * Simple snapshot of aggregated CPU times from /proc/stat.
-   */
+  /** Simple snapshot of aggregated CPU times from /proc/stat. */
   static final class CpuTimes {
     final long user;
     final long nice;
@@ -299,8 +265,15 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     final long softirq;
     final long steal;
 
-    CpuTimes(long user, long nice, long system, long idle,
-             long iowait, long irq, long softirq, long steal) {
+    CpuTimes(
+        long user,
+        long nice,
+        long system,
+        long idle,
+        long iowait,
+        long irq,
+        long softirq,
+        long steal) {
       this.user = user;
       this.nice = nice;
       this.system = system;
@@ -312,9 +285,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
   }
 
-  /**
-   * Read the first "cpu" line from /proc/stat.
-   */
+  /** Read the first "cpu" line from /proc/stat. */
   private static CpuTimes readCpuTimes() throws java.io.IOException {
     Path path = procRoot.resolve("stat");
     // Only the aggregate first line is needed. /proc/stat has one line per CPU plus a very long
@@ -358,13 +329,17 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
   }
 
-  /**
-   * Compute iowait / steal ratios from two consecutive CpuTimes snapshots.
-   */
+  /** Compute iowait / steal ratios from two consecutive CpuTimes snapshots. */
   private void computeCpuStateRatios(CpuTimes current) {
     long totalCurrent =
-        current.user + current.nice + current.system + current.idle +
-            current.iowait + current.irq + current.softirq + current.steal;
+        current.user
+            + current.nice
+            + current.system
+            + current.idle
+            + current.iowait
+            + current.irq
+            + current.softirq
+            + current.steal;
 
     cpuTotalTicks = totalCurrent;
     cpuIoWaitTicks = current.iowait;
@@ -385,8 +360,14 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
 
     long totalPrev =
-        prevCpuUser + prevCpuNice + prevCpuSystem + prevCpuIdle +
-            prevCpuIoWait + prevCpuIrq + prevCpuSoftIrq + prevCpuSteal;
+        prevCpuUser
+            + prevCpuNice
+            + prevCpuSystem
+            + prevCpuIdle
+            + prevCpuIoWait
+            + prevCpuIrq
+            + prevCpuSoftIrq
+            + prevCpuSteal;
 
     long totalDelta = totalCurrent - totalPrev;
     if (totalDelta <= 0L) {
@@ -398,10 +379,18 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     long stealDelta = current.steal - prevCpuSteal;
 
     // Clamp to [0, totalDelta]
-    if (iowaitDelta < 0L) iowaitDelta = 0L;
-    if (stealDelta < 0L) stealDelta = 0L;
-    if (iowaitDelta > totalDelta) iowaitDelta = totalDelta;
-    if (stealDelta > totalDelta) stealDelta = totalDelta;
+    if (iowaitDelta < 0L) {
+      iowaitDelta = 0L;
+    }
+    if (stealDelta < 0L) {
+      stealDelta = 0L;
+    }
+    if (iowaitDelta > totalDelta) {
+      iowaitDelta = totalDelta;
+    }
+    if (stealDelta > totalDelta) {
+      stealDelta = totalDelta;
+    }
 
     ioWaitRatio = (double) iowaitDelta / (double) totalDelta;
     stealRatio = (double) stealDelta / (double) totalDelta;
@@ -421,9 +410,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   // /proc/loadavg helpers (1m / 5m / 15m load averages)
   // ------------------------------------------------------------------------
 
-  /**
-   * Simple holder for system load averages.
-   */
+  /** Simple holder for system load averages. */
   private static final class LoadAverages {
     final double load1;
     final double load5;
@@ -436,9 +423,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
   }
 
-  /**
-   * Read load averages from /proc/loadavg.
-   */
+  /** Read load averages from /proc/loadavg. */
   private static LoadAverages readLoadAverages() throws java.io.IOException {
     Path path = procRoot.resolve("loadavg");
     String line = Files.readString(path, StandardCharsets.US_ASCII).trim();
@@ -467,13 +452,11 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   // Cgroup CPU throttling helpers
   // ------------------------------------------------------------------------
 
-  /**
-   * Snapshot of cgroup CPU usage and throttling counters.
-   */
+  /** Snapshot of cgroup CPU usage and throttling counters. */
   static final class CgroupCpuStats {
-    final long usageNs;            // total CPU usage (best-effort)
-    final long throttledNs;        // total throttled time
-    final long throttledPeriods;   // number of throttling periods
+    final long usageNs; // total CPU usage (best-effort)
+    final long throttledNs; // total throttled time
+    final long throttledPeriods; // number of throttling periods
 
     CgroupCpuStats(long usageNs, long throttledNs, long throttledPeriods) {
       this.usageNs = usageNs;
@@ -484,13 +467,15 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
 
   /**
    * Read cgroup CPU statistics from common v2/v1 locations.
-   * <p>
-   * This method delegates to small helper methods to keep complexity low:
+   *
+   * <p>This method delegates to small helper methods to keep complexity low:
+   *
    * <ul>
-   *   <li>{@link #findCgroupCpuStatPath(Path)} locates the cpu.stat file</li>
-   *   <li>{@link #parseCgroupCpuStats(Path)} parses the counters</li>
-   *   <li>{@link #readCpuAcctUsageIfPresent(Path)} optionally fills usage</li>
+   *   <li>{@link #findCgroupCpuStatPath(Path)} locates the cpu.stat file
+   *   <li>{@link #parseCgroupCpuStats(Path)} parses the counters
+   *   <li>{@link #readCpuAcctUsageIfPresent(Path)} optionally fills usage
    * </ul>
+   *
    * If no meaningful counters are found, this method returns {@code null}.
    */
   private static CgroupCpuStats readCgroupCpuStats() throws java.io.IOException {
@@ -554,22 +539,16 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
 
     // If we still have no useful values, return null to signal "unsupported"
-    if (usageNs < 0L &&
-        rawStats.throttledNs < 0L &&
-        rawStats.throttledPeriods < 0L) {
+    if (usageNs < 0L && rawStats.throttledNs < 0L && rawStats.throttledPeriods < 0L) {
       return null;
     }
 
-    return new CgroupCpuStats(
-        usageNs,
-        rawStats.throttledNs,
-        rawStats.throttledPeriods
-    );
+    return new CgroupCpuStats(usageNs, rawStats.throttledNs, rawStats.throttledPeriods);
   }
 
   /**
-   * Try to locate cpu.stat under the current process cgroup path first.
-   * This avoids reporting host-level values inside containers.
+   * Try to locate cpu.stat under the current process cgroup path first. This avoids reporting
+   * host-level values inside containers.
    */
   private static Path findProcessScopedCgroupCpuStatPath(Path baseDir) {
     Path selfCgroup = procRoot.resolve("self/cgroup");
@@ -612,7 +591,8 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     return candidates;
   }
 
-  private static void appendV1CpuStatCandidates(Path baseDir, List<Path> candidates, String cgroupLine) {
+  private static void appendV1CpuStatCandidates(
+      Path baseDir, List<Path> candidates, String cgroupLine) {
     String[] parts = cgroupLine.split(":", 3);
     if (parts.length != 3) {
       return;
@@ -628,7 +608,8 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
       Path cpuAcctDir = resolveCgroupSubdir(baseDir.resolve(CPUACCT_CONTROLLER), rel);
       candidates.add(cpuAcctDir.resolve(CPU_STAT_FILE));
     }
-    if (hasController(controllers, CPU_CONTROLLER) && hasController(controllers, CPUACCT_CONTROLLER)) {
+    if (hasController(controllers, CPU_CONTROLLER)
+        && hasController(controllers, CPUACCT_CONTROLLER)) {
       Path combined = resolveCgroupSubdir(baseDir.resolve(CPU_CPUACCT_CONTROLLER), rel);
       candidates.add(combined.resolve(CPU_STAT_FILE));
     }
@@ -668,12 +649,13 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
 
   /**
    * Find a cpu.stat file for cgroup v2 or common v1 layouts.
-   * <p>
-   * The search order is:
+   *
+   * <p>The search order is:
+   *
    * <ol>
-   *   <li>/sys/fs/cgroup/cpu.stat (cgroup v2 unified hierarchy)</li>
-   *   <li>/sys/fs/cgroup/cpu/cpu.stat (cgroup v1 cpu controller)</li>
-   *   <li>/sys/fs/cgroup/cpuacct/cpu.stat (cgroup v1 cpuacct controller)</li>
+   *   <li>/sys/fs/cgroup/cpu.stat (cgroup v2 unified hierarchy)
+   *   <li>/sys/fs/cgroup/cpu/cpu.stat (cgroup v1 cpu controller)
+   *   <li>/sys/fs/cgroup/cpuacct/cpu.stat (cgroup v1 cpuacct controller)
    * </ol>
    *
    * @param baseDir base cgroup directory, typically {@code /sys/fs/cgroup}
@@ -700,11 +682,12 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
 
   /**
    * Parse a cpu.stat file into {@link CgroupCpuStats}.
-   * <p>
-   * This method understands both cgroup v2 and common cgroup v1 keys:
+   *
+   * <p>This method understands both cgroup v2 and common cgroup v1 keys:
+   *
    * <ul>
-   *   <li>v2: usage_usec, nr_periods, nr_throttled, throttled_usec</li>
-   *   <li>v1: nr_periods, nr_throttled, throttled_time (ns)</li>
+   *   <li>v2: usage_usec, nr_periods, nr_throttled, throttled_usec
+   *   <li>v1: nr_periods, nr_throttled, throttled_time (ns)
    * </ul>
    *
    * @param statPath path to cpu.stat
@@ -759,8 +742,8 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   }
 
   /**
-   * Attempt to read CPU usage from {@code cpuacct.usage} when cpu.stat
-   * does not provide a usage counter.
+   * Attempt to read CPU usage from {@code cpuacct.usage} when cpu.stat does not provide a usage
+   * counter.
    *
    * @param baseDir base cgroup directory
    * @return usage in nanoseconds, or {@code -1L} when not available
@@ -808,7 +791,8 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
           Path cpuAcctDir = resolveCgroupSubdir(baseDir.resolve(CPUACCT_CONTROLLER), rel);
           return cpuAcctDir.resolve("cpuacct.usage");
         }
-        if (hasController(controllers, CPU_CONTROLLER) && hasController(controllers, CPUACCT_CONTROLLER)) {
+        if (hasController(controllers, CPU_CONTROLLER)
+            && hasController(controllers, CPUACCT_CONTROLLER)) {
           Path combined = resolveCgroupSubdir(baseDir.resolve(CPU_CPUACCT_CONTROLLER), rel);
           return combined.resolve("cpuacct.usage");
         }
@@ -827,9 +811,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
   }
 
-  /**
-   * Compute throttling ratio and count for the last polling window.
-   */
+  /** Compute throttling ratio and count for the last polling window. */
   private void computeCgroupRatios(CgroupCpuStats current) {
     cgroupUsageNanosTotal = current.usageNs;
     cgroupThrottledTimeNanosTotal = current.throttledNs;
@@ -847,15 +829,25 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     long throttledDelta = current.throttledNs - prevCgroupThrottledNs;
     long periodsDelta = current.throttledPeriods - prevCgroupThrottledPeriods;
 
-    if (usageDelta < 0L) usageDelta = 0L;
-    if (throttledDelta < 0L) throttledDelta = 0L;
-    if (periodsDelta < 0L) periodsDelta = 0L;
+    if (usageDelta < 0L) {
+      usageDelta = 0L;
+    }
+    if (throttledDelta < 0L) {
+      throttledDelta = 0L;
+    }
+    if (periodsDelta < 0L) {
+      periodsDelta = 0L;
+    }
 
     long denom = usageDelta + throttledDelta;
     if (denom > 0L) {
       double ratio = (double) throttledDelta / (double) denom;
-      if (ratio < 0.0) ratio = 0.0;
-      if (ratio > 1.0) ratio = 1.0;
+      if (ratio < 0.0) {
+        ratio = 0.0;
+      }
+      if (ratio > 1.0) {
+        ratio = 1.0;
+      }
       cgroupThrottledRatio = ratio;
     } else {
       // No CPU used and nothing throttled in this window (idle): report 0 instead of

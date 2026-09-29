@@ -9,25 +9,25 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
-import java.util.logging.Logger;
 import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 /**
  * Utility helpers for reading Linux {@code /proc}, {@code /sys}, and cgroup files.
- * <p>
- * This class is package-private and not intended to be part of the public API.
- * It provides:
+ *
+ * <p>This class is package-private and not intended to be part of the public API. It provides:
+ *
  * <ul>
- *   <li>Disk I/O totals from {@code /proc/diskstats}</li>
- *   <li>Network I/O totals from {@code /proc/net/dev}</li>
- *   <li>Cgroup (v1/v2) detection and paths</li>
- *   <li>Convenience helpers for parsing small numeric files</li>
+ *   <li>Disk I/O totals from {@code /proc/diskstats}
+ *   <li>Network I/O totals from {@code /proc/net/dev}
+ *   <li>Cgroup (v1/v2) detection and paths
+ *   <li>Convenience helpers for parsing small numeric files
  * </ul>
  */
 final class LinuxProcFs {
@@ -35,8 +35,10 @@ final class LinuxProcFs {
   private static final long LEAF_DEVICE_CACHE_TTL_MS = 30_000L;
   private static Path procRoot = Paths.get("/proc");
   private static Path sysRoot = Paths.get("/sys");
+
   @SuppressWarnings("java:S3077")
   private static volatile Set<String> cachedLeafDevices = Set.of();
+
   private static volatile long leafDeviceCacheTimeMs = 0L;
   private static final Object LEAF_DEVICE_CACHE_LOCK = new Object();
   private static final long PHYSICAL_IFACE_CACHE_TTL_NANOS = TimeUnit.SECONDS.toNanos(30L);
@@ -102,32 +104,28 @@ final class LinuxProcFs {
   // Diskstats parsing (/proc/diskstats)
   // ---------------------------------------------------------------------------
 
-  /**
-   * Aggregated disk totals across block devices.
-   */
+  /** Aggregated disk totals across block devices. */
   static class DiskTotals {
-    /**
-     * Sum of sectors read across all base/leaf block devices.
-     */
+    /** Sum of sectors read across all base/leaf block devices. */
     long readSectors = 0;
 
-    /**
-     * Sum of sectors written across all base/leaf block devices.
-     */
+    /** Sum of sectors written across all base/leaf block devices. */
     long writtenSectors = 0;
   }
 
   /**
    * Collect leaf block devices under /sys/block.
-   * <p>
-   * A device is considered "leaf" when:
+   *
+   * <p>A device is considered "leaf" when:
+   *
    * <ul>
-   *   <li>It is a top-level entry under /sys/block</li>
-   *   <li>Its {@code slaves/} directory is empty (or missing)</li>
-   *   <li>It is not a well-known pseudo device such as loop, ram, fd, sr</li>
+   *   <li>It is a top-level entry under /sys/block
+   *   <li>Its {@code slaves/} directory is empty (or missing)
+   *   <li>It is not a well-known pseudo device such as loop, ram, fd, sr
    * </ul>
-   * If discovery fails, an empty set is returned and the caller should fall back to
-   * the legacy behavior.
+   *
+   * If discovery fails, an empty set is returned and the caller should fall back to the legacy
+   * behavior.
    */
   private static Set<String> collectLeafBlockDevices() {
     Set<String> leaf = new HashSet<>();
@@ -138,31 +136,32 @@ final class LinuxProcFs {
     }
 
     try (Stream<Path> stream = Files.list(sysBlock)) {
-      stream.forEach(devPath -> {
-        String name = devPath.getFileName().toString();
+      stream.forEach(
+          devPath -> {
+            String name = devPath.getFileName().toString();
 
-        // Skip well-known pseudo / virtual devices.
-        if (isPseudoBlockDevice(name)) {
-          return;
-        }
+            // Skip well-known pseudo / virtual devices.
+            if (isPseudoBlockDevice(name)) {
+              return;
+            }
 
-        Path slavesDir = devPath.resolve("slaves");
-        boolean hasSlaves = false;
+            Path slavesDir = devPath.resolve("slaves");
+            boolean hasSlaves = false;
 
-        if (Files.isDirectory(slavesDir)) {
-          try (Stream<Path> slaves = Files.list(slavesDir)) {
-            hasSlaves = slaves.findAny().isPresent();
-          } catch (IOException e) {
-            // In doubt, treat as non-leaf to avoid double-counting stacked devices.
-            hasSlaves = true;
-          }
-        }
+            if (Files.isDirectory(slavesDir)) {
+              try (Stream<Path> slaves = Files.list(slavesDir)) {
+                hasSlaves = slaves.findAny().isPresent();
+              } catch (IOException e) {
+                // In doubt, treat as non-leaf to avoid double-counting stacked devices.
+                hasSlaves = true;
+              }
+            }
 
-        // Devices without slaves are treated as leaf devices (physical / backing).
-        if (!hasSlaves) {
-          leaf.add(name);
-        }
-      });
+            // Devices without slaves are treated as leaf devices (physical / backing).
+            if (!hasSlaves) {
+              leaf.add(name);
+            }
+          });
     } catch (IOException ignore) {
       // On any failure, return an empty set to let the caller fall back to legacy behavior.
     }
@@ -178,8 +177,8 @@ final class LinuxProcFs {
   }
 
   /**
-   * Return cached leaf block devices with a short TTL to avoid repeated
-   * expensive scans of /sys/block on every scrape.
+   * Return cached leaf block devices with a short TTL to avoid repeated expensive scans of
+   * /sys/block on every scrape.
    */
   private static Set<String> getLeafBlockDevicesCached() {
     long now = System.currentTimeMillis();
@@ -204,10 +203,10 @@ final class LinuxProcFs {
 
   /**
    * Read disk I/O totals from {@code /proc/diskstats}.
-   * <p>
-   * Only leaf devices under {@code /sys/block/<name>} are included when possible.
-   * If leaf detection fails, we fall back to including all base devices that
-   * exist under {@code /sys/block/<name>} (the previous behavior).
+   *
+   * <p>Only leaf devices under {@code /sys/block/<name>} are included when possible. If leaf
+   * detection fails, we fall back to including all base devices that exist under {@code
+   * /sys/block/<name>} (the previous behavior).
    *
    * @return aggregated {@link DiskTotals} (zeroed if file is missing/unreadable)
    * @throws IOException if {@code /proc/diskstats} cannot be read
@@ -255,16 +254,14 @@ final class LinuxProcFs {
   }
 
   private static boolean shouldIncludeDiskDevice(
-      String name,
-      Set<String> leafDevices,
-      boolean sysBlockAvailable
-  ) {
+      String name, Set<String> leafDevices, boolean sysBlockAvailable) {
     if (!leafDevices.isEmpty()) {
       // When we have a leaf-device set, restrict to those devices only.
       return leafDevices.contains(name);
     }
     if (sysBlockAvailable) {
-      // Fallback when leaf discovery fails: include only base devices present under /sys/block/<name>.
+      // Fallback when leaf discovery fails: include only base devices present under
+      // /sys/block/<name>.
       return Files.isDirectory(sysRoot.resolve(BLOCK_DIR).resolve(name));
     }
     // In restricted environments where /sys/block is not available, avoid obvious pseudo devices.
@@ -275,28 +272,22 @@ final class LinuxProcFs {
   // Network totals parsing (/proc/net/dev)
   // ---------------------------------------------------------------------------
 
-  /**
-   * Aggregated network I/O totals across interfaces.
-   */
+  /** Aggregated network I/O totals across interfaces. */
   static class NetTotals {
-    /**
-     * Sum of received bytes over the counted interfaces (see {@link #readNetTotals()}).
-     */
+    /** Sum of received bytes over the counted interfaces (see {@link #readNetTotals()}). */
     long rxBytes = 0;
 
-    /**
-     * Sum of transmitted bytes over the counted interfaces (see {@link #readNetTotals()}).
-     */
+    /** Sum of transmitted bytes over the counted interfaces (see {@link #readNetTotals()}). */
     long txBytes = 0;
   }
 
   /**
    * Read network I/O totals from {@code /proc/net/dev}.
-   * <p>
-   * Loopback ({@code lo}) is always excluded. To avoid counting the same packets several times
+   *
+   * <p>Loopback ({@code lo}) is always excluded. To avoid counting the same packets several times
    * on container hosts (physical NIC plus bridges, veth pairs, VLANs, bonds), only interfaces
-   * backed by a real device ({@code /sys/class/net/<if>/device}) are summed when the host has
-   * any. Inside a container network namespace, where the only interface is a virtual veth, all
+   * backed by a real device ({@code /sys/class/net/<if>/device}) are summed when the host has any.
+   * Inside a container network namespace, where the only interface is a virtual veth, all
    * non-loopback interfaces are summed instead.
    *
    * @return aggregated {@link NetTotals} (zeroed if file is missing/unreadable)
@@ -355,8 +346,8 @@ final class LinuxProcFs {
       PHYSICAL_IFACE_CACHE.clear();
       physicalIfaceCacheStartNanos = now;
     }
-    return PHYSICAL_IFACE_CACHE.computeIfAbsent(iface,
-        name -> Files.exists(sysRoot.resolve("class/net").resolve(name).resolve("device")));
+    return PHYSICAL_IFACE_CACHE.computeIfAbsent(
+        iface, name -> Files.exists(sysRoot.resolve("class/net").resolve(name).resolve("device")));
   }
 
   /**
@@ -377,23 +368,15 @@ final class LinuxProcFs {
   // Cgroup helpers
   // ---------------------------------------------------------------------------
 
-  /**
-   * Captured cgroup information for the current process.
-   */
+  /** Captured cgroup information for the current process. */
   static class CgroupInfo {
-    /**
-     * Detected cgroup version: {@code "v1"}, {@code "v2"}, or {@code "none"}.
-     */
+    /** Detected cgroup version: {@code "v1"}, {@code "v2"}, or {@code "none"}. */
     String version = "none";
 
-    /**
-     * Raw cgroup path as reported in {@code /proc/self/cgroup}.
-     */
+    /** Raw cgroup path as reported in {@code /proc/self/cgroup}. */
     String path = "";
 
-    /**
-     * Base directory for the cgroup controller (e.g., {@code /sys/fs/cgroup}).
-     */
+    /** Base directory for the cgroup controller (e.g., {@code /sys/fs/cgroup}). */
     Path baseDir = null;
 
     /**
@@ -404,12 +387,13 @@ final class LinuxProcFs {
 
   /**
    * Detect cgroup version and paths for the current process.
-   * <p>
-   * Logic:
+   *
+   * <p>Logic:
+   *
    * <ol>
-   *   <li>If {@code /sys/fs/cgroup/cgroup.controllers} exists, treat as cgroup v2.</li>
-   *   <li>Otherwise, inspect {@code /proc/self/cgroup} for a {@code memory} controller (v1).</li>
-   *   <li>On failure or non-Linux, version is {@code "none"}.</li>
+   *   <li>If {@code /sys/fs/cgroup/cgroup.controllers} exists, treat as cgroup v2.
+   *   <li>Otherwise, inspect {@code /proc/self/cgroup} for a {@code memory} controller (v1).
+   *   <li>On failure or non-Linux, version is {@code "none"}.
    * </ol>
    *
    * @return populated {@link CgroupInfo} (version may be {@code "none"})
@@ -433,7 +417,7 @@ final class LinuxProcFs {
         return v1;
       }
     } catch (Exception e) {
-       LOGGER.log(Level.FINE, "Cgroup detection failed", e);
+      LOGGER.log(Level.FINE, "Cgroup detection failed", e);
       // Fall through and return default info (version "none").
     }
 
@@ -466,10 +450,7 @@ final class LinuxProcFs {
     return info;
   }
 
-  /**
-   * Parse {@code /proc/self/cgroup} to get the cgroup path for v2
-   * (line starting with "0::").
-   */
+  /** Parse {@code /proc/self/cgroup} to get the cgroup path for v2 (line starting with "0::"). */
   private static String readV2SelfCgroupPath() {
     Path selfCgroup = procRoot.resolve("self/cgroup");
     try {
@@ -513,8 +494,8 @@ final class LinuxProcFs {
   }
 
   /**
-   * Look for a line containing "memory" controller in {@code /proc/self/cgroup}
-   * and return its cgroup path.
+   * Look for a line containing "memory" controller in {@code /proc/self/cgroup} and return its
+   * cgroup path.
    */
   private static String findMemoryControllerPath(Path cgroupFile) {
     try {
@@ -533,9 +514,7 @@ final class LinuxProcFs {
     return null;
   }
 
-  /**
-   * Resolve a cgroup path against its base directory.
-   */
+  /** Resolve a cgroup path against its base directory. */
   private static Path resolveCgroupPath(Path baseDir, String cgroupPath) {
     if (baseDir == null) {
       return null;
@@ -550,11 +529,12 @@ final class LinuxProcFs {
 
   /**
    * Read a small file that contains a single numeric value.
-   * <p>
-   * Special handling:
+   *
+   * <p>Special handling:
+   *
    * <ul>
-   *   <li>When content is {@code "max"}, returns {@code -1} (used by cgroup v2).</li>
-   *   <li>On any error, returns {@code -1}.</li>
+   *   <li>When content is {@code "max"}, returns {@code -1} (used by cgroup v2).
+   *   <li>On any error, returns {@code -1}.
    * </ul>
    *
    * @param p path to the file

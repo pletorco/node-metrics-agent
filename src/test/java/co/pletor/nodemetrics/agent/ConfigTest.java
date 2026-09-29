@@ -1,10 +1,11 @@
 package co.pletor.nodemetrics.agent;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
 
 class ConfigTest {
 
@@ -34,8 +35,6 @@ class ConfigTest {
   void equals_shouldBeFalseWhenAnyFieldDiffers() {
     Config base = Config.defaults();
 
-
-
     // fsmetrics_paths 다를 때
     Config c2 = Config.defaults();
     c2.fsmetricsPaths = List.of("/data");
@@ -62,7 +61,7 @@ class ConfigTest {
 
     // JUnit 헬퍼도 같이 사용 (이 쪽도 equals를 호출함)
     assertNotEquals(null, c);
-    assertNotEquals("not-a-config",c);
+    assertNotEquals("not-a-config", c);
   }
 
   @Test
@@ -81,7 +80,6 @@ class ConfigTest {
   void toString_shouldContainKeyFields() {
     Config c = Config.defaults();
     String s = c.toString();
-
 
     assertTrue(s.contains("fsmetrics_paths=[/]"));
     assertTrue(s.contains("fsmetrics_max_partitions=" + Config.DEFAULT_FSMETRICS_MAX_PARTITIONS));

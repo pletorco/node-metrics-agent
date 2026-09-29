@@ -4,74 +4,63 @@ import java.io.IOException;
 import java.util.function.LongSupplier;
 
 /**
- * Implementation of {@link IoRatesMBean} that computes simple I/O throughput rates
- * based on Linux {@code /proc} and {@code /sys} counters.
- * <p>
- * This class:
+ * Implementation of {@link IoRatesMBean} that computes simple I/O throughput rates based on Linux
+ * {@code /proc} and {@code /sys} counters.
+ *
+ * <p>This class:
+ *
  * <ul>
- *   <li>Aggregates disk read/write bytes across block devices</li>
- *   <li>Aggregates network RX/TX bytes across interfaces (typically excluding loopback)</li>
- *   <li>Computes bytes-per-second using a previous snapshot and {@link System#nanoTime()}</li>
+ *   <li>Aggregates disk read/write bytes across block devices
+ *   <li>Aggregates network RX/TX bytes across interfaces (typically excluding loopback)
+ *   <li>Computes bytes-per-second using a previous snapshot and {@link System#nanoTime()}
  * </ul>
+ *
  * On non-Linux platforms, all metrics are reported as {@code 0.0}.
  */
 public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
 
-  /**
-   * Last computed disk read throughput (bytes per second).
-   */
+  /** Last computed disk read throughput (bytes per second). */
   private volatile double diskReadBps = 0.0;
 
-  /**
-   * Last computed disk write throughput (bytes per second).
-   */
+  /** Last computed disk write throughput (bytes per second). */
   private volatile double diskWriteBps = 0.0;
 
-  /**
-   * Last computed network RX throughput (bytes per second).
-   */
+  /** Last computed network RX throughput (bytes per second). */
   private volatile double netRxBps = 0.0;
 
-  /**
-   * Last computed network TX throughput (bytes per second).
-   */
+  /** Last computed network TX throughput (bytes per second). */
   private volatile double netTxBps = 0.0;
 
-  /**
-   * Cumulative byte counters as of the last successful read; -1 until the first one.
-   */
+  /** Cumulative byte counters as of the last successful read; -1 until the first one. */
   private volatile long diskReadTotal = -1L;
+
   private volatile long diskWriteTotal = -1L;
   private volatile long netRxTotal = -1L;
   private volatile long netTxTotal = -1L;
 
-  /**
-   * Previous cumulative disk/network counters and timestamp used to compute deltas.
-   */
+  /** Previous cumulative disk/network counters and timestamp used to compute deltas. */
   private long prevReadBytes = -1L;
+
   private long prevWriteBytes = -1L;
   private long prevRxBytes = -1L;
   private long prevTxBytes = -1L;
   private long prevTimeNanos;
+
   /** {@code System.nanoTime()} may be zero or negative, so track the baseline explicitly. */
   private boolean baselineStored = false;
 
   private final LongSupplier nanoClock;
 
-  /**
-   * Default sector size used to convert disk sectors to bytes.
-   */
+  /** Default sector size used to convert disk sectors to bytes. */
   private static final long SECTOR_SIZE_BYTES = 512L;
 
-  /**
-   * Constant for converting nanoseconds to seconds.
-   */
+  /** Constant for converting nanoseconds to seconds. */
   private static final double NANOS_PER_SECOND = 1_000_000_000.0;
 
   /**
    * Creates a new {@code IoRates} instance with zeroed counters.
-   * <p>
-   * Metric values will be populated on the first JMX query (if you have one).
+   *
+   * <p>Metric values will be populated on the first JMX query (if you have one).
    */
   public IoRates() {
     this(System::nanoTime);
@@ -86,9 +75,7 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
   // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  /**
-   * Refresh the I/O rates.
-   */
+  /** Refresh the I/O rates. */
   @Override
   protected void doRefresh() {
     // If the current OS is not Linux, we cannot read /proc or /sys,
@@ -121,9 +108,7 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
     storeSnapshot(snapshot);
   }
 
-  /**
-   * Reset all rate metrics to zero.
-   */
+  /** Reset all rate metrics to zero. */
   private void resetRates() {
     diskReadBps = 0.0;
     diskWriteBps = 0.0;
@@ -158,8 +143,8 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
   }
 
   /**
-   * Update rate metrics based on the difference between the previous snapshot
-   * and the newly read snapshot.
+   * Update rate metrics based on the difference between the previous snapshot and the newly read
+   * snapshot.
    *
    * @param s current snapshot containing cumulative counters and timestamp
    */
@@ -193,8 +178,8 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
   /**
    * Compute a non-negative rate from two cumulative counters and an elapsed time.
    *
-   * @param prev      previous cumulative value
-   * @param current   current cumulative value
+   * @param prev previous cumulative value
+   * @param current current cumulative value
    * @param dtSeconds elapsed time in seconds
    * @return computed rate in units per second, clamped to a minimum of 0.0
    */
@@ -216,9 +201,7 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
     baselineStored = true;
   }
 
-  /**
-   * Immutable container for disk/network counters and timestamp.
-   */
+  /** Immutable container for disk/network counters and timestamp. */
   private static final class Snapshot {
     final long readBytes;
     final long writeBytes;
@@ -235,9 +218,7 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
     }
   }
 
-  /**
-   * Custom checked exception used when snapshot reading fails.
-   */
+  /** Custom checked exception used when snapshot reading fails. */
   private static class SnapshotReadException extends Exception {
     SnapshotReadException(String message, Throwable cause) {
       super(message, cause);

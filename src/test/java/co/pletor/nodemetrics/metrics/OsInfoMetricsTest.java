@@ -11,9 +11,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/**
- * Unit tests for {@link OsInfoMetrics} using mocked {@link SystemAccess}.
- */
+/** Unit tests for {@link OsInfoMetrics} using mocked {@link SystemAccess}. */
 class OsInfoMetricsTest {
 
   // ----------------------------------------------------
@@ -118,13 +116,13 @@ class OsInfoMetricsTest {
     mock.properties.put("os.arch", "amd64");
 
     // Mock /etc/os-release
-    mock.files.put("/etc/os-release",
+    mock.files.put(
+        "/etc/os-release",
         "PRETTY_NAME=\"Ubuntu 22.04.1 LTS\"\n"
             + "NAME=\"Ubuntu\"\n"
             + "VERSION_ID=\"22.04\"\n"
             + "VERSION=\"22.04.1 LTS (Jammy Jellyfish)\"\n"
-            + "ID=ubuntu\n"
-    );
+            + "ID=ubuntu\n");
 
     // Mock kernel version
     mock.files.put("/proc/sys/kernel/osrelease", "5.15.0-56-generic\n");
@@ -143,12 +141,12 @@ class OsInfoMetricsTest {
   void pollLinuxOsReleaseQuoted() {
     MockSystemAccess mock = new MockSystemAccess();
     mock.isLinux = true;
-    mock.files.put("/etc/os-release",
+    mock.files.put(
+        "/etc/os-release",
         "NAME=\"Alpine Linux\"\n"
             + "ID=\"alpine\"\n"
             + "VERSION_ID=\"3.17.0\"\n"
-            + "PRETTY_NAME=\"Alpine Linux v3.17\"\n"
-    );
+            + "PRETTY_NAME=\"Alpine Linux v3.17\"\n");
     mock.files.put("/proc/sys/kernel/osrelease", "5.15.0");
 
     OsInfoMetrics metrics = new OsInfoMetrics(mock);
@@ -162,10 +160,7 @@ class OsInfoMetricsTest {
   void pollLinuxOsReleaseFallbackId() {
     MockSystemAccess mock = new MockSystemAccess();
     mock.isLinux = true;
-    mock.files.put("/etc/os-release",
-        "ID=rocky\n"
-            + "VERSION_ID=9.1\n"
-    );
+    mock.files.put("/etc/os-release", "ID=rocky\n" + "VERSION_ID=9.1\n");
 
     OsInfoMetrics metrics = new OsInfoMetrics(mock);
     metrics.poll();

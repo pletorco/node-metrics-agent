@@ -1,8 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
-/**
- * JMX MBean interface for exposing cgroup memory metrics.
- */
+/** JMX MBean interface for exposing cgroup memory metrics. */
 public interface CgroupMemMetricsMBean {
 
   /**
@@ -26,9 +24,9 @@ public interface CgroupMemMetricsMBean {
 
   /**
    * Returns the cgroup memory working set in bytes: current usage minus inactive file cache.
-   * <p>
-   * Usage includes reclaimable page cache, so a page-cache-heavy process (Kafka, databases) looks
-   * close to its limit even when it is not. The working set is the better basis for memory
+   *
+   * <p>Usage includes reclaimable page cache, so a page-cache-heavy process (Kafka, databases)
+   * looks close to its limit even when it is not. The working set is the better basis for memory
    * pressure alerts. {@code -1} when {@code memory.stat} is unavailable.
    *
    * @return the working set in bytes

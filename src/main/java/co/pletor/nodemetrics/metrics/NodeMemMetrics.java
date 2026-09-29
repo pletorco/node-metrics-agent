@@ -1,7 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
 import com.sun.management.OperatingSystemMXBean;
-
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Method;
@@ -10,11 +9,10 @@ import java.util.List;
 
 /**
  * Node-level memory metrics MBean implementation.
- * <p>
- * On Linux, values are derived from {@code /proc/meminfo}.
- * On non-Linux platforms, total/used/free are populated from
- * {@link OperatingSystemMXBean}, using container-aware APIs when available,
- * while other fields are reported as {@code -1}.
+ *
+ * <p>On Linux, values are derived from {@code /proc/meminfo}. On non-Linux platforms,
+ * total/used/free are populated from {@link OperatingSystemMXBean}, using container-aware APIs when
+ * available, while other fields are reported as {@code -1}.
  */
 public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemMetricsMBean {
 
@@ -37,10 +35,9 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   private volatile long filePageCacheBytes = -1L;
 
   /**
-   * Creates a new {@code NodeMemMetrics} instance with all metrics
-   * initialized to {@code -1}.
-   * <p>
-   * Values will be populated on the first JMX query.
+   * Creates a new {@code NodeMemMetrics} instance with all metrics initialized to {@code -1}.
+   *
+   * <p>Values will be populated on the first JMX query.
    */
   public NodeMemMetrics() {
     // Default constructor for MBean registration and frameworks.
@@ -50,9 +47,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  /**
-   * Refresh the metric values.
-   */
+  /** Refresh the metric values. */
   @Override
   protected void doRefresh() {
     if (LinuxProcFs.isLinux()) {
@@ -68,8 +63,8 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
 
   /**
    * Refresh metrics from {@code /proc/meminfo} on Linux.
-   * <p>
-   * Any parsing or I/O error will reset all fields to {@code -1}.
+   *
+   * <p>Any parsing or I/O error will reset all fields to {@code -1}.
    */
   private void pollFromProcMeminfo() {
     try {
@@ -84,9 +79,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     }
   }
 
-  /**
-   * Small holder for parsed {@code /proc/meminfo} values (in kB).
-   */
+  /** Small holder for parsed {@code /proc/meminfo} values (in kB). */
   private static final class MemInfoSnapshot {
     long memTotalKb = -1L;
     long memAvailableKb = -1L;
@@ -146,9 +139,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     applyCacheMetrics(s);
   }
 
-  /**
-   * Calculate and apply core memory metrics (Total, Free, Available, Used).
-   */
+  /** Calculate and apply core memory metrics (Total, Free, Available, Used). */
   private void applyCoreMetrics(MemInfoSnapshot s) {
     long total = kbToBytes(s.memTotalKb);
     long free = computeFreeBytes(s);
@@ -161,17 +152,13 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     availableBytes = available;
   }
 
-  /**
-   * Calculate and apply disk write-related metrics (Dirty, Writeback).
-   */
+  /** Calculate and apply disk write-related metrics (Dirty, Writeback). */
   private void applyDiskMetrics(MemInfoSnapshot s) {
     dirtyBytes = (s.dirtyKb >= 0) ? s.dirtyKb * 1024L : -1L;
     writebackBytes = (s.writebackKb >= 0) ? s.writebackKb * 1024L : -1L;
   }
 
-  /**
-   * Calculate and apply cache and buffer related metrics.
-   */
+  /** Calculate and apply cache and buffer related metrics. */
   private void applyCacheMetrics(MemInfoSnapshot s) {
     buffersBytes = (s.buffersKb >= 0) ? s.buffersKb * 1024L : -1L;
     shmemBytes = (s.shmemKb >= 0) ? s.shmemKb * 1024L : -1L;
@@ -180,9 +167,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     applyFilePageCacheBytes(s);
   }
 
-  /**
-   * Calculate and apply the 'Cached' metric, including SReclaimable.
-   */
+  /** Calculate and apply the 'Cached' metric, including SReclaimable. */
   private void applyCachedBytes(MemInfoSnapshot s) {
     long cached = (s.cachedKb >= 0) ? s.cachedKb : 0L;
     if (s.sReclaimableKb >= 0) {
@@ -196,9 +181,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     }
   }
 
-  /**
-   * Calculate and apply the 'FilePageCache' metric.
-   */
+  /** Calculate and apply the 'FilePageCache' metric. */
   private void applyFilePageCacheBytes(MemInfoSnapshot s) {
     if (s.cachedKb >= 0 && s.shmemKb >= 0) {
       long fileKb = s.cachedKb - s.shmemKb;
@@ -214,9 +197,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   // Free and available are reported exactly as the kernel does:
   // free = MemFree, available = MemAvailable (or an estimate on kernels without it).
 
-  /**
-   * Return strict {@code MemFree} in bytes.
-   */
+  /** Return strict {@code MemFree} in bytes. */
   private long computeFreeBytes(MemInfoSnapshot s) {
     if (s.memFreeKb >= 0) {
       return kbToBytes(s.memFreeKb);
@@ -224,9 +205,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     return -1L;
   }
 
-  /**
-   * Return {@code MemAvailable} in bytes, or calculate a fallback estimate.
-   */
+  /** Return {@code MemAvailable} in bytes, or calculate a fallback estimate. */
   private long computeAvailableBytes(MemInfoSnapshot s) {
     if (s.memAvailableKb >= 0) {
       return kbToBytes(s.memAvailableKb);
@@ -234,9 +213,15 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     // Fallback estimate: Free + Buffers + Cached (partially reclaimable)
     // This is a rough approximation if MemAvailable is missing (kernels < 3.14)
     long sumKb = 0L;
-    if (s.memFreeKb > 0) sumKb += s.memFreeKb;
-    if (s.buffersKb > 0) sumKb += s.buffersKb;
-    if (s.cachedKb > 0) sumKb += s.cachedKb;
+    if (s.memFreeKb > 0) {
+      sumKb += s.memFreeKb;
+    }
+    if (s.buffersKb > 0) {
+      sumKb += s.buffersKb;
+    }
+    if (s.cachedKb > 0) {
+      sumKb += s.cachedKb;
+    }
     // Note: SReclaimable is also part of available, but we might double count if we aren't careful.
     // Basic fallback usually suffices for very old kernels.
     return kbToBytes(sumKb);
@@ -252,9 +237,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     return kb < 0L ? -1L : kb * 1024L;
   }
 
-  /**
-   * Reset all metrics to {@code -1}, indicating that values are unavailable.
-   */
+  /** Reset all metrics to {@code -1}, indicating that values are unavailable. */
   private void resetAll() {
     totalBytes = -1L;
     usedBytes = -1L;
@@ -276,16 +259,17 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
 
   /**
    * Non-Linux implementation using {@link OperatingSystemMXBean}.
-   * <p>
-   * Uses container-aware APIs when available:
+   *
+   * <p>Uses container-aware APIs when available:
+   *
    * <ul>
-   *   <li>JDK 14+: {@code getTotalMemorySize()} / {@code getFreeMemorySize()}</li>
-   *   <li>JDK 11–13: fallback to {@code getTotalPhysicalMemorySize()} /
-   *       {@code getFreePhysicalMemorySize()}</li>
+   *   <li>JDK 14+: {@code getTotalMemorySize()} / {@code getFreeMemorySize()}
+   *   <li>JDK 11–13: fallback to {@code getTotalPhysicalMemorySize()} / {@code
+   *       getFreePhysicalMemorySize()}
    * </ul>
-   * Reflection is used so that the code can run on JDK 11 while still
-   * taking advantage of the newer methods on JDK 14+ without causing
-   * linkage errors.
+   *
+   * Reflection is used so that the code can run on JDK 11 while still taking advantage of the newer
+   * methods on JDK 14+ without causing linkage errors.
    */
   private void pollFromOsMxBean() {
     try {
@@ -304,7 +288,8 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
           usedBytes = used;
 
           freeBytes = free;
-          availableBytes = -1L; // Not easily available portably across all non-Linux OSs in same semantics
+          availableBytes =
+              -1L; // Not easily available portably across all non-Linux OSs in same semantics
         }
       } else {
         totalBytes = usedBytes = freeBytes = availableBytes = -1L;
@@ -324,8 +309,8 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   }
 
   /**
-   * Try to call {@code OperatingSystemMXBean.getTotalMemorySize()} (JDK 14+),
-   * and fall back to {@code getTotalPhysicalMemorySize()} (JDK 11–13).
+   * Try to call {@code OperatingSystemMXBean.getTotalMemorySize()} (JDK 14+), and fall back to
+   * {@code getTotalPhysicalMemorySize()} (JDK 11–13).
    *
    * @param os concrete {@link OperatingSystemMXBean} implementation
    * @return total memory size in bytes, or a non-positive value on error
@@ -353,8 +338,8 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   }
 
   /**
-   * Try to call {@code OperatingSystemMXBean.getFreeMemorySize()} (JDK 14+),
-   * and fall back to {@code getFreePhysicalMemorySize()} (JDK 11–13).
+   * Try to call {@code OperatingSystemMXBean.getFreeMemorySize()} (JDK 14+), and fall back to
+   * {@code getFreePhysicalMemorySize()} (JDK 11–13).
    *
    * @param os concrete {@link OperatingSystemMXBean} implementation
    * @return free memory size in bytes, or a non-positive value on error
@@ -382,16 +367,12 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
 
   // ----- Test hooks -----
 
-  /**
-   * Overridden in tests to simulate different operating system beans.
-   */
+  /** Overridden in tests to simulate different operating system beans. */
   java.lang.management.OperatingSystemMXBean getOsMxBean() {
     return ManagementFactory.getOperatingSystemMXBean();
   }
 
-  /**
-   * Overridden in tests to provide mock /proc/meminfo lines or throw exceptions.
-   */
+  /** Overridden in tests to provide mock /proc/meminfo lines or throw exceptions. */
   List<String> readProcMemInfoLines() throws IOException {
     return LinuxProcFs.readLines(Path.of("/proc/meminfo"));
   }

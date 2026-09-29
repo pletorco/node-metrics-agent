@@ -1,8 +1,6 @@
 package co.pletor.nodemetrics.agent;
 
 import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
-
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,16 +18,18 @@ import java.util.logging.Logger;
 
 /**
  * Asynchronous metric refresh engine.
- * <p>
- * A dispatcher thread enqueues poll tasks when they are due, and worker threads execute them off the
- * JMX read path. Work is split into two isolated lanes:
+ *
+ * <p>A dispatcher thread enqueues poll tasks when they are due, and worker threads execute them off
+ * the JMX read path. Work is split into two isolated lanes:
+ *
  * <ul>
- *   <li><b>critical</b> lane (one worker): regular tasks. Overload modes are derived from this lane.</li>
+ *   <li><b>critical</b> lane (one worker): regular tasks. Overload modes are derived from this
+ *       lane.
  *   <li><b>background</b> lane ({@value #BACKGROUND_WORKERS} workers): low-priority tasks, i.e.
  *       filesystem metrics. These touch mounted filesystems, where a dead NFS mount can block a
  *       {@code statvfs} call indefinitely; running them on their own threads keeps such a hang from
  *       stalling CPU, memory and I/O metrics. A task never has more than one queued or running
- *       instance in this lane, so a hung task cannot pile up work or exhaust threads.</li>
+ *       instance in this lane, so a hung task cannot pile up work or exhaust threads.
  * </ul>
  */
 final class MetricsRefreshEngine implements AutoCloseable {
@@ -54,8 +54,10 @@ final class MetricsRefreshEngine implements AutoCloseable {
   private final LongAdder endToEndLatencyNanos = new LongAdder();
   private final LongAdder endToEndLatencySamples = new LongAdder();
   private volatile TelemetryMode mode = TelemetryMode.NORMAL;
+
   /** Tasks rejected by a full queue in the last cycle (excludes intentional mode-based drops). */
   private volatile long lastCycleEnqueueFailures = 0L;
+
   private volatile long stuckThresholdMs = DEFAULT_STUCK_THRESHOLD_MS;
   private Thread dispatcherThread;
   private Thread workerThread;
@@ -65,21 +67,28 @@ final class MetricsRefreshEngine implements AutoCloseable {
     final String name;
     final RefreshManagedMetric metric;
     final boolean lowPriority;
+
     /** Minimum time between two refreshes of this task; {@code 0} means every dispatch cycle. */
     final long intervalMs;
+
     final long intervalNanos;
     final long registeredAtEpochMs = System.currentTimeMillis();
+
     /** Epoch-millisecond timestamp of the last successful poll; 0 if never polled. */
     final AtomicLong lastSuccessEpochMs = new AtomicLong(0L);
+
     /**
      * Background lane only: set while an instance of this task is queued or running, so a task that
      * hangs is not enqueued again on top of itself.
      */
     final AtomicBoolean pending = new AtomicBoolean(false);
+
     /** {@code System.nanoTime()} at which the current poll started; 0 while not polling. */
     private volatile long runningSinceNanos = 0L;
+
     /** Consecutive failed polls; reset to 0 by the next successful poll. */
     final AtomicInteger consecutiveFailures = new AtomicInteger(0);
+
     /** {@code System.nanoTime()} at which the dispatcher may enqueue this task next. */
     private volatile long nextDueNanos = System.nanoTime();
 
@@ -135,11 +144,11 @@ final class MetricsRefreshEngine implements AutoCloseable {
   }
 
   MetricsRefreshEngine(long dispatchIntervalMs, int queueCapacity) {
-    this(dispatchIntervalMs, queueCapacity, ignored -> {
-    });
+    this(dispatchIntervalMs, queueCapacity, ignored -> {});
   }
 
-  MetricsRefreshEngine(long dispatchIntervalMs, int queueCapacity, Consumer<TelemetryMode> modeListener) {
+  MetricsRefreshEngine(
+      long dispatchIntervalMs, int queueCapacity, Consumer<TelemetryMode> modeListener) {
     this.dispatchIntervalMs = dispatchIntervalMs;
     this.queue = new ArrayBlockingQueue<>(queueCapacity);
     this.backgroundQueue = new ArrayBlockingQueue<>(queueCapacity);
@@ -147,8 +156,8 @@ final class MetricsRefreshEngine implements AutoCloseable {
   }
 
   /**
-   * Replace the task set. A task that is unchanged (same name, metric, priority and interval)
-   * keeps its existing instance, so success/failure history and staleness survive config reloads.
+   * Replace the task set. A task that is unchanged (same name, metric, priority and interval) keeps
+   * its existing instance, so success/failure history and staleness survive config reloads.
    */
   void setTasks(List<RefreshTask> tasks) {
     Map<String, RefreshTask> existing = new HashMap<>();
@@ -195,9 +204,9 @@ final class MetricsRefreshEngine implements AutoCloseable {
   }
 
   /**
-   * Names of tasks whose current poll has been running longer than the stuck threshold, typically
-   * a filesystem call blocked on an unresponsive mount. The blocked thread cannot be interrupted,
-   * so the task simply stays stale until the call returns.
+   * Names of tasks whose current poll has been running longer than the stuck threshold, typically a
+   * filesystem call blocked on an unresponsive mount. The blocked thread cannot be interrupted, so
+   * the task simply stays stale until the call returns.
    */
   List<String> stuckTaskNames() {
     long now = System.nanoTime();
@@ -257,8 +266,8 @@ final class MetricsRefreshEngine implements AutoCloseable {
   /**
    * Returns how far behind schedule the most overdue task is, in milliseconds: the time since its
    * last successful poll minus its refresh interval (never negative).
-   * <p>
-   * A healthy task is always close to {@code 0}, whatever its interval. The value rises during
+   *
+   * <p>A healthy task is always close to {@code 0}, whatever its interval. The value rises during
    * {@code BYPASS} mode (when tasks are dropped) and when a task keeps failing. A task that has
    * never succeeded counts from its registration time once it has failed at least once. Returns
    * {@code 0} if no tasks are registered or none has been polled yet.
@@ -293,7 +302,9 @@ final class MetricsRefreshEngine implements AutoCloseable {
     dispatcherThread.start();
     workerThread.start();
     for (int i = 0; i < backgroundThreads.length; i++) {
-      Thread t = new Thread(() -> workerLoop(backgroundQueue), "node-metrics-refresh-bg-worker-" + (i + 1));
+      Thread t =
+          new Thread(
+              () -> workerLoop(backgroundQueue), "node-metrics-refresh-bg-worker-" + (i + 1));
       t.setDaemon(true);
       backgroundThreads[i] = t;
       t.start();
@@ -456,8 +467,7 @@ final class MetricsRefreshEngine implements AutoCloseable {
         Level.WARNING,
         LOG_KEY_REFRESH_FAILED,
         error,
-        () -> "[node-metrics-agent] metric refresh failed: task=" + task.name
-    );
+        () -> "[node-metrics-agent] metric refresh failed: task=" + task.name);
   }
 
   private void recordEndToEndLatency(long enqueuedAtNanos) {

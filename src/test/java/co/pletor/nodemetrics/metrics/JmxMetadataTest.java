@@ -62,16 +62,27 @@ class JmxMetadataTest {
 
       MBeanAttributeInfo throttledCountAttr = findAttribute(info, "CgroupCpuThrottledCount");
       assertNotNull(throttledCountAttr);
-      assertEquals("gauge", throttledCountAttr.getDescriptor().getFieldValue("metricType"),
+      assertEquals(
+          "gauge",
+          throttledCountAttr.getDescriptor().getFieldValue("metricType"),
           "CgroupCpuThrottledCount is a per-window delta, not a monotonic counter");
 
-      for (String counter : new String[]{"SystemCpuTotalTicks", "SystemCpuIoWaitTicks", "SystemCpuStealTicks",
-          "CgroupCpuThrottledPeriodsTotal", "CgroupCpuThrottledTimeNanosTotal", "CgroupCpuUsageNanosTotal"}) {
+      for (String counter :
+          new String[] {
+            "SystemCpuTotalTicks",
+            "SystemCpuIoWaitTicks",
+            "SystemCpuStealTicks",
+            "CgroupCpuThrottledPeriodsTotal",
+            "CgroupCpuThrottledTimeNanosTotal",
+            "CgroupCpuUsageNanosTotal"
+          }) {
         MBeanAttributeInfo attr = findAttribute(info, counter);
         assertNotNull(attr, counter);
         assertEquals("counter", attr.getDescriptor().getFieldValue("metricType"), counter);
       }
-      assertEquals("ticks", findAttribute(info, "SystemCpuTotalTicks").getDescriptor().getFieldValue("unit"));
+      assertEquals(
+          "ticks",
+          findAttribute(info, "SystemCpuTotalTicks").getDescriptor().getFieldValue("unit"));
 
     } finally {
       svr.unregisterMBean(name);

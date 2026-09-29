@@ -9,12 +9,11 @@ import java.util.logging.Logger;
 
 /**
  * Small utility for rate-limiting repeated log messages by key.
- * <p>
- * Keys should be bounded enums/constants, not unbounded user input.
- * The maximum number of distinct keys is capped at {@code maxKeys} to prevent
- * unbounded map growth if a caller accidentally passes dynamic values as keys.
- * Attempts to register a new key beyond the cap are silently dropped and counted
- * in {@link #overflowCount()} so operators can detect misuse.
+ *
+ * <p>Keys should be bounded enums/constants, not unbounded user input. The maximum number of
+ * distinct keys is capped at {@code maxKeys} to prevent unbounded map growth if a caller
+ * accidentally passes dynamic values as keys. Attempts to register a new key beyond the cap are
+ * silently dropped and counted in {@link #overflowCount()} so operators can detect misuse.
  */
 final class ThrottledLogger {
   private final Logger logger;
@@ -60,15 +59,20 @@ final class ThrottledLogger {
       // Use compute() to atomically check the cap and insert.
       // keyCount is incremented speculatively and rolled back if the cap is exceeded,
       // ensuring the hard limit is never exceeded even under concurrent callers.
-      state = states.compute(key, (k, existing) -> {
-        if (existing != null) return existing;
-        int n = keyCount.incrementAndGet();
-        if (n > maxKeys) {
-          keyCount.decrementAndGet();
-          return null; // signal: cap exceeded, do not insert
-        }
-        return new State();
-      });
+      state =
+          states.compute(
+              key,
+              (k, existing) -> {
+                if (existing != null) {
+                  return existing;
+                }
+                int n = keyCount.incrementAndGet();
+                if (n > maxKeys) {
+                  keyCount.decrementAndGet();
+                  return null; // signal: cap exceeded, do not insert
+                }
+                return new State();
+              });
       if (state == null) {
         overflowCount.increment();
         return;

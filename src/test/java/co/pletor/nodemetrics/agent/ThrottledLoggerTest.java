@@ -1,25 +1,24 @@
 package co.pletor.nodemetrics.agent;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
-import java.util.UUID;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 class ThrottledLoggerTest {
 
@@ -33,7 +32,8 @@ class ThrottledLoggerTest {
     throttled.log(Level.WARNING, "key", () -> "second");
 
     assertEquals(1, handler.records.size(), "Second message should be suppressed within interval");
-    assertEquals("first", handler.records.get(0).getMessage(), "First message should be logged as-is");
+    assertEquals(
+        "first", handler.records.get(0).getMessage(), "First message should be logged as-is");
 
     waitUntilNanos(TimeUnit.MILLISECONDS.toNanos(90L));
     throttled.log(Level.WARNING, "key", () -> "third");
@@ -41,8 +41,7 @@ class ThrottledLoggerTest {
     assertEquals(2, handler.records.size(), "Message should be emitted after interval");
     assertTrue(
         handler.records.get(1).getMessage().contains("suppressed 1 similar log(s)"),
-        "Post-interval message should include suppressed count"
-    );
+        "Post-interval message should include suppressed count");
   }
 
   @Test
@@ -70,7 +69,8 @@ class ThrottledLoggerTest {
     throttled.log(Level.WARNING, "key-3", () -> "third-should-be-dropped");
 
     assertEquals(2, handler.records.size(), "Third key beyond maxKeys should be dropped");
-    assertEquals(1L, throttled.overflowCount(), "Overflow counter should be incremented for dropped key");
+    assertEquals(
+        1L, throttled.overflowCount(), "Overflow counter should be incremented for dropped key");
   }
 
   @Test
@@ -102,16 +102,17 @@ class ThrottledLoggerTest {
 
     for (int i = 0; i < threads; i++) {
       final String key = "concurrent-key-" + i;
-      pool.submit(() -> {
-        ready.countDown();
-        try {
-          start.await();
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          return;
-        }
-        throttled.log(Level.WARNING, key, () -> "msg");
-      });
+      pool.submit(
+          () -> {
+            ready.countDown();
+            try {
+              start.await();
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              return;
+            }
+            throttled.log(Level.WARNING, key, () -> "msg");
+          });
     }
 
     ready.await();
@@ -122,9 +123,10 @@ class ThrottledLoggerTest {
     // At most maxKeys distinct keys should have been accepted.
     long logged = handler.records.size();
     long overflow = throttled.overflowCount();
-    assertEquals(threads, logged + overflow,
-        "Every call must either be logged or counted as overflow");
-    assertTrue(logged <= maxKeys,
+    assertEquals(
+        threads, logged + overflow, "Every call must either be logged or counted as overflow");
+    assertTrue(
+        logged <= maxKeys,
         "Logged key count (" + logged + ") must not exceed maxKeys (" + maxKeys + ")");
   }
 
@@ -152,7 +154,8 @@ class ThrottledLoggerTest {
   }
 
   private static Logger testLogger(Handler handler) {
-    Logger logger = Logger.getLogger("co.pletor.nodemetrics.agent.ThrottledLoggerTest." + UUID.randomUUID());
+    Logger logger =
+        Logger.getLogger("co.pletor.nodemetrics.agent.ThrottledLoggerTest." + UUID.randomUUID());
     logger.setUseParentHandlers(false);
     logger.setLevel(Level.ALL);
     logger.addHandler(handler);

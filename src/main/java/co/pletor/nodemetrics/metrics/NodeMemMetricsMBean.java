@@ -1,8 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
-/**
- * JMX MBean interface for exposing node-level physical memory metrics.
- */
+/** JMX MBean interface for exposing node-level physical memory metrics. */
 public interface NodeMemMetricsMBean {
 
   /**
@@ -25,8 +23,8 @@ public interface NodeMemMetricsMBean {
 
   /**
    * Returns the free physical memory in bytes.
-   * <p>
-   * This strictly corresponds to unused memory (e.g. {@code MemFree} on Linux).
+   *
+   * <p>This strictly corresponds to unused memory (e.g. {@code MemFree} on Linux).
    *
    * @return the free memory in bytes
    */
@@ -36,9 +34,9 @@ public interface NodeMemMetricsMBean {
 
   /**
    * Returns the available physical memory in bytes.
-   * <p>
-   * This corresponds to memory available for starting new applications without swapping
-   * (e.g. {@code MemAvailable} on Linux).
+   *
+   * <p>This corresponds to memory available for starting new applications without swapping (e.g.
+   * {@code MemAvailable} on Linux).
    *
    * @return the available memory in bytes
    */

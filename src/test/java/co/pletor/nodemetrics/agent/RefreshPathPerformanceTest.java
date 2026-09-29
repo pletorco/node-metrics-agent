@@ -1,8 +1,8 @@
 package co.pletor.nodemetrics.agent;
 
-import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
 import java.lang.management.ManagementFactory;
 import java.util.Arrays;
 import java.util.List;
@@ -10,8 +10,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
-
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 class RefreshPathPerformanceTest {
 
@@ -23,9 +22,7 @@ class RefreshPathPerformanceTest {
 
     metric.setReadRefreshEnabled(false);
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
-    engine.setTasks(List.of(
-        new MetricsRefreshEngine.RefreshTask("probe", metric, false)
-    ));
+    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("probe", metric, false)));
 
     try {
       long baselinePolls = metric.pollCount();
@@ -36,23 +33,30 @@ class RefreshPathPerformanceTest {
 
       assertTrue(
           async.p99Nanos < baseline.p99Nanos,
-          "Async path should improve p99. baseline=" + baseline.p99Nanos + "ns, async=" + async.p99Nanos + "ns"
-      );
+          "Async path should improve p99. baseline="
+              + baseline.p99Nanos
+              + "ns, async="
+              + async.p99Nanos
+              + "ns");
 
       if (baseline.cpuNanosPerCall >= 0L && async.cpuNanosPerCall >= 0L) {
         assertTrue(
             async.cpuNanosPerCall < baseline.cpuNanosPerCall,
-            "Async path should reduce caller CPU cost. baseline=" + baseline.cpuNanosPerCall
-                + "ns, async=" + async.cpuNanosPerCall + "ns"
-        );
+            "Async path should reduce caller CPU cost. baseline="
+                + baseline.cpuNanosPerCall
+                + "ns, async="
+                + async.cpuNanosPerCall
+                + "ns");
       }
 
       if (baseline.allocatedBytesPerCall >= 0L && async.allocatedBytesPerCall >= 0L) {
         assertTrue(
             async.allocatedBytesPerCall < baseline.allocatedBytesPerCall,
-            "Async path should reduce caller allocation. baseline=" + baseline.allocatedBytesPerCall
-                + "B, async=" + async.allocatedBytesPerCall + "B"
-        );
+            "Async path should reduce caller allocation. baseline="
+                + baseline.allocatedBytesPerCall
+                + "B, async="
+                + async.allocatedBytesPerCall
+                + "B");
       }
     } finally {
       engine.stop();

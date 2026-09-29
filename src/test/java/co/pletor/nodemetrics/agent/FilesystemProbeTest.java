@@ -1,13 +1,12 @@
 package co.pletor.nodemetrics.agent;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 class FilesystemProbeTest {
 
@@ -42,7 +41,8 @@ class FilesystemProbeTest {
       long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 
       assertEquals("fallback", result);
-      assertTrue(elapsedMs < 1_000L, "Caller must not wait for a hung call, waited " + elapsedMs + " ms");
+      assertTrue(
+          elapsedMs < 1_000L, "Caller must not wait for a hung call, waited " + elapsedMs + " ms");
     } finally {
       release.countDown();
     }
@@ -55,16 +55,20 @@ class FilesystemProbeTest {
     AtomicInteger started = new AtomicInteger();
     try {
       for (int i = 0; i < 6; i++) {
-        probe.call(() -> {
-          started.incrementAndGet();
-          return hang(release, "x").call();
-        }, "fallback", 50L);
+        probe.call(
+            () -> {
+              started.incrementAndGet();
+              return hang(release, "x").call();
+            },
+            "fallback",
+            50L);
       }
       assertEquals(2, started.get(), "Only the capped number of probe threads may be pinned");
 
       long start = System.nanoTime();
       assertEquals("fallback", probe.call(() -> "healthy", "fallback", 5_000L));
-      assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) < 1_000L,
+      assertTrue(
+          TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) < 1_000L,
           "Once saturated, calls must fall back immediately instead of waiting");
     } finally {
       release.countDown();
@@ -76,10 +80,15 @@ class FilesystemProbeTest {
     FilesystemProbe probe = new FilesystemProbe(2);
     AtomicInteger ran = new AtomicInteger();
 
-    assertEquals("fallback", probe.call(() -> {
-      ran.incrementAndGet();
-      return "ran";
-    }, "fallback", 0L));
+    assertEquals(
+        "fallback",
+        probe.call(
+            () -> {
+              ran.incrementAndGet();
+              return "ran";
+            },
+            "fallback",
+            0L));
     assertEquals(0, ran.get());
   }
 
@@ -87,8 +96,13 @@ class FilesystemProbeTest {
   void call_shouldReturnFallbackWhenTaskThrows() {
     FilesystemProbe probe = new FilesystemProbe(2);
 
-    assertEquals("fallback", probe.call(() -> {
-      throw new IllegalStateException("boom");
-    }, "fallback", 1_000L));
+    assertEquals(
+        "fallback",
+        probe.call(
+            () -> {
+              throw new IllegalStateException("boom");
+            },
+            "fallback",
+            1_000L));
   }
 }

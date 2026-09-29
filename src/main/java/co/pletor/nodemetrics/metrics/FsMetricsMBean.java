@@ -1,8 +1,6 @@
 package co.pletor.nodemetrics.metrics;
 
-/**
- * Lightweight JMX MBean interface for basic filesystem metrics.
- */
+/** Lightweight JMX MBean interface for basic filesystem metrics. */
 public interface FsMetricsMBean {
 
   /**

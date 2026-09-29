@@ -1,17 +1,16 @@
 package co.pletor.nodemetrics.agent;
 
-import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
-
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import org.junit.jupiter.api.Test;
 
 class MetricsRefreshEngineTest {
 
@@ -39,10 +38,10 @@ class MetricsRefreshEngineTest {
     ThrowingMetric failing = new ThrowingMetric();
     CountingMetric healthy = new CountingMetric();
     MetricsRefreshEngine engine = new MetricsRefreshEngine(20L, 64);
-    engine.setTasks(List.of(
-        new MetricsRefreshEngine.RefreshTask("failing", failing, false),
-        new MetricsRefreshEngine.RefreshTask("healthy", healthy, false)
-    ));
+    engine.setTasks(
+        List.of(
+            new MetricsRefreshEngine.RefreshTask("failing", failing, false),
+            new MetricsRefreshEngine.RefreshTask("healthy", healthy, false)));
 
     try {
       engine.start();
@@ -62,20 +61,17 @@ class MetricsRefreshEngineTest {
     CountingMetric lowPriority = new CountingMetric();
     AtomicReference<TelemetryMode> lastMode = new AtomicReference<>(TelemetryMode.NORMAL);
 
-    MetricsRefreshEngine engine = new MetricsRefreshEngine(
-        5L,
-        2,
-        lastMode::set
-    );
-    engine.setTasks(List.of(
-        new MetricsRefreshEngine.RefreshTask("slow-high", slow, false),
-        new MetricsRefreshEngine.RefreshTask("low", lowPriority, true)
-    ));
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 2, lastMode::set);
+    engine.setTasks(
+        List.of(
+            new MetricsRefreshEngine.RefreshTask("slow-high", slow, false),
+            new MetricsRefreshEngine.RefreshTask("low", lowPriority, true)));
 
     try {
       engine.start();
       waitUntil(() -> engine.currentMode() != TelemetryMode.NORMAL, 3_000L);
-      assertNotEquals(TelemetryMode.NORMAL, engine.currentMode(), "Overload should leave NORMAL mode");
+      assertNotEquals(
+          TelemetryMode.NORMAL, engine.currentMode(), "Overload should leave NORMAL mode");
       assertTrue(engine.droppedCount() > 0L, "Overload should produce dropped refresh tasks");
       assertEquals(engine.currentMode(), lastMode.get(), "Mode listener should track latest mode");
     } finally {
@@ -87,9 +83,7 @@ class MetricsRefreshEngineTest {
   void engine_shouldKeepDispatchingAndDroppingWhenQueueIsSaturated() {
     SlowMetric slow = new SlowMetric(180L);
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 1);
-    engine.setTasks(List.of(
-        new MetricsRefreshEngine.RefreshTask("slow", slow, false)
-    ));
+    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("slow", slow, false)));
 
     try {
       engine.start();
@@ -98,8 +92,12 @@ class MetricsRefreshEngineTest {
       waitUntil(() -> engine.droppedCount() > droppedBefore, 2_000L);
 
       assertTrue(droppedBefore > 0L, "Saturation should produce dropped tasks");
-      assertTrue(engine.droppedCount() > droppedBefore, "Dispatcher should continue to drop while saturated");
-      assertTrue(engine.queueFillRatio() >= 0.0 && engine.queueFillRatio() <= 1.0, "Queue fill ratio must stay bounded");
+      assertTrue(
+          engine.droppedCount() > droppedBefore,
+          "Dispatcher should continue to drop while saturated");
+      assertTrue(
+          engine.queueFillRatio() >= 0.0 && engine.queueFillRatio() <= 1.0,
+          "Queue fill ratio must stay bounded");
     } finally {
       engine.stop();
     }
@@ -117,8 +115,12 @@ class MetricsRefreshEngineTest {
       engine.start();
       waitUntil(() -> engine.sinkSuccessCount() >= 1, 2_000L);
 
-      assertTrue(engine.maxTaskStalenessMs() >= 0L, "Staleness should be non-negative after a successful poll");
-      assertTrue(engine.maxTaskStalenessMs() < 5_000L, "Staleness should be small while engine is running");
+      assertTrue(
+          engine.maxTaskStalenessMs() >= 0L,
+          "Staleness should be non-negative after a successful poll");
+      assertTrue(
+          engine.maxTaskStalenessMs() < 5_000L,
+          "Staleness should be small while engine is running");
     } finally {
       engine.stop();
     }
@@ -138,7 +140,8 @@ class MetricsRefreshEngineTest {
 
       waitUntil(() -> engine.droppedCount() > 5L, 3_000L);
       LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(300L));
-      assertTrue(engine.maxTaskStalenessMs() >= stalenessBefore,
+      assertTrue(
+          engine.maxTaskStalenessMs() >= stalenessBefore,
           "Staleness should not decrease while tasks are being dropped");
     } finally {
       engine.stop();
@@ -150,22 +153,26 @@ class MetricsRefreshEngineTest {
     SlowMetric slow = new SlowMetric(120L);
     CountingMetric fast = new CountingMetric();
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 2);
-    engine.setTasks(List.of(
-        new MetricsRefreshEngine.RefreshTask("slow", slow, false),
-        new MetricsRefreshEngine.RefreshTask("low", fast, true)
-    ));
+    engine.setTasks(
+        List.of(
+            new MetricsRefreshEngine.RefreshTask("slow", slow, false),
+            new MetricsRefreshEngine.RefreshTask("low", fast, true)));
 
     try {
       engine.start();
       waitUntil(() -> engine.currentMode() != TelemetryMode.NORMAL, 3_000L);
-      assertNotEquals(TelemetryMode.NORMAL, engine.currentMode(), "Engine should leave NORMAL under saturation");
+      assertNotEquals(
+          TelemetryMode.NORMAL,
+          engine.currentMode(),
+          "Engine should leave NORMAL under saturation");
 
-      engine.setTasks(List.of(
-          new MetricsRefreshEngine.RefreshTask("fast-only", fast, false)
-      ));
+      engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("fast-only", fast, false)));
 
       waitUntil(() -> engine.currentMode() == TelemetryMode.NORMAL, 3_000L);
-      assertEquals(TelemetryMode.NORMAL, engine.currentMode(), "Engine should recover to NORMAL after pressure drops");
+      assertEquals(
+          TelemetryMode.NORMAL,
+          engine.currentMode(),
+          "Engine should recover to NORMAL after pressure drops");
     } finally {
       engine.stop();
     }
@@ -232,49 +239,59 @@ class MetricsRefreshEngineTest {
 
   @Test
   void engine_shouldRecoverToNormalWhileLowPriorityTasksRemainRegistered() {
-    java.util.concurrent.atomic.AtomicBoolean blocked = new java.util.concurrent.atomic.AtomicBoolean(true);
-    RefreshManagedMetric blocking = new RefreshManagedMetric() {
-      @Override
-      public void poll() {
-        while (blocked.get()) {
-          LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(5L));
-        }
-      }
+    java.util.concurrent.atomic.AtomicBoolean blocked =
+        new java.util.concurrent.atomic.AtomicBoolean(true);
+    RefreshManagedMetric blocking =
+        new RefreshManagedMetric() {
+          @Override
+          public void poll() {
+            while (blocked.get()) {
+              LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(5L));
+            }
+          }
 
-      @Override
-      public void setReadRefreshEnabled(boolean enabled) {
-        // no-op for test double
-      }
-    };
+          @Override
+          public void setReadRefreshEnabled(boolean enabled) {
+            // no-op for test double
+          }
+        };
     CountingMetric fast = new CountingMetric();
     CountingMetric fs = new CountingMetric();
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 4);
-    engine.setTasks(List.of(
-        new MetricsRefreshEngine.RefreshTask("blocking", blocking, false),
-        new MetricsRefreshEngine.RefreshTask("fast", fast, false),
-        new MetricsRefreshEngine.RefreshTask("fs:/", fs, true)
-    ));
+    engine.setTasks(
+        List.of(
+            new MetricsRefreshEngine.RefreshTask("blocking", blocking, false),
+            new MetricsRefreshEngine.RefreshTask("fast", fast, false),
+            new MetricsRefreshEngine.RefreshTask("fs:/", fs, true)));
 
     try {
       engine.start();
       waitUntil(() -> engine.currentMode() != TelemetryMode.NORMAL, 3_000L);
-      assertNotEquals(TelemetryMode.NORMAL, engine.currentMode(), "Engine should leave NORMAL under saturation");
+      assertNotEquals(
+          TelemetryMode.NORMAL,
+          engine.currentMode(),
+          "Engine should leave NORMAL under saturation");
 
       blocked.set(false);
 
       waitUntil(() -> engine.currentMode() == TelemetryMode.NORMAL, 3_000L);
-      assertEquals(TelemetryMode.NORMAL, engine.currentMode(),
+      assertEquals(
+          TelemetryMode.NORMAL,
+          engine.currentMode(),
           "Intentional low-priority drops must not keep the engine in DEGRADED");
       int before = fs.pollCount.get();
       waitUntil(() -> fs.pollCount.get() > before, 3_000L);
-      assertTrue(fs.pollCount.get() > before, "Low-priority task must be polled again after recovery");
+      assertTrue(
+          fs.pollCount.get() > before, "Low-priority task must be polled again after recovery");
     } finally {
       blocked.set(false);
       engine.stop();
     }
   }
 
-  /** Metric that absorbs failures like the real beans: poll() never throws, the error is reported. */
+  /**
+   * Metric that absorbs failures like the real beans: poll() never throws, the error is reported.
+   */
   static class AbsorbingMetric implements RefreshManagedMetric {
     final AtomicInteger pollCount = new AtomicInteger();
     final AtomicReference<Throwable> error = new AtomicReference<>();
@@ -311,7 +328,8 @@ class MetricsRefreshEngineTest {
 
       metric.error.set(null);
       waitUntil(() -> engine.failingTaskNames().isEmpty(), 2_000L);
-      assertTrue(engine.failingTaskNames().isEmpty(), "Task should be healthy again after a clean poll");
+      assertTrue(
+          engine.failingTaskNames().isEmpty(), "Task should be healthy again after a clean poll");
       assertTrue(engine.sinkSuccessCount() > 0L);
     } finally {
       engine.stop();
@@ -323,10 +341,10 @@ class MetricsRefreshEngineTest {
     CountingMetric fast = new CountingMetric();
     CountingMetric slow = new CountingMetric();
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 256);
-    engine.setTasks(List.of(
-        new MetricsRefreshEngine.RefreshTask("fast", fast, false),
-        new MetricsRefreshEngine.RefreshTask("slow", slow, false, 60_000L)
-    ));
+    engine.setTasks(
+        List.of(
+            new MetricsRefreshEngine.RefreshTask("fast", fast, false),
+            new MetricsRefreshEngine.RefreshTask("slow", slow, false, 60_000L)));
 
     try {
       engine.start();
@@ -348,7 +366,9 @@ class MetricsRefreshEngineTest {
       engine.start();
       waitUntil(() -> engine.sinkSuccessCount() >= 1, 2_000L);
       LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(100L));
-      assertEquals(0L, engine.maxTaskStalenessMs(),
+      assertEquals(
+          0L,
+          engine.maxTaskStalenessMs(),
           "A task refreshed within its own interval is not stale, however long the interval");
     } finally {
       engine.stop();
@@ -366,7 +386,8 @@ class MetricsRefreshEngineTest {
       engine.start();
       waitUntil(() -> engine.sinkFailureCount() >= 1, 2_000L);
       LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(150L));
-      assertTrue(engine.maxTaskStalenessMs() >= 100L,
+      assertTrue(
+          engine.maxTaskStalenessMs() >= 100L,
           "A task that keeps failing from the start must show up as stale");
     } finally {
       engine.stop();
@@ -395,7 +416,8 @@ class MetricsRefreshEngineTest {
   /** Metric whose poll() blocks like a statvfs on a dead NFS mount: it ignores interrupts. */
   static class HangingMetric implements RefreshManagedMetric {
     final AtomicInteger pollCount = new AtomicInteger();
-    private final java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean();
+    private final java.util.concurrent.atomic.AtomicBoolean released =
+        new java.util.concurrent.atomic.AtomicBoolean();
 
     @Override
     public void poll() {
@@ -423,11 +445,11 @@ class MetricsRefreshEngineTest {
     CountingMetric critical = new CountingMetric();
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
     engine.setStuckThresholdMs(100L);
-    engine.setTasks(List.of(
-        new MetricsRefreshEngine.RefreshTask("cpu", critical, false),
-        new MetricsRefreshEngine.RefreshTask("fs:/dead-nfs", hung, true),
-        new MetricsRefreshEngine.RefreshTask("fs:/data", otherFs, true)
-    ));
+    engine.setTasks(
+        List.of(
+            new MetricsRefreshEngine.RefreshTask("cpu", critical, false),
+            new MetricsRefreshEngine.RefreshTask("fs:/dead-nfs", hung, true),
+            new MetricsRefreshEngine.RefreshTask("fs:/data", otherFs, true)));
 
     try {
       engine.start();
@@ -435,12 +457,20 @@ class MetricsRefreshEngineTest {
       int criticalBefore = critical.pollCount.get();
       int otherFsBefore = otherFs.pollCount.get();
 
-      waitUntil(() -> critical.pollCount.get() >= criticalBefore + 20
-          && otherFs.pollCount.get() >= otherFsBefore + 20, 3_000L);
-      assertTrue(critical.pollCount.get() >= criticalBefore + 20, "Critical metrics must keep refreshing");
-      assertTrue(otherFs.pollCount.get() >= otherFsBefore + 20, "Other filesystems must keep refreshing");
+      waitUntil(
+          () ->
+              critical.pollCount.get() >= criticalBefore + 20
+                  && otherFs.pollCount.get() >= otherFsBefore + 20,
+          3_000L);
+      assertTrue(
+          critical.pollCount.get() >= criticalBefore + 20, "Critical metrics must keep refreshing");
+      assertTrue(
+          otherFs.pollCount.get() >= otherFsBefore + 20, "Other filesystems must keep refreshing");
       assertEquals(1, hung.pollCount.get(), "A hung task must not be enqueued on top of itself");
-      assertEquals(TelemetryMode.NORMAL, engine.currentMode(), "A hung filesystem must not trigger overload modes");
+      assertEquals(
+          TelemetryMode.NORMAL,
+          engine.currentMode(),
+          "A hung filesystem must not trigger overload modes");
       assertTrue(engine.queueSize() <= 3, "Queues must not fill up behind a hung task");
 
       waitUntil(() -> !engine.stuckTaskNames().isEmpty(), 2_000L);

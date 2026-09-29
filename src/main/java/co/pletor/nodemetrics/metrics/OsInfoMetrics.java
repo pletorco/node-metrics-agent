@@ -8,24 +8,22 @@ import java.util.Locale;
 
 /**
  * Operating system information metrics MBean implementation.
- * <p>
- * This class collects a small set of OS-level properties:
+ *
+ * <p>This class collects a small set of OS-level properties:
+ *
  * <ul>
- *   <li>OS release (e.g. from /etc/os-release on Linux)</li>
- *   <li>Kernel version (e.g. /proc/sys/kernel/osrelease)</li>
- *   <li>Basic JVM OS properties (name, arch)</li>
- *   <li>Best-effort environment type (host/VM vs generic container vs Kubernetes)</li>
+ *   <li>OS release (e.g. from /etc/os-release on Linux)
+ *   <li>Kernel version (e.g. /proc/sys/kernel/osrelease)
+ *   <li>Basic JVM OS properties (name, arch)
+ *   <li>Best-effort environment type (host/VM vs generic container vs Kubernetes)
  * </ul>
- * <p>
- * All values are cached in volatile fields and refreshed on {@link #poll()}.
- * On any error, individual fields may fall back to empty string or -1.
+ *
+ * <p>All values are cached in volatile fields and refreshed on {@link #poll()}. On any error,
+ * individual fields may fall back to empty string or -1.
  */
 public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMetricsMBean {
 
-  /**
-   * Constant info metric for use as a Prometheus *_info value.
-   * Always 1.
-   */
+  /** Constant info metric for use as a Prometheus *_info value. Always 1. */
   private static final int INFO_FLAG = 1;
 
   private static final String OS_VERSION_PROPERTY = "os.version";
@@ -43,17 +41,15 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
 
   /**
    * Creates a new {@code OsInfoMetrics} instance with default values.
-   * <p>
-   * All fields are initialized to empty strings or {@code "unknown"} and
-   * will be populated on the first JMX query.
+   *
+   * <p>All fields are initialized to empty strings or {@code "unknown"} and will be populated on
+   * the first JMX query.
    */
   public OsInfoMetrics() {
     this(SystemAccess.defaultInstance());
   }
 
-  /**
-   * Constructor for testing.
-   */
+  /** Constructor for testing. */
   OsInfoMetrics(SystemAccess sys) {
     this.sys = sys;
   }
@@ -62,9 +58,7 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
   // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  /**
-   * Refresh the metric values.
-   */
+  /** Refresh the metric values. */
   @Override
   protected void doRefresh() {
     // Optimization: OS info is static. If already populated, do not re-read.
@@ -112,8 +106,6 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
       environmentType = ENV_UNKNOWN;
     }
   }
-
-
 
   // ----- Linux-specific implementation -----
 
@@ -198,9 +190,8 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
   }
 
   /**
-   * Read a file as UTF-8, trim it, and return the result.
-   * Returns an empty string when the file does not exist, is empty,
-   * or cannot be read.
+   * Read a file as UTF-8, trim it, and return the result. Returns an empty string when the file
+   * does not exist, is empty, or cannot be read.
    */
   private String readTrimmedFileIfNonEmpty(Path path) {
     if (!sys.isRegularFile(path)) {
@@ -215,12 +206,9 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
   }
 
   /**
-   * Read /proc/version and extract a kernel-like token.
-   * Example line:
-   *   "Linux version 5.14.0-... (builder@...) ..."
-   * In that case, "5.14.0-..." is returned.
-   * If no such token is found, the full trimmed line is returned.
-   * Returns an empty string on error.
+   * Read /proc/version and extract a kernel-like token. Example line: "Linux version 5.14.0-...
+   * (builder@...) ..." In that case, "5.14.0-..." is returned. If no such token is found, the full
+   * trimmed line is returned. Returns an empty string on error.
    */
   private String readKernelFromProcVersion() {
     Path p = Path.of("/proc/version");
@@ -253,18 +241,19 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
   // ----- Environment type detection -----
 
   /**
-   * Best-effort detection of whether we are running inside a container,
-   * and if so whether it looks like a Kubernetes pod.
-   * <p>
-   * This method is intentionally conservative and may return "unknown"
-   * when it cannot make a confident guess.
-   * <p>
-   * Values:
+   * Best-effort detection of whether we are running inside a container, and if so whether it looks
+   * like a Kubernetes pod.
+   *
+   * <p>This method is intentionally conservative and may return "unknown" when it cannot make a
+   * confident guess.
+   *
+   * <p>Values:
+   *
    * <ul>
-   *   <li>"kubernetes"  – container and strong Kubernetes markers detected</li>
-   *   <li>"container"   – container-like environment, but no clear Kubernetes markers</li>
-   *   <li>"host_or_vm"  – looks like bare host or virtual machine</li>
-   *   <li>"unknown"     – non-Linux or insufficient information</li>
+   *   <li>"kubernetes" – container and strong Kubernetes markers detected
+   *   <li>"container" – container-like environment, but no clear Kubernetes markers
+   *   <li>"host_or_vm" – looks like bare host or virtual machine
+   *   <li>"unknown" – non-Linux or insufficient information
    * </ul>
    */
   private String detectEnvironmentType() {
@@ -280,7 +269,7 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
       return ENV_KUBERNETES; // "kubernetes"
     }
     if (containerLike) {
-      return ENV_CONTAINER;  // "container"
+      return ENV_CONTAINER; // "container"
     }
 
     // If we reach here, we did not see strong container markers.
@@ -288,20 +277,18 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
   }
 
   /**
-   * Returns true if we see any Kubernetes-specific markers
-   * (cgroup patterns, service account, or environment variables).
+   * Returns true if we see any Kubernetes-specific markers (cgroup patterns, service account, or
+   * environment variables).
    */
   private boolean hasKubernetesMarker() {
-    return hasKubernetesLikeCgroup()
-        || hasKubernetesServiceAccount()
-        || hasKubernetesEnvVars();
+    return hasKubernetesLikeCgroup() || hasKubernetesServiceAccount() || hasKubernetesEnvVars();
   }
 
   /**
    * Returns true if we see generic container-like markers.
-   * <p>
-   * Kubernetes is always considered container-like, so the
-   * kubernetesLike flag is folded into the result.
+   *
+   * <p>Kubernetes is always considered container-like, so the kubernetesLike flag is folded into
+   * the result.
    */
   private boolean hasContainerMarker(boolean kubernetesLike) {
     if (kubernetesLike) {
@@ -316,17 +303,14 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
   }
 
   /**
-   * Runtime marker files used by common container runtimes
-   * such as Docker, Podman, and containerd.
+   * Runtime marker files used by common container runtimes such as Docker, Podman, and containerd.
    */
   private boolean isContainerRuntimeFilePresent() {
     return sys.isRegularFile(Path.of("/.dockerenv"))
         || sys.isRegularFile(Path.of("/run/.containerenv"));
   }
 
-  /**
-   * Check cgroup information for generic container markers.
-   */
+  /** Check cgroup information for generic container markers. */
   private boolean hasContainerLikeCgroup() {
     // 1) Primary cgroup info detected by LinuxProcFs.
     LinuxProcFs.CgroupInfo cg = sys.detectCgroup();
@@ -355,9 +339,7 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
     return false;
   }
 
-  /**
-   * Check cgroup information for Kubernetes-specific markers.
-   */
+  /** Check cgroup information for Kubernetes-specific markers. */
   private boolean hasKubernetesLikeCgroup() {
     // 1) Primary cgroup info detected by LinuxProcFs.
     LinuxProcFs.CgroupInfo cg = sys.detectCgroup();
@@ -386,20 +368,15 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
     return false;
   }
 
-  /**
-   * Kubernetes service account directory is mounted inside pods.
-   */
+  /** Kubernetes service account directory is mounted inside pods. */
   private boolean hasKubernetesServiceAccount() {
     Path saDir = Path.of("/var/run/secrets/kubernetes.io/serviceaccount");
     return sys.isDirectory(saDir) || sys.isRegularFile(saDir.resolve("token"));
   }
 
-  /**
-   * Environment variables exported by kubelet for in-cluster clients.
-   */
+  /** Environment variables exported by kubelet for in-cluster clients. */
   private boolean hasKubernetesEnvVars() {
-    return sys.getEnv("KUBERNETES_SERVICE_HOST") != null
-        || sys.getEnv("KUBERNETES_PORT") != null;
+    return sys.getEnv("KUBERNETES_SERVICE_HOST") != null || sys.getEnv("KUBERNETES_PORT") != null;
   }
 
   private boolean containsContainerMarker(String s) {
@@ -412,9 +389,7 @@ public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMet
 
   private boolean containsKubernetesMarker(String s) {
     // Kubernetes-specific cgroup markers (v1/v2).
-    return s.contains("kubepods")
-        || s.contains("kube.slice")
-        || s.contains("kubepods.slice");
+    return s.contains("kubepods") || s.contains("kube.slice") || s.contains("kubepods.slice");
   }
 
   // ----- Utility helpers -----

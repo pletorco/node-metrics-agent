@@ -27,8 +27,8 @@ class OsRuntimeMetricsTest {
   // ----------------------------------------------------------------------
   // Helper: invoke private methods via reflection for better coverage
   // ----------------------------------------------------------------------
-  private static Object invokePrivate(Object target, String name, Class<?>[] paramTypes,
-      Object... args) throws Exception {
+  private static Object invokePrivate(
+      Object target, String name, Class<?>[] paramTypes, Object... args) throws Exception {
     Method m = target.getClass().getDeclaredMethod(name, paramTypes);
     m.setAccessible(true);
     return m.invoke(target, args);
@@ -47,19 +47,19 @@ class OsRuntimeMetricsTest {
 
     // Multi-line text block to simulate mounts file content
     String mountsText =
-        "/dev/sda1 / ext4 rw,relatime 0 0\n"
-            + "tmpfs /run tmpfs rw,nosuid,nodev 0 0\n";
+        "/dev/sda1 / ext4 rw,relatime 0 0\n" + "tmpfs /run tmpfs rw,nosuid,nodev 0 0\n";
     List<String> mountLines = mountsText.lines().collect(java.util.stream.Collectors.toList());
 
     try (MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class);
-         MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class)) {
+        MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class)) {
 
       // Pretend we are on Linux
       linuxMock.when(LinuxProcFs::isLinux).thenReturn(true);
 
       // Simulate /proc/uptime existing and containing a valid value
       filesMock.when(() -> Files.isRegularFile(uptimePath)).thenReturn(true);
-      filesMock.when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8))
+      filesMock
+          .when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8))
           .thenReturn("123.0 456.0\n");
 
       // Simulate /proc/self/mounts existing and containing two lines
@@ -70,8 +70,8 @@ class OsRuntimeMetricsTest {
       metrics.poll();
 
       // Verify uptime seconds (first token 123.0 -> 123L)
-      assertEquals(123L, metrics.getUptimeSeconds(),
-          "Linux uptime should be parsed from /proc/uptime");
+      assertEquals(
+          123L, metrics.getUptimeSeconds(), "Linux uptime should be parsed from /proc/uptime");
       // Mount count and mounts content
       assertEquals(2, metrics.getMountCount(), "Mount count should be number of parsed lines");
       String[] mounts1 = metrics.getMounts();
@@ -82,8 +82,8 @@ class OsRuntimeMetricsTest {
       // Verify defensive copy: getMounts() should return a clone
       mounts1[0] = "modified";
       String[] mounts2 = metrics.getMounts();
-      assertNotEquals("modified", mounts2[0],
-          "Modifying returned array must not change internal mounts array");
+      assertNotEquals(
+          "modified", mounts2[0], "Modifying returned array must not change internal mounts array");
     }
   }
 
@@ -102,18 +102,14 @@ class OsRuntimeMetricsTest {
     List<String> mountLines = mountsText.lines().collect(java.util.stream.Collectors.toList());
 
     try (MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class);
-         MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class)) {
+        MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class)) {
 
       // self mount file does not exist, /proc/mounts exists
       filesMock.when(() -> Files.isRegularFile(selfMountsPath)).thenReturn(false);
       filesMock.when(() -> Files.isRegularFile(mountsPath)).thenReturn(true);
       linuxMock.when(() -> LinuxProcFs.readLines(mountsPath)).thenReturn(mountLines);
 
-      String[] mounts = (String[]) invokePrivate(
-          metrics,
-          "readMountsLinux",
-          new Class<?>[0]
-      );
+      String[] mounts = (String[]) invokePrivate(metrics, "readMountsLinux", new Class<?>[0]);
 
       assertEquals(1, mounts.length, "Should read one mount line from /proc/mounts");
       assertEquals(mountLines.get(0), mounts[0], "Mount line should come from /proc/mounts");
@@ -132,32 +128,26 @@ class OsRuntimeMetricsTest {
     Path mountsPath = Path.of("/proc/mounts");
 
     try (MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class);
-         MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class)) {
+        MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class)) {
 
       // Case 1: neither mounts file exists
       filesMock.when(() -> Files.isRegularFile(selfMountsPath)).thenReturn(false);
       filesMock.when(() -> Files.isRegularFile(mountsPath)).thenReturn(false);
 
-      String[] mountsMissing = (String[]) invokePrivate(
-          metrics,
-          "readMountsLinux",
-          new Class<?>[0]
-      );
-      assertEquals(0, mountsMissing.length,
-          "Should return empty array when mount files are missing");
+      String[] mountsMissing =
+          (String[]) invokePrivate(metrics, "readMountsLinux", new Class<?>[0]);
+      assertEquals(
+          0, mountsMissing.length, "Should return empty array when mount files are missing");
 
       // Case 2: file exists but readLines throws IOException
       filesMock.when(() -> Files.isRegularFile(selfMountsPath)).thenReturn(true);
-      linuxMock.when(() -> LinuxProcFs.readLines(selfMountsPath))
+      linuxMock
+          .when(() -> LinuxProcFs.readLines(selfMountsPath))
           .thenThrow(new java.io.IOException("simulated IO error"));
 
-      String[] mountsError = (String[]) invokePrivate(
-          metrics,
-          "readMountsLinux",
-          new Class<?>[0]
-      );
-      assertEquals(0, mountsError.length,
-          "Should return empty array when readLines throws IOException");
+      String[] mountsError = (String[]) invokePrivate(metrics, "readMountsLinux", new Class<?>[0]);
+      assertEquals(
+          0, mountsError.length, "Should return empty array when readLines throws IOException");
     }
   }
 
@@ -184,12 +174,14 @@ class OsRuntimeMetricsTest {
       assertEquals(0L, v2, "Empty content should result in 0");
 
       // Case 3: negative uptime
-      filesMock.when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8))
-           .thenReturn("-10.0 0.0\n");
+      filesMock
+          .when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8))
+          .thenReturn("-10.0 0.0\n");
       long v3 = (long) invokePrivate(metrics, "readUptimeLinux", new Class<?>[0]);
       assertEquals(0L, v3, "Negative uptime should result in 0");
       // Case 4: invalid number format
-      filesMock.when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8))
+      filesMock
+          .when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8))
           .thenReturn("not-a-number 0.0\n");
       long v4 = (long) invokePrivate(metrics, "readUptimeLinux", new Class<?>[0]);
       assertEquals(0L, v4, "Invalid number should result in 0");
@@ -205,8 +197,8 @@ class OsRuntimeMetricsTest {
     OsRuntimeMetrics metrics = new OsRuntimeMetrics();
 
     try (MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class);
-         MockedStatic<ManagementFactory> mgmtMock = Mockito.mockStatic(ManagementFactory.class);
-         MockedStatic<FileSystems> fsStaticMock = Mockito.mockStatic(FileSystems.class)) {
+        MockedStatic<ManagementFactory> mgmtMock = Mockito.mockStatic(ManagementFactory.class);
+        MockedStatic<FileSystems> fsStaticMock = Mockito.mockStatic(FileSystems.class)) {
 
       // Pretend we are not on Linux
       linuxMock.when(LinuxProcFs::isLinux).thenReturn(false);
@@ -233,17 +225,19 @@ class OsRuntimeMetricsTest {
       metrics.poll();
 
       // Verify uptime converted from milliseconds to seconds
-      assertEquals(42L, metrics.getUptimeSeconds(),
+      assertEquals(
+          42L,
+          metrics.getUptimeSeconds(),
           "Uptime should be derived from RuntimeMXBean in seconds");
 
       // Verify mount strings from FileStores
       assertEquals(2, metrics.getMountCount(), "Mount count should match number of FileStores");
       String[] mounts = metrics.getMounts();
       assertEquals(2, mounts.length, "Mounts array length should match mountCount");
-      assertEquals("root (ext4)", mounts[0],
-          "First FileStore should be formatted as 'name (type)'");
-      assertEquals("data (xfs)", mounts[1],
-          "Second FileStore should be formatted as 'name (type)'");
+      assertEquals(
+          "root (ext4)", mounts[0], "First FileStore should be formatted as 'name (type)'");
+      assertEquals(
+          "data (xfs)", mounts[1], "Second FileStore should be formatted as 'name (type)'");
     }
   }
 
@@ -261,22 +255,15 @@ class OsRuntimeMetricsTest {
       mgmtMock.when(ManagementFactory::getRuntimeMXBean).thenReturn(mxNegative);
       Mockito.when(mxNegative.getUptime()).thenReturn(-1000L);
 
-      long v1 = (long) invokePrivate(
-          metrics,
-          "readUptimeFromRuntimeMxBean",
-          new Class<?>[0]
-      );
+      long v1 = (long) invokePrivate(metrics, "readUptimeFromRuntimeMxBean", new Class<?>[0]);
       assertEquals(0L, v1, "Negative uptime should result in 0");
 
       // Case 2: RuntimeException thrown when calling getRuntimeMXBean()
-      mgmtMock.when(ManagementFactory::getRuntimeMXBean)
+      mgmtMock
+          .when(ManagementFactory::getRuntimeMXBean)
           .thenThrow(new RuntimeException("simulated runtime error"));
 
-      long v2 = (long) invokePrivate(
-          metrics,
-          "readUptimeFromRuntimeMxBean",
-          new Class<?>[0]
-      );
+      long v2 = (long) invokePrivate(metrics, "readUptimeFromRuntimeMxBean", new Class<?>[0]);
       assertEquals(0L, v2, "RuntimeException should be caught and result in 0");
     }
   }
@@ -285,7 +272,9 @@ class OsRuntimeMetricsTest {
   // Non-Linux path: readMountsFromFileStores error path (exception from filesystem)
   // ----------------------------------------------------------------------
   @Test
-  @DisplayName("readMountsFromFileStores() should return partial or empty result when RuntimeException is thrown")
+  @DisplayName(
+      "readMountsFromFileStores() should return partial or empty result when RuntimeException is"
+          + " thrown")
   void readMountsFromFileStoresShouldHandleRuntimeException() throws Exception {
     OsRuntimeMetrics metrics = new OsRuntimeMetrics();
 
@@ -296,13 +285,9 @@ class OsRuntimeMetricsTest {
       fsStaticMock.when(FileSystems::getDefault).thenReturn(fsError);
       Mockito.when(fsError.getFileStores()).thenThrow(new RuntimeException("simulated error"));
 
-      String[] mountsError = (String[]) invokePrivate(
-          metrics,
-          "readMountsFromFileStores",
-          new Class<?>[0]
-      );
-      assertEquals(0, mountsError.length,
-          "On RuntimeException, method should return empty array");
+      String[] mountsError =
+          (String[]) invokePrivate(metrics, "readMountsFromFileStores", new Class<?>[0]);
+      assertEquals(0, mountsError.length, "On RuntimeException, method should return empty array");
     }
   }
 

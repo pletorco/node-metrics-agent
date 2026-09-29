@@ -13,22 +13,22 @@ import java.util.List;
 
 /**
  * Runtime OS metrics MBean implementation (uptime, mounts).
- * <p>
- * On Linux, uses /proc/uptime and /proc/self/mounts (or /proc/mounts).
- * On non-Linux platforms, falls back to RuntimeMXBean uptime and
- * FileStore enumeration.
+ *
+ * <p>On Linux, uses /proc/uptime and /proc/self/mounts (or /proc/mounts). On non-Linux platforms,
+ * falls back to RuntimeMXBean uptime and FileStore enumeration.
  */
 public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRuntimeMetricsMBean {
 
   private volatile long uptimeSeconds = 0L;
   private volatile int mountCount = -1;
+
   @SuppressWarnings("java:S3077")
   private volatile String[] mounts = new String[0];
 
   /**
    * Creates a new {@code OsRuntimeMetrics} instance with zeroed counters.
-   * <p>
-   * Metric values will be populated on the first JMX query (if you have one).
+   *
+   * <p>Metric values will be populated on the first JMX query (if you have one).
    */
   public OsRuntimeMetrics() {
     // default constructor for MBean registration and frameworks
@@ -38,9 +38,7 @@ public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRunt
   // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  /**
-   * Refresh the metric values.
-   */
+  /** Refresh the metric values. */
   @Override
   protected void doRefresh() {
     try {

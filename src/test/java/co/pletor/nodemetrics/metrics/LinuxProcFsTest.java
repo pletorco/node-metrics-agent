@@ -22,8 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class LinuxProcFsTest {
 
-  @TempDir
-  Path tempDir;
+  @TempDir Path tempDir;
 
   @Test
   void privateConstructor_shouldBeInvokableViaReflection() throws Exception {
@@ -70,10 +69,7 @@ class LinuxProcFsTest {
   @Test
   void readLines_shouldReadAllLinesInOrder() {
     Path file = tempDir.resolve("lines.txt");
-    String content =
-        "first\n"
-            + "second\n"
-            + "third\n";
+    String content = "first\n" + "second\n" + "third\n";
     try {
       Files.writeString(file, content, StandardCharsets.UTF_8);
     } catch (IOException e) {
@@ -94,10 +90,9 @@ class LinuxProcFsTest {
   @Test
   void parseLongSafe_shouldHandleValidAndInvalidInputs() {
     assertEquals(123L, LinuxProcFs.parseLongSafe("123"), "Valid number should parse correctly");
-    assertEquals(123L, LinuxProcFs.parseLongSafe("  123  "),
-        "Trimmed number should parse correctly");
-    assertEquals(0L, LinuxProcFs.parseLongSafe("not-a-number"),
-        "Invalid number should return 0");
+    assertEquals(
+        123L, LinuxProcFs.parseLongSafe("  123  "), "Trimmed number should parse correctly");
+    assertEquals(0L, LinuxProcFs.parseLongSafe("not-a-number"), "Invalid number should return 0");
     assertEquals(0L, LinuxProcFs.parseLongSafe(""), "Empty string should return 0");
     assertEquals(0L, LinuxProcFs.parseLongSafe("   "), "Whitespace-only string should return 0");
   }
@@ -136,8 +131,8 @@ class LinuxProcFsTest {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
-    assertEquals(-1L, LinuxProcFs.readFirstNumber(invalidFile),
-        "Invalid numeric content should return -1");
+    assertEquals(
+        -1L, LinuxProcFs.readFirstNumber(invalidFile), "Invalid numeric content should return -1");
 
     // Missing file (should trigger exception and return -1)
     Path missingFile = tempDir.resolve("missing.txt");
@@ -149,8 +144,8 @@ class LinuxProcFsTest {
   void resolveCgroupPath_shouldHandleNullAndRootAndRelativePaths() throws Exception {
     // Use reflection to access private static method resolveCgroupPath
     Method method =
-        LinuxProcFs.class.getDeclaredMethod("resolveCgroupPath", java.nio.file.Path.class,
-            String.class);
+        LinuxProcFs.class.getDeclaredMethod(
+            "resolveCgroupPath", java.nio.file.Path.class, String.class);
     method.setAccessible(true);
 
     Path base = tempDir.resolve("cgroup-base");
@@ -175,17 +170,15 @@ class LinuxProcFsTest {
     Object r5 = method.invoke(null, base, "/foo/bar");
     assertTrue(r5 instanceof Path, "Resolved cgroup path should be a Path");
     Path resolved = (Path) r5;
-    assertEquals(base.resolve("foo/bar"), resolved,
-        "Leading slash should be stripped when resolving path");
+    assertEquals(
+        base.resolve("foo/bar"), resolved, "Leading slash should be stripped when resolving path");
   }
 
   @Test
   void findMemoryControllerPath_shouldReturnMemoryPathWhenPresent() throws Exception {
     // Build a fake cgroup file content that includes a memory controller line.
     String content =
-        "2:cpuset:/\n"
-            + "3:cpu,cpuacct:/some/other\n"
-            + "4:memory:/kubepods/besteffort/pod123\n";
+        "2:cpuset:/\n" + "3:cpu,cpuacct:/some/other\n" + "4:memory:/kubepods/besteffort/pod123\n";
 
     Path cgroupFile = tempDir.resolve("cgroup");
     try {
@@ -202,16 +195,14 @@ class LinuxProcFsTest {
     Object ret = method.invoke(null, cgroupFile);
     assertTrue(ret instanceof String, "Return type should be String");
     String path = (String) ret;
-    assertEquals("/kubepods/besteffort/pod123", path,
-        "Memory controller path should be parsed correctly");
+    assertEquals(
+        "/kubepods/besteffort/pod123", path, "Memory controller path should be parsed correctly");
   }
 
   @Test
   void findMemoryControllerPath_shouldReturnNullWhenNoMemoryController() throws Exception {
     // File without any memory controller entry.
-    String content =
-        "2:cpuset:/\n"
-            + "3:cpu,cpuacct:/some/other\n";
+    String content = "2:cpuset:/\n" + "3:cpu,cpuacct:/some/other\n";
 
     Path cgroupFile = tempDir.resolve("cgroup-nomemory");
     try {
@@ -268,8 +259,7 @@ class LinuxProcFsTest {
     // Version should be one of the documented values: v1, v2, or none.
     assertTrue(
         "v1".equals(version) || "v2".equals(version) || "none".equals(version),
-        "Version should be v1, v2, or none"
-    );
+        "Version should be v1, v2, or none");
 
     // Use pattern matching again for the nested type
     Object o = info;
@@ -411,6 +401,7 @@ class LinuxProcFsTest {
     LinuxProcFs.DiskTotals second = LinuxProcFs.readDiskTotals();
     assertEquals(200L, second.readSectors);
   }
+
   @org.junit.jupiter.api.AfterEach
   void resetRoots() {
     LinuxProcFs.setProcRoot(java.nio.file.Paths.get("/proc"));
@@ -421,7 +412,8 @@ class LinuxProcFsTest {
   void readDiskTotals_continueConditions() throws IOException {
     LinuxProcFs.setProcRoot(tempDir);
     Path diskstats = tempDir.resolve("diskstats");
-    String validLine = "   8       0 sda 11832 6835 777266 12224 8769 13322 1084272 173660 0 106090 185880\n";
+    String validLine =
+        "   8       0 sda 11832 6835 777266 12224 8769 13322 1084272 173660 0 106090 185880\n";
     String emptyLine = "\n";
     String shortLine = "   8       0 sda short\n";
 
@@ -465,10 +457,11 @@ class LinuxProcFsTest {
 
     LinuxProcFs.DiskTotals totals = LinuxProcFs.readDiskTotals();
 
-    assertEquals(100L, totals.readSectors,
+    assertEquals(
+        100L,
+        totals.readSectors,
         "When /sys/block is unavailable, diskstats data should still be used");
-    assertEquals(200L, totals.writtenSectors,
-        "Pseudo devices like loop should still be excluded");
+    assertEquals(200L, totals.writtenSectors, "Pseudo devices like loop should still be excluded");
   }
 
   @Test
@@ -487,7 +480,8 @@ class LinuxProcFsTest {
     Object result = v1Method.invoke(null);
 
     assertNotNull(result);
-    // Use reflection or pattern matching to check fields, or just cast if class was public (it's package private)
+    // Use reflection or pattern matching to check fields, or just cast if class was public (it's
+    // package private)
     // Since we are in same package (test package matches source package), we can access CgroupInfo
     LinuxProcFs.CgroupInfo info = (LinuxProcFs.CgroupInfo) result;
     assertEquals("v1", info.version);
@@ -516,11 +510,14 @@ class LinuxProcFsTest {
         assertEquals("v1", info.version);
         assertEquals("/my/cgroup/path", info.path);
       } finally {
-         if (originalOs != null) System.setProperty("os.name", originalOs);
-         else System.clearProperty("os.name");
+        if (originalOs != null) {
+          System.setProperty("os.name", originalOs);
+        } else {
+          System.clearProperty("os.name");
+        }
       }
     } catch (IOException e) {
-       fail(e);
+      fail(e);
     }
   }
 
@@ -529,12 +526,15 @@ class LinuxProcFsTest {
   // ------------------------------------------------------------------------
 
   private void writeNetDev(Path proc, String... ifaceRxTx) throws IOException {
-    StringBuilder sb = new StringBuilder(
-        "Inter-|   Receive |  Transmit\n face |bytes packets errs drop fifo frame compressed multicast"
-            + "|bytes packets errs drop fifo colls carrier compressed\n");
+    StringBuilder sb =
+        new StringBuilder(
+            "Inter-|   Receive |  Transmit\n"
+                + " face |bytes packets errs drop fifo frame compressed multicast|bytes packets"
+                + " errs drop fifo colls carrier compressed\n");
     for (String entry : ifaceRxTx) {
       String[] parts = entry.split(",");
-      sb.append(String.format("  %s: %s 1 0 0 0 0 0 0 %s 1 0 0 0 0 0 0%n", parts[0], parts[1], parts[2]));
+      sb.append(
+          String.format("  %s: %s 1 0 0 0 0 0 0 %s 1 0 0 0 0 0 0%n", parts[0], parts[1], parts[2]));
     }
     Files.createDirectories(proc.resolve("net"));
     Files.writeString(proc.resolve("net/dev"), sb.toString());
@@ -567,7 +567,13 @@ class LinuxProcFsTest {
   void readNetTotals_shouldCountOnlyPhysicalInterfacesOnContainerHost() throws Exception {
     Path proc = tempDir.resolve("host-proc");
     Path sys = tempDir.resolve("host-sys");
-    writeNetDev(proc, "lo,999,999", "eth0,1000,2000", "docker0,900,1900", "veth1a2b,800,1800", "br-abc,700,1700");
+    writeNetDev(
+        proc,
+        "lo,999,999",
+        "eth0,1000,2000",
+        "docker0,900,1900",
+        "veth1a2b,800,1800",
+        "br-abc,700,1700");
     markPhysical(sys, "eth0");
     markVirtual(sys, "lo", "docker0", "veth1a2b", "br-abc");
 
@@ -600,7 +606,8 @@ class LinuxProcFsTest {
 
     LinuxProcFs.NetTotals totals = readNetTotalsFrom(proc, sys);
 
-    assertEquals(1000L, totals.rxBytes, "A container's only (virtual) interface must still be counted");
+    assertEquals(
+        1000L, totals.rxBytes, "A container's only (virtual) interface must still be counted");
     assertEquals(2000L, totals.txBytes);
   }
 

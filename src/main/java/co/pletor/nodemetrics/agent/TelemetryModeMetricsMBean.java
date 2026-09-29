@@ -2,9 +2,7 @@ package co.pletor.nodemetrics.agent;
 
 import co.pletor.nodemetrics.metrics.JmxMetricHint;
 
-/**
- * JMX view for telemetry runtime mode.
- */
+/** JMX view for telemetry runtime mode. */
 public interface TelemetryModeMetricsMBean {
   @JmxMetricHint("gauge")
   String getMode();
@@ -12,4 +10,3 @@ public interface TelemetryModeMetricsMBean {
   @JmxMetricHint("counter")
   long getModeTransitionCount();
 }
-
