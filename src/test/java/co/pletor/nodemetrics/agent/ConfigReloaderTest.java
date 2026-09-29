@@ -654,4 +654,40 @@ class ConfigReloaderTest {
       t.join(2_000L);
     }
   }
+
+  @Test
+  void initialChecksum_shouldPreventReapplyingUnchangedStartupConfig() throws Exception {
+    Path cfgPath = tempDir.resolve("startup.yml");
+    Files.writeString(cfgPath, "fsmetrics_paths:\n  - /\n", StandardCharsets.UTF_8);
+    RecordingApplier applier = new RecordingApplier();
+
+    long startupMtime = Files.getLastModifiedTime(cfgPath).toMillis();
+    String startupChecksum = ConfigLoader.load(cfgPath).checksum;
+    ConfigReloader reloader = new ConfigReloader(cfgPath, applier, startupChecksum, startupMtime);
+    invokeCheckAndReload(reloader);
+
+    assertEquals(0, applier.callCount.get(), "Config already applied at startup must not be applied again");
+    assertEquals(startupMtime, getLongField(reloader, "lastSeenMtime"),
+        "An unchanged file must be skipped without re-parsing");
+
+    Files.writeString(cfgPath, "fsmetrics_paths:\n  - /tmp\n", StandardCharsets.UTF_8);
+    Files.setLastModifiedTime(cfgPath, java.nio.file.attribute.FileTime.fromMillis(
+        System.currentTimeMillis() + 5_000L));
+    invokeCheckAndReload(reloader);
+
+    assertEquals(1, applier.callCount.get(), "A real content change must still be applied");
+  }
+
+  @Test
+  void timerDrivenChecks_shouldBackOffAfterFailureButRecoverAfterInterval() throws Exception {
+    ConfigReloader reloader = new ConfigReloader(tempDir.resolve("broken.yml"), new RecordingApplier());
+
+    assertTrue(reloader.pollDue(System.nanoTime()), "Checks are due before any failure");
+
+    reloader.recordReloadFailure();
+
+    long now = System.nanoTime();
+    assertFalse(reloader.pollDue(now), "Right after a failure the timer-driven check must back off");
+    assertTrue(reloader.pollDue(now + 2_000_000_000L), "Check is due again once the backoff elapsed");
+  }
 }

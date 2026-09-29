@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Config reloader no longer re-parses and re-applies the configuration that was already applied at
+  startup.
+- Config file is read once per load, so the parsed content and its checksum always match.
+- Unknown config keys (e.g. typos like `fsmetric_paths`) now log a warning instead of silently
+  falling back to defaults.
+- Timer-driven config reload checks back off exponentially after failures in watch mode too;
+  file events still retry immediately.
 - Refresh cadence uses a monotonic clock, so wall-clock jumps no longer block or hasten refreshes.
 - `IoRates` no longer skips rate calculation forever when `System.nanoTime()` is zero or negative.
 - `CgroupCpuThrottledRatio` returns 0 for idle windows instead of keeping the previous value.
