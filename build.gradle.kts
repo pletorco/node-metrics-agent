@@ -9,7 +9,7 @@ plugins {
     java
 
     // Build a shaded (fat) JAR
-    id("com.gradleup.shadow") version "9.3.0"
+    id("com.gradleup.shadow") version "9.6.1"
 
     // SonarQube code quality analysis
     id("org.sonarqube") version "7.5.0.8588"
