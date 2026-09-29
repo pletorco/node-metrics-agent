@@ -364,6 +364,32 @@ public final class ConfigCli {
   }
 
   /**
+   * Render a path as a YAML scalar. Plain style is kept for ordinary paths; anything that YAML
+   * could misread (comments, mappings, aliases, non-string types) is double-quoted.
+   */
+  static String yamlScalar(String value) {
+    if (value.contains("/") && value.matches("[A-Za-z0-9_./][A-Za-z0-9_./ -]*")
+        && !value.endsWith(" ")) {
+      return value;
+    }
+    StringBuilder sb = new StringBuilder("\"");
+    for (char c : value.toCharArray()) {
+      if (c == '\\' || c == '"') {
+        sb.append('\\').append(c);
+      } else if (c == '\n') {
+        sb.append("\\n");
+      } else if (c == '\t') {
+        sb.append("\\t");
+      } else if (c == '\r') {
+        sb.append("\\r");
+      } else {
+        sb.append(c);
+      }
+    }
+    return sb.append('"').toString();
+  }
+
+  /**
    * Build YAML content for node-metrics.yml.
    *
    * Example output:
@@ -385,8 +411,7 @@ public final class ConfigCli {
         .append(lineSep);
     sb.append("fsmetrics_paths:").append(lineSep);
     for (String path : fsPaths) {
-      // Paths are written without quotes (simple YAML sequence of strings)
-      sb.append("  - ").append(path).append(lineSep);
+      sb.append("  - ").append(yamlScalar(path)).append(lineSep);
     }
 
     return sb.toString();

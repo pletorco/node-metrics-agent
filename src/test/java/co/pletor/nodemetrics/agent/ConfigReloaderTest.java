@@ -608,4 +608,50 @@ class ConfigReloaderTest {
   }
 
   // NOTE: removed createLogger() as it's no longer used
+
+  @Test
+  void run_shouldNotCreateMissingConfigDirectory() throws Exception {
+    Path missingDir = tempDir.resolve("does-not-exist");
+    Path cfgPath = missingDir.resolve("node-metrics.yml");
+    ConfigReloader reloader = new ConfigReloader(cfgPath, cfg -> { });
+
+    Thread t = new Thread(reloader, "config-reloader-no-mkdir-test");
+    t.setDaemon(true);
+    t.start();
+    try {
+      Thread.sleep(300L);
+      assertFalse(Files.exists(missingDir), "Reloader must not create the config directory");
+    } finally {
+      reloader.stop();
+      t.interrupt();
+      t.join(2_000L);
+    }
+  }
+
+  @Test
+  void run_shouldPickUpConfigWhenDirectoryAppearsLater() throws Exception {
+    Path dir = tempDir.resolve("late-dir");
+    Path cfgPath = dir.resolve("node-metrics.yml");
+    AtomicInteger applied = new AtomicInteger();
+    ConfigReloader reloader = new ConfigReloader(cfgPath, cfg -> applied.incrementAndGet());
+
+    Thread t = new Thread(reloader, "config-reloader-late-dir-test");
+    t.setDaemon(true);
+    t.start();
+    try {
+      Thread.sleep(200L);
+      Files.createDirectories(dir);
+      Files.writeString(cfgPath, "fsmetrics_paths:\n  - /\n", StandardCharsets.UTF_8);
+
+      long deadline = System.nanoTime() + 6_000_000_000L;
+      while (applied.get() == 0 && System.nanoTime() < deadline) {
+        Thread.sleep(50L);
+      }
+      assertTrue(applied.get() >= 1, "Config created after startup should be applied");
+    } finally {
+      reloader.stop();
+      t.interrupt();
+      t.join(2_000L);
+    }
+  }
 }

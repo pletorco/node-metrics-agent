@@ -229,4 +229,48 @@ class MetricsRefreshEngineTest {
       // no-op for test double
     }
   }
+
+  @Test
+  void engine_shouldRecoverToNormalWhileLowPriorityTasksRemainRegistered() {
+    java.util.concurrent.atomic.AtomicBoolean blocked = new java.util.concurrent.atomic.AtomicBoolean(true);
+    RefreshManagedMetric blocking = new RefreshManagedMetric() {
+      @Override
+      public void poll() {
+        while (blocked.get()) {
+          LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(5L));
+        }
+      }
+
+      @Override
+      public void setReadRefreshEnabled(boolean enabled) {
+        // no-op for test double
+      }
+    };
+    CountingMetric fast = new CountingMetric();
+    CountingMetric fs = new CountingMetric();
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 4);
+    engine.setTasks(List.of(
+        new MetricsRefreshEngine.RefreshTask("blocking", blocking, false),
+        new MetricsRefreshEngine.RefreshTask("fast", fast, false),
+        new MetricsRefreshEngine.RefreshTask("fs:/", fs, true)
+    ));
+
+    try {
+      engine.start();
+      waitUntil(() -> engine.currentMode() != TelemetryMode.NORMAL, 3_000L);
+      assertNotEquals(TelemetryMode.NORMAL, engine.currentMode(), "Engine should leave NORMAL under saturation");
+
+      blocked.set(false);
+
+      waitUntil(() -> engine.currentMode() == TelemetryMode.NORMAL, 3_000L);
+      assertEquals(TelemetryMode.NORMAL, engine.currentMode(),
+          "Intentional low-priority drops must not keep the engine in DEGRADED");
+      int before = fs.pollCount.get();
+      waitUntil(() -> fs.pollCount.get() > before, 3_000L);
+      assertTrue(fs.pollCount.get() > before, "Low-priority task must be polled again after recovery");
+    } finally {
+      blocked.set(false);
+      engine.stop();
+    }
+  }
 }

@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Refresh engine no longer stays in `DEGRADED` forever: intentional low-priority drops are not
+  counted as overload, so the mode returns to `NORMAL` once the queue drains.
+- Config watcher no longer creates the config directory in the host application's working
+  directory; it polls until the directory appears.
+- Filesystem MBeans are now registered for paths containing `, = : * ?` (ObjectName value quoting).
+- `init-config` / `init-kafka-config` quote paths that YAML would otherwise misread (`#`, `: `, ...).
+
 ### Documentation
 
 - Clarified that the agent registers JMX MBeans and does not expose an HTTP metrics endpoint by

@@ -486,15 +486,25 @@ public class MetricsAgent {
       // Let ObjectName handle the quoting rules for each key/value pair.
       Hashtable<String, String> props = new Hashtable<>();
       props.put("type", "FsMetrics");
-      props.put("path", path.toString());
+      props.put("path", objectNameValue(path.toString()));
 
       // This produces something like:
       //   co.pletor.node:type=FsMetrics,path=/mnt/data
-      // without extra quotes around the path value.
+      // Values are quoted only when they contain characters that are illegal in an unquoted
+      // ObjectName value, so ordinary paths keep their unquoted form.
       return new ObjectName("co.pletor.node", props);
     } catch (MalformedObjectNameException e) {
       throw new IllegalArgumentException("Invalid ObjectName for path: " + path, e);
     }
+  }
+
+  private static String objectNameValue(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      if (",=:\"*?\n".indexOf(value.charAt(i)) >= 0) {
+        return ObjectName.quote(value);
+      }
+    }
+    return value;
   }
 
   /**

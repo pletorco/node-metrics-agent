@@ -31,7 +31,8 @@ final class MetricsRefreshEngine implements AutoCloseable {
   private final LongAdder endToEndLatencyNanos = new LongAdder();
   private final LongAdder endToEndLatencySamples = new LongAdder();
   private volatile TelemetryMode mode = TelemetryMode.NORMAL;
-  private volatile long lastCycleDropped = 0L;
+  /** Tasks rejected by a full queue in the last cycle (excludes intentional mode-based drops). */
+  private volatile long lastCycleEnqueueFailures = 0L;
   private Thread dispatcherThread;
   private Thread workerThread;
 
@@ -185,7 +186,7 @@ final class MetricsRefreshEngine implements AutoCloseable {
   private void dispatchLoop() {
     while (running.get()) {
       updateMode();
-      lastCycleDropped = dispatchCycle(tasksRef.get());
+      dispatchCycle(tasksRef.get());
       if (sleepDispatchInterval()) {
         return;
       }
@@ -206,17 +207,23 @@ final class MetricsRefreshEngine implements AutoCloseable {
     }
   }
 
-  private long dispatchCycle(List<RefreshTask> tasks) {
+  private void dispatchCycle(List<RefreshTask> tasks) {
     long droppedThisCycle = 0L;
+    long enqueueFailures = 0L;
     for (RefreshTask task : tasks) {
-      if (shouldDropTask(task) || !enqueue(task)) {
+      if (shouldDropTask(task)) {
         droppedThisCycle++;
+      } else if (!enqueue(task)) {
+        droppedThisCycle++;
+        enqueueFailures++;
       }
     }
     if (droppedThisCycle > 0L) {
       droppedCount.add(droppedThisCycle);
     }
-    return droppedThisCycle;
+    // Only real queue rejections signal overload. Intentional drops in DEGRADED/BYPASS must not
+    // count, otherwise those modes would sustain themselves and never recover to NORMAL.
+    lastCycleEnqueueFailures = enqueueFailures;
   }
 
   private boolean shouldDropTask(RefreshTask task) {
@@ -274,7 +281,7 @@ final class MetricsRefreshEngine implements AutoCloseable {
     TelemetryMode next = TelemetryMode.NORMAL;
     if (fillRatio >= 0.95) {
       next = TelemetryMode.BYPASS;
-    } else if (fillRatio >= 0.80 || lastCycleDropped > 0L) {
+    } else if (fillRatio >= 0.80 || lastCycleEnqueueFailures > 0L) {
       next = TelemetryMode.DEGRADED;
     }
 

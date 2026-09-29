@@ -468,4 +468,24 @@ class ConfigCliTest {
     int exitCode = ConfigCli.execute(new String[]{"init-config", "--unknown-opt"});
     assertEquals(1, exitCode, "Should return exit code 1 on illegal argument exception");
   }
+
+  @Test
+  void buildNodeMetricsYamlShouldKeepOrdinaryPathsPlain() {
+    String yaml = ConfigCli.buildNodeMetricsYaml(List.of("/data/kafka-logs", "/mnt/my disk"), null);
+
+    assertTrue(yaml.contains("  - /data/kafka-logs" + System.lineSeparator()));
+    assertTrue(yaml.contains("  - /mnt/my disk" + System.lineSeparator()));
+  }
+
+  @Test
+  void buildNodeMetricsYamlShouldQuotePathsThatYamlWouldMisread() throws IOException {
+    List<String> paths = List.of("/data/my #logs", "/data/a: b", "/data/say \"hi\"", "/data/back\\slash", "*/alias", "true");
+    String yaml = ConfigCli.buildNodeMetricsYaml(paths, null);
+
+    Path out = tempDir.resolve("quoted.yml");
+    Files.writeString(out, yaml, StandardCharsets.UTF_8);
+    Config cfg = ConfigLoader.load(out);
+
+    assertEquals(paths, cfg.fsmetricsPaths, "Generated YAML must round-trip every path unchanged");
+  }
 }

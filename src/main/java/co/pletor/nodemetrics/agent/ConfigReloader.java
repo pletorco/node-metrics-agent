@@ -107,8 +107,10 @@ final class ConfigReloader implements Runnable {
    * Register the parent directory of the config file with the WatchService.
    */
   private void registerDirectory(WatchService ws, Path dir) throws IOException {
+    // Never create the directory: a monitoring agent must not modify the host application's
+    // filesystem. If it does not exist yet, polling picks it up once it appears.
     if (!Files.isDirectory(dir)) {
-      Files.createDirectories(dir);
+      throw new NoSuchFileException(dir.toString());
     }
     dir.register(
         ws,
@@ -122,6 +124,9 @@ final class ConfigReloader implements Runnable {
     try {
       registerDirectory(ws, dir);
       return true;
+    } catch (NoSuchFileException e) {
+      LOGGER.log(Level.FINE, "[node-metrics-agent] config directory does not exist yet: {0}", dir);
+      return false;
     } catch (Exception e) {
       THROTTLED_LOGGER.log(
           Level.WARNING,
@@ -145,6 +150,11 @@ final class ConfigReloader implements Runnable {
         checkAndReloadIfChanged();
         if (!watching) {
           Thread.sleep(computePollingIntervalMs());
+          // Pick up a config directory that was created after startup.
+          Path dir = resolveWatchDir(configPath);
+          if (Files.isDirectory(dir)) {
+            watching = registerDirectorySafely(ws, dir);
+          }
         }
         continue;
       }
