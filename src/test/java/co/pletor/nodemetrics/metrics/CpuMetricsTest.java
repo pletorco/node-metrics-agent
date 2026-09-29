@@ -542,4 +542,29 @@ class CpuMetricsTest {
   private void bypassRefresh(CpuMetrics metrics) {
     metrics.setReadRefreshEnabled(false);
   }
+
+  @Test
+  @DisplayName("computeCgroupRatios should reset throttled ratio to 0 when the window is idle")
+  void computeCgroupRatiosShouldResetRatioWhenIdle() throws Exception {
+    CpuMetrics metrics = new CpuMetrics((OperatingSystemMXBean) null);
+
+    Class<?> cgroupClass = CpuMetrics.CgroupCpuStats.class;
+    Constructor<?> ctor = cgroupClass.getDeclaredConstructor(long.class, long.class, long.class);
+    ctor.setAccessible(true);
+    Method computeMethod = CpuMetrics.class.getDeclaredMethod("computeCgroupRatios", cgroupClass);
+    computeMethod.setAccessible(true);
+
+    computeMethod.invoke(metrics, ctor.newInstance(1_000_000L, 100_000L, 5L));
+    Object busy = ctor.newInstance(2_000_000L, 1_100_000L, 9L);
+    computeMethod.invoke(metrics, busy);
+    bypassRefresh(metrics);
+    assertEquals(0.5, metrics.getCgroupCpuThrottledRatio(), 0.000001, "Busy window should be throttled 50%");
+
+    // Same counters again: no CPU used, nothing throttled.
+    computeMethod.invoke(metrics, busy);
+    bypassRefresh(metrics);
+    assertEquals(0.0, metrics.getCgroupCpuThrottledRatio(), 0.000001,
+        "Idle window must not keep the previous throttled ratio");
+    assertEquals(0L, metrics.getCgroupCpuThrottledCount());
+  }
 }

@@ -18,6 +18,7 @@ import javax.management.MalformedObjectNameException;
 import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectName;
 import javax.management.StandardMBean;
+import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
 import java.nio.file.FileStore;
@@ -186,6 +187,8 @@ public class MetricsAgent {
     try {
       // Resolve configuration file and load initial configuration (or defaults).
       Path cfgPath = resolveConfigPath(agentArgs);
+      // Capture the mtime before loading so a modification during startup is still picked up.
+      long startupMtime = configMtimeOrUnknown(cfgPath);
       current = ConfigLoader.loadOrDefault(cfgPath);
 
       // Get the platform MBeanServer.
@@ -238,7 +241,8 @@ public class MetricsAgent {
       // ----- Start configuration watcher -----
       // If cfgPath is null, watch the default config location (for hot creation).
       Path watchTarget = (cfgPath != null) ? cfgPath : Paths.get("./config/node-metrics.yml");
-      ConfigReloader reloader = new ConfigReloader(watchTarget, MetricsAgent::applyConfig);
+      ConfigReloader reloader = new ConfigReloader(watchTarget, MetricsAgent::applyConfig, current.checksum,
+          startupMtime);
 
       Thread watcherThread = new Thread(reloader, "node-metrics-config-watcher");
       watcherThread.setDaemon(true);
@@ -257,6 +261,17 @@ public class MetricsAgent {
     }
   }
 
+
+  private static long configMtimeOrUnknown(Path cfgPath) {
+    try {
+      if (cfgPath != null && Files.isRegularFile(cfgPath)) {
+        return Files.getLastModifiedTime(cfgPath).toMillis();
+      }
+    } catch (IOException | RuntimeException e) {
+      // Unknown mtime just means the reloader re-checks the file once.
+    }
+    return -1L;
+  }
 
   /**
    * Build the normalized set of filesystem paths from the configuration.
@@ -486,15 +501,25 @@ public class MetricsAgent {
       // Let ObjectName handle the quoting rules for each key/value pair.
       Hashtable<String, String> props = new Hashtable<>();
       props.put("type", "FsMetrics");
-      props.put("path", path.toString());
+      props.put("path", objectNameValue(path.toString()));
 
       // This produces something like:
       //   co.pletor.node:type=FsMetrics,path=/mnt/data
-      // without extra quotes around the path value.
+      // Values are quoted only when they contain characters that are illegal in an unquoted
+      // ObjectName value, so ordinary paths keep their unquoted form.
       return new ObjectName("co.pletor.node", props);
     } catch (MalformedObjectNameException e) {
       throw new IllegalArgumentException("Invalid ObjectName for path: " + path, e);
     }
+  }
+
+  private static String objectNameValue(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      if (",=:\"*?\n".indexOf(value.charAt(i)) >= 0) {
+        return ObjectName.quote(value);
+      }
+    }
+    return value;
   }
 
   /**

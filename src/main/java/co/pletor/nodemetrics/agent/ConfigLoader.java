@@ -5,6 +5,7 @@ import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -12,6 +13,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.logging.Logger;
 import java.util.logging.Level;
@@ -77,17 +79,23 @@ final class ConfigLoader {
    * @throws IllegalArgumentException if the YAML content is invalid
    */
   static Config load(Path path) throws IOException {
-    try (InputStream in = Files.newInputStream(path)) {
+    // Read the file exactly once so the parsed content and the checksum always describe the
+    // same bytes, even if the file is rewritten while we are loading it.
+    byte[] bytes = Files.readAllBytes(path);
+    try (InputStream in = new ByteArrayInputStream(bytes)) {
       Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
       Object loaded = yaml.load(in);
 
       // Top-level YAML must be a mapping
       if (!(loaded instanceof Map)) {
-        throw new IllegalArgumentException("Invalid YAML: " + path);
+        throw new IllegalArgumentException(
+            "Invalid YAML: expected a mapping of config keys at top level: " + path);
       }
 
       @SuppressWarnings("unchecked")
       Map<String, Object> m = (Map<String, Object>) loaded;
+
+      warnOnUnknownKeys(m, path);
 
       Config c = new Config();
 
@@ -111,9 +119,27 @@ final class ConfigLoader {
 
       // ---- checksum ----
       // Use file bytes as the source for a SHA-256 checksum
-      c.checksum = sha256String(Files.readAllBytes(path));
+      c.checksum = sha256String(bytes);
 
       return c;
+    }
+  }
+
+  private static final Set<String> KNOWN_KEYS = Set.of("fsmetrics_paths", "fsmetrics_max_partitions");
+
+  /**
+   * Warn about keys we do not understand, so typos such as {@code fsmetric_paths} do not
+   * silently fall back to defaults.
+   */
+  private static void warnOnUnknownKeys(Map<String, Object> m, Path path) {
+    for (Object key : m.keySet()) {
+      if (!KNOWN_KEYS.contains(String.valueOf(key))) {
+        LOGGER.log(
+            Level.WARNING,
+            "Unknown config key ''{0}'' in {1} (ignored). Supported keys: {2}",
+            new Object[]{key, path, KNOWN_KEYS.stream().sorted().collect(Collectors.toList())}
+        );
+      }
     }
   }
 

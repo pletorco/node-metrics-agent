@@ -9,8 +9,11 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import java.util.logging.Logger;
 import java.util.logging.Level;
@@ -36,6 +39,9 @@ final class LinuxProcFs {
   private static volatile Set<String> cachedLeafDevices = Set.of();
   private static volatile long leafDeviceCacheTimeMs = 0L;
   private static final Object LEAF_DEVICE_CACHE_LOCK = new Object();
+  private static final long PHYSICAL_IFACE_CACHE_TTL_NANOS = TimeUnit.SECONDS.toNanos(30L);
+  private static final Map<String, Boolean> PHYSICAL_IFACE_CACHE = new ConcurrentHashMap<>();
+  private static volatile long physicalIfaceCacheStartNanos = System.nanoTime();
   private static final Logger LOGGER = Logger.getLogger(LinuxProcFs.class.getName());
 
   private LinuxProcFs() {
@@ -58,6 +64,7 @@ final class LinuxProcFs {
       cachedLeafDevices = Set.of();
       leafDeviceCacheTimeMs = 0L;
     }
+    PHYSICAL_IFACE_CACHE.clear();
   }
 
   /**
@@ -273,12 +280,12 @@ final class LinuxProcFs {
    */
   static class NetTotals {
     /**
-     * Sum of received bytes from all non-loopback interfaces.
+     * Sum of received bytes over the counted interfaces (see {@link #readNetTotals()}).
      */
     long rxBytes = 0;
 
     /**
-     * Sum of transmitted bytes from all non-loopback interfaces.
+     * Sum of transmitted bytes over the counted interfaces (see {@link #readNetTotals()}).
      */
     long txBytes = 0;
   }
@@ -286,20 +293,26 @@ final class LinuxProcFs {
   /**
    * Read network I/O totals from {@code /proc/net/dev}.
    * <p>
-   * Loopback interface ({@code lo}) is excluded.
+   * Loopback ({@code lo}) is always excluded. To avoid counting the same packets several times
+   * on container hosts (physical NIC plus bridges, veth pairs, VLANs, bonds), only interfaces
+   * backed by a real device ({@code /sys/class/net/<if>/device}) are summed when the host has
+   * any. Inside a container network namespace, where the only interface is a virtual veth, all
+   * non-loopback interfaces are summed instead.
    *
    * @return aggregated {@link NetTotals} (zeroed if file is missing/unreadable)
    * @throws IOException if {@code /proc/net/dev} cannot be read
    */
   static NetTotals readNetTotals() throws IOException {
-    NetTotals t = new NetTotals();
+    NetTotals all = new NetTotals();
+    NetTotals physical = new NetTotals();
+    boolean anyPhysical = false;
+
     Path p = procRoot.resolve("net/dev");
     if (!Files.isRegularFile(p)) {
-      return t;
+      return all;
     }
 
-    List<String> lines = readLines(p);
-    for (String ln : lines) {
+    for (String ln : readLines(p)) {
       ln = ln.trim();
       if (!ln.contains(":")) {
         continue;
@@ -321,10 +334,29 @@ final class LinuxProcFs {
       long rx = parseLongSafe(nums[0]);
       long tx = parseLongSafe(nums[8]);
 
-      t.rxBytes += rx;
-      t.txBytes += tx;
+      all.rxBytes += rx;
+      all.txBytes += tx;
+      if (isPhysicalInterface(iface)) {
+        anyPhysical = true;
+        physical.rxBytes += rx;
+        physical.txBytes += tx;
+      }
     }
-    return t;
+    return anyPhysical ? physical : all;
+  }
+
+  /**
+   * Whether the interface is backed by a real (PCI/USB/virtio/...) device. Results are cached
+   * briefly because nodes running many pods can have hundreds of veth interfaces.
+   */
+  private static boolean isPhysicalInterface(String iface) {
+    long now = System.nanoTime();
+    if (now - physicalIfaceCacheStartNanos >= PHYSICAL_IFACE_CACHE_TTL_NANOS) {
+      PHYSICAL_IFACE_CACHE.clear();
+      physicalIfaceCacheStartNanos = now;
+    }
+    return PHYSICAL_IFACE_CACHE.computeIfAbsent(iface,
+        name -> Files.exists(sysRoot.resolve("class/net").resolve(name).resolve("device")));
   }
 
   /**

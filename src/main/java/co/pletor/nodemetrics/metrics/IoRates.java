@@ -1,6 +1,7 @@
 package co.pletor.nodemetrics.metrics;
 
 import java.io.IOException;
+import java.util.function.LongSupplier;
 
 /**
  * Implementation of {@link IoRatesMBean} that computes simple I/O throughput rates
@@ -43,7 +44,11 @@ public class IoRates implements IoRatesMBean, RefreshManagedMetric {
   private long prevWriteBytes = -1L;
   private long prevRxBytes = -1L;
   private long prevTxBytes = -1L;
-  private long prevTimeNanos = -1L;
+  private long prevTimeNanos;
+  /** {@code System.nanoTime()} may be zero or negative, so track the baseline explicitly. */
+  private boolean baselineStored = false;
+
+  private final LongSupplier nanoClock;
 
   /**
    * Default sector size used to convert disk sectors to bytes.
@@ -61,7 +66,12 @@ public class IoRates implements IoRatesMBean, RefreshManagedMetric {
    * Metric values will be populated on the first JMX query (if you have one).
    */
   public IoRates() {
-    // default constructor for MBean registration and frameworks
+    this(System::nanoTime);
+  }
+
+  // Visible for testing
+  IoRates(LongSupplier nanoClock) {
+    this.nanoClock = nanoClock;
   }
 
   // ------------------------------------------------------------------------
@@ -151,7 +161,7 @@ public class IoRates implements IoRatesMBean, RefreshManagedMetric {
       long rxBytes = n.rxBytes;
       long txBytes = n.txBytes;
 
-      long nowNanos = System.nanoTime();
+      long nowNanos = nanoClock.getAsLong();
       return new Snapshot(readBytes, writeBytes, rxBytes, txBytes, nowNanos);
     } catch (IOException e) {
       // If more specific error context is needed, this message can be adjusted.
@@ -168,7 +178,7 @@ public class IoRates implements IoRatesMBean, RefreshManagedMetric {
   private void updateRates(Snapshot s) {
     // If there is no previous timestamp, this is the first invocation.
     // In this case, we only record the baseline snapshot and skip rate calculation.
-    if (prevTimeNanos <= 0) {
+    if (!baselineStored) {
       return;
     }
 
@@ -215,6 +225,7 @@ public class IoRates implements IoRatesMBean, RefreshManagedMetric {
     prevRxBytes = s.rxBytes;
     prevTxBytes = s.txBytes;
     prevTimeNanos = s.timeNanos;
+    baselineStored = true;
   }
 
   /**

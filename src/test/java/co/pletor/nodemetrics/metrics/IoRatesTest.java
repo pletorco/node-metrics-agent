@@ -132,4 +132,48 @@ class IoRatesTest {
         field.setAccessible(true);
         field.set(target, value);
     }
+
+    @Test
+    @DisplayName("Rates are computed even when nanoTime is negative")
+    void ratesComputedWhenNanoTimeIsNegative(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp)
+            throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
+        java.nio.file.Path proc = tmp.resolve("proc");
+        java.nio.file.Files.createDirectories(proc.resolve("net"));
+        java.nio.file.Path sys = tmp.resolve("sys");
+        java.nio.file.Files.createDirectories(sys);
+
+        LinuxProcFs.setProcRoot(proc);
+        LinuxProcFs.setSysRoot(sys);
+        try {
+            writeCounters(proc, 1000L, 500L, 10_000L, 20_000L);
+            java.util.concurrent.atomic.AtomicLong clock =
+                    new java.util.concurrent.atomic.AtomicLong(-5_000_000_000L);
+            IoRates ioRates = new IoRates(clock::get);
+
+            ioRates.poll(); // baseline
+
+            clock.addAndGet(1_000_000_000L);
+            writeCounters(proc, 3048L, 500L, 12_000L, 26_000L);
+            ioRates.poll();
+
+            assertEquals(2048L * 512L, ioRates.getDiskReadBytesPerSec(), 0.001);
+            assertEquals(0.0, ioRates.getDiskWriteBytesPerSec(), 0.001);
+            assertEquals(2_000.0, ioRates.getNetRxBytesPerSec(), 0.001);
+            assertEquals(6_000.0, ioRates.getNetTxBytesPerSec(), 0.001);
+        } finally {
+            LinuxProcFs.setProcRoot(java.nio.file.Paths.get("/proc"));
+            LinuxProcFs.setSysRoot(java.nio.file.Paths.get("/sys"));
+        }
+    }
+
+    private static void writeCounters(java.nio.file.Path proc, long readSectors, long writtenSectors,
+                                      long rxBytes, long txBytes) throws java.io.IOException {
+        java.nio.file.Files.writeString(proc.resolve("diskstats"),
+                String.format("   8       0 sda 1 0 %d 0 1 0 %d 0 0 0 0%n", readSectors, writtenSectors));
+        java.nio.file.Files.writeString(proc.resolve("net/dev"),
+                "Inter-|   Receive |  Transmit\n face |bytes packets errs drop fifo frame compressed multicast"
+                        + "|bytes packets errs drop fifo colls carrier compressed\n"
+                        + String.format("  eth0: %d 1 0 0 0 0 0 0 %d 1 0 0 0 0 0 0%n", rxBytes, txBytes));
+    }
 }

@@ -819,4 +819,18 @@ class MetricsAgentTest {
       assertDoesNotThrow(() -> MetricsAgent.premain(null, null));
     }
   }
+
+  @Test
+  @DisplayName("buildFsObjectName should quote paths containing ObjectName-reserved characters")
+  void buildFsObjectName_shouldQuoteReservedCharacters() throws Exception {
+    for (String raw : new String[]{"/data/a,b", "/data/a=b", "/data/a:b", "/data/a*b", "/data/a?b"}) {
+      Path path = Paths.get(raw);
+
+      Object result = invokePrivateStatic("buildFsObjectName", new Class<?>[]{Path.class}, path);
+
+      ObjectName name = (ObjectName) result;
+      assertEquals(ObjectName.quote(raw), name.getKeyProperty("path"), "Path should be quoted: " + raw);
+      assertFalse(name.isPattern(), "Quoted name must not be a pattern: " + raw);
+    }
+  }
 }

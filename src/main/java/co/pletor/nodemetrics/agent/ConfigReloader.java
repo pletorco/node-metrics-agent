@@ -57,6 +57,9 @@ final class ConfigReloader implements Runnable {
   /** Tracks consecutive reload failures to compute exponential backoff sleep. */
   private int consecutiveReloadFailures = 0;
 
+  /** {@code System.nanoTime()} before which timer-driven reload checks are skipped after a failure. */
+  private long retryNotBeforeNanos;
+
 
   /**
    * Create a new configuration reloader.
@@ -65,8 +68,30 @@ final class ConfigReloader implements Runnable {
    * @param applier    callback that applies a new {@link Config}
    */
   ConfigReloader(Path configPath, MetricsAgent.ApplyConfigFn applier) {
+    this(configPath, applier, null, -1L);
+  }
+
+  /**
+   * Create a new configuration reloader that already knows the state of the configuration
+   * applied at startup, so an unchanged file is neither re-parsed nor applied a second time.
+   *
+   * @param configPath      path to the configuration file to watch
+   * @param applier         callback that applies a new {@link Config}
+   * @param initialChecksum checksum of the configuration currently in effect (may be {@code null})
+   * @param initialMtime    modification time (ms) of the file <em>before</em> it was loaded at
+   *                        startup, or {@code -1} if unknown; reading it before the load means a
+   *                        concurrent modification is still detected
+   */
+  ConfigReloader(
+      Path configPath,
+      MetricsAgent.ApplyConfigFn applier,
+      String initialChecksum,
+      long initialMtime
+  ) {
     this.configPath = configPath;
     this.applier = applier;
+    this.lastChecksum = initialChecksum;
+    this.lastSeenMtime = initialMtime;
   }
 
   /**
@@ -107,8 +132,10 @@ final class ConfigReloader implements Runnable {
    * Register the parent directory of the config file with the WatchService.
    */
   private void registerDirectory(WatchService ws, Path dir) throws IOException {
+    // Never create the directory: a monitoring agent must not modify the host application's
+    // filesystem. If it does not exist yet, polling picks it up once it appears.
     if (!Files.isDirectory(dir)) {
-      Files.createDirectories(dir);
+      throw new NoSuchFileException(dir.toString());
     }
     dir.register(
         ws,
@@ -122,6 +149,9 @@ final class ConfigReloader implements Runnable {
     try {
       registerDirectory(ws, dir);
       return true;
+    } catch (NoSuchFileException e) {
+      LOGGER.log(Level.FINE, "[node-metrics-agent] config directory does not exist yet: {0}", dir);
+      return false;
     } catch (Exception e) {
       THROTTLED_LOGGER.log(
           Level.WARNING,
@@ -142,9 +172,16 @@ final class ConfigReloader implements Runnable {
       if (key == null) {
         // Fallback: periodically check the timestamp directly.
         // This handles environments where WatchService is unreliable (e.g. NFS, containers).
-        checkAndReloadIfChanged();
+        if (pollDue(System.nanoTime())) {
+          checkAndReloadIfChanged();
+        }
         if (!watching) {
           Thread.sleep(computePollingIntervalMs());
+          // Pick up a config directory that was created after startup.
+          Path dir = resolveWatchDir(configPath);
+          if (Files.isDirectory(dir)) {
+            watching = registerDirectorySafely(ws, dir);
+          }
         }
         continue;
       }
@@ -159,6 +196,20 @@ final class ConfigReloader implements Runnable {
         debounceAndReload();
       }
     }
+  }
+
+  /**
+   * Whether a timer-driven reload check should run now. After a failure, checks are backed off
+   * exponentially; file-system events bypass this so a fixed file is retried immediately.
+   */
+  boolean pollDue(long nowNanos) {
+    return consecutiveReloadFailures <= 0 || nowNanos - retryNotBeforeNanos >= 0L;
+  }
+
+  // Visible for testing
+  void recordReloadFailure() {
+    consecutiveReloadFailures++;
+    retryNotBeforeNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(computePollingIntervalMs());
   }
 
   /**
@@ -251,7 +302,7 @@ final class ConfigReloader implements Runnable {
     } catch (Exception e) {
       // Do not break the agent on configuration reload failure;
       // keep using the last known good configuration.
-      consecutiveReloadFailures++;
+      recordReloadFailure();
       THROTTLED_LOGGER.log(
           Level.WARNING,
           LOG_KEY_CONFIG_RELOAD_FAILED,

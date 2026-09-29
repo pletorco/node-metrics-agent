@@ -219,4 +219,51 @@ class ConfigLoaderTest {
 
     assertThrows(IllegalArgumentException.class, () -> ConfigLoader.load(p));
   }
+
+  @Test
+  void load_shouldWarnAboutUnknownKeysAndStillUseDefaults() {
+    Path p = writeYaml("typo.yml", "fsmetric_paths:\n  - /data\n");
+    java.util.List<String> warnings = new java.util.ArrayList<>();
+    java.util.logging.Logger logger = java.util.logging.Logger.getLogger(ConfigLoader.class.getName());
+    java.util.logging.Handler handler = new java.util.logging.Handler() {
+      @Override
+      public void publish(java.util.logging.LogRecord r) {
+        if (r.getLevel() == java.util.logging.Level.WARNING) {
+          warnings.add(java.text.MessageFormat.format(r.getMessage(), r.getParameters()));
+        }
+      }
+
+      @Override
+      public void flush() {
+        // no-op
+      }
+
+      @Override
+      public void close() {
+        // no-op
+      }
+    };
+    logger.addHandler(handler);
+    try {
+      Config c = assertDoesNotThrow(() -> ConfigLoader.load(p));
+      assertEquals(java.util.List.of("/"), c.fsmetricsPaths, "Typo key falls back to the default path");
+    } finally {
+      logger.removeHandler(handler);
+    }
+
+    assertEquals(1, warnings.size(), "Exactly one warning expected: " + warnings);
+    assertTrue(warnings.get(0).contains("fsmetric_paths"), warnings.get(0));
+  }
+
+  @Test
+  void load_shouldChecksumTheSameBytesItParses() throws Exception {
+    byte[] bytes = "fsmetrics_paths:\n  - /data\n".getBytes(StandardCharsets.UTF_8);
+    Path p = tempDir.resolve("bytes.yml");
+    Files.write(p, bytes);
+
+    Config c = ConfigLoader.load(p);
+
+    assertEquals(sha256String(bytes), c.checksum);
+    assertEquals(java.util.List.of("/data"), c.fsmetricsPaths);
+  }
 }

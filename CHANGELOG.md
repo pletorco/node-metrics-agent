@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Network throughput is no longer inflated on container hosts: only interfaces backed by a real
+  device are summed (bridges, veth pairs, VLANs and bond masters are skipped). Inside a container
+  network namespace, where the only interface is virtual, all non-loopback interfaces are summed.
+- Config reloader no longer re-parses and re-applies the configuration that was already applied at
+  startup.
+- Config file is read once per load, so the parsed content and its checksum always match.
+- Unknown config keys (e.g. typos like `fsmetric_paths`) now log a warning instead of silently
+  falling back to defaults.
+- Timer-driven config reload checks back off exponentially after failures in watch mode too;
+  file events still retry immediately.
+- Refresh cadence uses a monotonic clock, so wall-clock jumps no longer block or hasten refreshes.
+- `IoRates` no longer skips rate calculation forever when `System.nanoTime()` is zero or negative.
+- `CgroupCpuThrottledRatio` returns 0 for idle windows instead of keeping the previous value.
+- Refresh engine no longer stays in `DEGRADED` forever: intentional low-priority drops are not
+  counted as overload, so the mode returns to `NORMAL` once the queue drains.
+- Config watcher no longer creates the config directory in the host application's working
+  directory; it polls until the directory appears.
+- Filesystem MBeans are now registered for paths containing `, = : * ?` (ObjectName value quoting).
+- `init-config` / `init-kafka-config` quote paths that YAML would otherwise misread (`#`, `: `, ...).
+
 ### Documentation
 
 - Clarified that the agent registers JMX MBeans and does not expose an HTTP metrics endpoint by

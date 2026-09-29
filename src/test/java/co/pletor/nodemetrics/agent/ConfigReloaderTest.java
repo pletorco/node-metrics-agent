@@ -608,4 +608,86 @@ class ConfigReloaderTest {
   }
 
   // NOTE: removed createLogger() as it's no longer used
+
+  @Test
+  void run_shouldNotCreateMissingConfigDirectory() throws Exception {
+    Path missingDir = tempDir.resolve("does-not-exist");
+    Path cfgPath = missingDir.resolve("node-metrics.yml");
+    ConfigReloader reloader = new ConfigReloader(cfgPath, cfg -> { });
+
+    Thread t = new Thread(reloader, "config-reloader-no-mkdir-test");
+    t.setDaemon(true);
+    t.start();
+    try {
+      Thread.sleep(300L);
+      assertFalse(Files.exists(missingDir), "Reloader must not create the config directory");
+    } finally {
+      reloader.stop();
+      t.interrupt();
+      t.join(2_000L);
+    }
+  }
+
+  @Test
+  void run_shouldPickUpConfigWhenDirectoryAppearsLater() throws Exception {
+    Path dir = tempDir.resolve("late-dir");
+    Path cfgPath = dir.resolve("node-metrics.yml");
+    AtomicInteger applied = new AtomicInteger();
+    ConfigReloader reloader = new ConfigReloader(cfgPath, cfg -> applied.incrementAndGet());
+
+    Thread t = new Thread(reloader, "config-reloader-late-dir-test");
+    t.setDaemon(true);
+    t.start();
+    try {
+      Thread.sleep(200L);
+      Files.createDirectories(dir);
+      Files.writeString(cfgPath, "fsmetrics_paths:\n  - /\n", StandardCharsets.UTF_8);
+
+      long deadline = System.nanoTime() + 6_000_000_000L;
+      while (applied.get() == 0 && System.nanoTime() < deadline) {
+        Thread.sleep(50L);
+      }
+      assertTrue(applied.get() >= 1, "Config created after startup should be applied");
+    } finally {
+      reloader.stop();
+      t.interrupt();
+      t.join(2_000L);
+    }
+  }
+
+  @Test
+  void initialChecksum_shouldPreventReapplyingUnchangedStartupConfig() throws Exception {
+    Path cfgPath = tempDir.resolve("startup.yml");
+    Files.writeString(cfgPath, "fsmetrics_paths:\n  - /\n", StandardCharsets.UTF_8);
+    RecordingApplier applier = new RecordingApplier();
+
+    long startupMtime = Files.getLastModifiedTime(cfgPath).toMillis();
+    String startupChecksum = ConfigLoader.load(cfgPath).checksum;
+    ConfigReloader reloader = new ConfigReloader(cfgPath, applier, startupChecksum, startupMtime);
+    invokeCheckAndReload(reloader);
+
+    assertEquals(0, applier.callCount.get(), "Config already applied at startup must not be applied again");
+    assertEquals(startupMtime, getLongField(reloader, "lastSeenMtime"),
+        "An unchanged file must be skipped without re-parsing");
+
+    Files.writeString(cfgPath, "fsmetrics_paths:\n  - /tmp\n", StandardCharsets.UTF_8);
+    Files.setLastModifiedTime(cfgPath, java.nio.file.attribute.FileTime.fromMillis(
+        System.currentTimeMillis() + 5_000L));
+    invokeCheckAndReload(reloader);
+
+    assertEquals(1, applier.callCount.get(), "A real content change must still be applied");
+  }
+
+  @Test
+  void timerDrivenChecks_shouldBackOffAfterFailureButRecoverAfterInterval() throws Exception {
+    ConfigReloader reloader = new ConfigReloader(tempDir.resolve("broken.yml"), new RecordingApplier());
+
+    assertTrue(reloader.pollDue(System.nanoTime()), "Checks are due before any failure");
+
+    reloader.recordReloadFailure();
+
+    long now = System.nanoTime();
+    assertFalse(reloader.pollDue(now), "Right after a failure the timer-driven check must back off");
+    assertTrue(reloader.pollDue(now + 2_000_000_000L), "Check is due again once the backoff elapsed");
+  }
 }

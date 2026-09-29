@@ -823,6 +823,10 @@ public class CpuMetrics implements CpuMetricsMBean, RefreshManagedMetric {
       if (ratio < 0.0) ratio = 0.0;
       if (ratio > 1.0) ratio = 1.0;
       cgroupThrottledRatio = ratio;
+    } else {
+      // No CPU used and nothing throttled in this window (idle): report 0 instead of
+      // leaving the previous window's ratio stuck.
+      cgroupThrottledRatio = 0.0;
     }
 
     cgroupThrottledCount = periodsDelta;
