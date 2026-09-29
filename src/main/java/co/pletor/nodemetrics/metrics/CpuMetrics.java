@@ -91,6 +91,9 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   /** Number of cgroup CPU throttling events during the last polling window. */
   private volatile long cgroupThrottledCount = 0L;
 
+  /** Effective cgroup CPU limit in cores; -1.0 when unlimited or unavailable. */
+  private volatile double cgroupCpuLimitCores = -1.0;
+
   // Cumulative counters (monotonic; -1 when unavailable)
   private volatile long cpuTotalTicks = -1L;
   private volatile long cpuIoWaitTicks = -1L;
@@ -238,6 +241,14 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
       // Keep previous values.
       recordRefreshFailure(e);
     }
+
+    // The CPU limit lives in the same cgroup directory as cpu.stat; unreadable files just mean
+    // "no limit known", so this cannot fail.
+    Path statPath = cachedCgroupStatPath;
+    cgroupCpuLimitCores =
+        statPath == null
+            ? -1.0
+            : CgroupCpuLimit.effectiveCores(statPath.getParent(), sysRoot.resolve("fs/cgroup"));
   }
 
   /** Lightweight OS check so we do not attempt to read /proc on non-Linux systems. */
@@ -978,5 +989,11 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   public long getCgroupCpuUsageNanosTotal() {
     refreshOnRead();
     return cgroupUsageNanosTotal;
+  }
+
+  @Override
+  public double getCgroupCpuLimitCores() {
+    refreshOnRead();
+    return cgroupCpuLimitCores;
   }
 }

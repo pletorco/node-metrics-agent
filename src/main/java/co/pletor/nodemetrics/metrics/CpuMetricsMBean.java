@@ -165,4 +165,18 @@ public interface CpuMetricsMBean {
   @JmxMetricHint("counter")
   @JmxMetricUnit("nanoseconds")
   long getCgroupCpuUsageNanosTotal();
+
+  /**
+   * Returns the effective CPU limit of the cgroup, in cores: the tightest finite CFS quota of the
+   * cgroup and its ancestors (for example the Kubernetes pod), divided by its period.
+   *
+   * <p>With {@code CgroupCpuUsageNanosTotal} this gives CPU use as a share of the limit: {@code
+   * rate(usage_nanos[5m]) / 1e9 / limit_cores}. On cgroup v1 the value needs the {@code cpu}
+   * controller directory to hold the quota files; otherwise it is {@code -1}.
+   *
+   * @return the limit in cores, or {@code -1} when unlimited or unavailable
+   */
+  @JmxMetricHint("gauge")
+  @JmxMetricUnit("cores")
+  double getCgroupCpuLimitCores();
 }

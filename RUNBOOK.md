@@ -166,6 +166,22 @@ Filesystem MBeans:
 - `fsmetrics_max_partitions` caps unique filesystem partitions (default `32`, at most `256`; a
   larger value is lowered to 256 with a warning).
 
+CPU limit:
+
+- `co.pletor.node:type=CpuMetrics` `CgroupCpuLimitCores` is the effective CPU limit of the
+  container in cores (for example `0.5` or `2.0`), or `-1` when unlimited or unavailable. Like
+  `MemoryLimitBytes` it is the tightest finite CFS quota of the cgroup and its ancestors, so a
+  container without a quota is still bounded by its pod.
+- CPU use as a share of the limit, only where the limit is not `-1`:
+  `rate(pletor_node_cpumetrics_cgroupcpuusagenanostotal[5m]) / 1e9 / pletor_node_cpumetrics_cgroupcpulimitcores`.
+  A ratio near `1` together with a rising `CgroupCpuThrottledTimeNanosTotal` means the container is
+  running into its limit.
+- Read from `cpu.max` (cgroup v2) or `cpu.cfs_quota_us` / `cpu.cfs_period_us` (v1). Inside a
+  container only the container's own cgroup is visible, so a limit set only on a parent that is
+  not visible is not reflected.
+- On cgroup v1 the quota files must be in the same controller directory the agent found `cpu.stat`
+  in (the `cpu` controller, the usual layout); otherwise the value is `-1`.
+
 Swap:
 
 - Node (`MemMetrics`): `SwapTotalBytes` (`0` when the host has no swap), `SwapUsedBytes`, and the
