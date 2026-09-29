@@ -1,33 +1,47 @@
 package co.pletor.nodemetrics.metrics;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 
 /**
  * Lock-free refresh cadence guard.
+ * <p>
+ * Uses a monotonic clock so wall-clock adjustments (NTP steps, manual changes) cannot
+ * suppress refreshes or make them fire early.
  */
 final class RefreshCadence {
-  private final long intervalMs;
-  private final AtomicLong nextAllowedRefreshMs = new AtomicLong(0L);
+  private final long intervalNanos;
+  private final LongSupplier nanoClock;
+  /** Earliest {@code nanoClock} value at which the next refresh is allowed. */
+  private final AtomicLong nextAllowedNanos;
 
   RefreshCadence(long intervalMs) {
-    this.intervalMs = intervalMs;
+    this(intervalMs, System::nanoTime);
+  }
+
+  // Visible for testing
+  RefreshCadence(long intervalMs, LongSupplier nanoClock) {
+    this.intervalNanos = TimeUnit.MILLISECONDS.toNanos(intervalMs);
+    this.nanoClock = nanoClock;
+    this.nextAllowedNanos = new AtomicLong(nanoClock.getAsLong());
   }
 
   boolean tryAcquire() {
-    long now = System.currentTimeMillis();
+    long now = nanoClock.getAsLong();
     while (true) {
-      long nextAllowed = nextAllowedRefreshMs.get();
-      if (now < nextAllowed) {
+      long nextAllowed = nextAllowedNanos.get();
+      // Subtraction keeps the comparison correct across nanoTime origin/overflow.
+      if (now - nextAllowed < 0L) {
         return false;
       }
-      long next = now + intervalMs;
-      if (nextAllowedRefreshMs.compareAndSet(nextAllowed, next)) {
+      if (nextAllowedNanos.compareAndSet(nextAllowed, now + intervalNanos)) {
         return true;
       }
     }
   }
 
   void force() {
-    nextAllowedRefreshMs.set(0L);
+    nextAllowedNanos.set(nanoClock.getAsLong());
   }
 }

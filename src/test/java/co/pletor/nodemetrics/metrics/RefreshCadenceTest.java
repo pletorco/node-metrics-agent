@@ -61,4 +61,19 @@ class RefreshCadenceTest {
       Thread.currentThread().interrupt();
     }
   }
+
+  @Test
+  void cadence_shouldHonourIntervalWithMonotonicClockEvenWhenNanoTimeIsNegative() {
+    java.util.concurrent.atomic.AtomicLong now = new java.util.concurrent.atomic.AtomicLong(-10_000_000_000L);
+    RefreshCadence cadence = new RefreshCadence(500L, now::get);
+
+    assertTrue(cadence.tryAcquire(), "First acquire should pass");
+    assertFalse(cadence.tryAcquire(), "Immediate reacquire should be throttled");
+
+    now.addAndGet(TimeUnit.MILLISECONDS.toNanos(499L));
+    assertFalse(cadence.tryAcquire(), "Still inside the interval");
+
+    now.addAndGet(TimeUnit.MILLISECONDS.toNanos(1L));
+    assertTrue(cadence.tryAcquire(), "Interval elapsed, acquire should pass again");
+  }
 }
