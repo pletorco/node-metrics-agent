@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Build and CI
 
+- Upgraded `org.cyclonedx.bom` from 1.10.0 to 3.4.1 and moved the SBOM configuration to its new API:
+  `includeConfigs` is now set on `cyclonedxDirectBom`, `cyclonedxBom` aggregates it and writes
+  `build/reports/bom.json` through `jsonOutput`, and `schemaVersion` uses `org.cyclonedx.Version`.
+  Left at the plugin defaults, the SBOM would have listed 56 components (test and build tooling)
+  instead of the one runtime dependency that ships in the jar. The SBOM is otherwise equivalent
+  (same component, CycloneDX 1.5, same dependency graph); the root component's purl and `bom-ref`
+  now use the plugin's `?project_path=` form, and license texts are no longer embedded (SPDX ids
+  are kept), which shrinks it from 16.8 KB to 3.3 KB.
+
+### Build and CI
+
 - Checkstyle warnings reduced from 46 (main) / 21 (test) to 0 and the ratchet is now `maxWarnings =
   0`, so any new warning fails the build. `MBean` is an allowed abbreviation in names (required by
   the JMX Standard MBean convention); the other fixes are Javadoc, blank lines, `final` locals and a
