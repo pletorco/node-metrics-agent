@@ -37,7 +37,7 @@ jobs:
 
       - name: Upload test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-reports
           path: |
@@ -73,7 +73,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-reports-java-${{ matrix.java }}
           path: build/reports/tests/test
@@ -97,7 +97,7 @@ jobs:
         run: ./gradlew --no-daemon shadowJar
 
       - name: Upload jar
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: agent-jar
           path: build/libs/*-all.jar
