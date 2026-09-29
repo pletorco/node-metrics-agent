@@ -57,6 +57,25 @@ final class MemStatsUtil {
   }
 
   /**
+   * Parse a {@code name value} counter line such as {@code /proc/vmstat}'s {@code pswpin 123}.
+   *
+   * @param line the line
+   * @return the value, or {@code -1} when the line has no numeric second token
+   */
+  static long parseCounterLine(String line) {
+    String[] parts = line.trim().split("\\s+");
+    if (parts.length < 2) {
+      return -1L;
+    }
+    try {
+      long value = Long.parseLong(parts[1]);
+      return value < 0L ? -1L : value;
+    } catch (NumberFormatException e) {
+      return -1L;
+    }
+  }
+
+  /**
    * Read cgroup v1/v2 {@code memory.stat} file and parse it as a key-&gt;value map.
    *
    * <p>The exact file location depends on the cgroup version and the resolved path in {@link

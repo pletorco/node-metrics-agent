@@ -166,6 +166,20 @@ Filesystem MBeans:
 - `fsmetrics_max_partitions` caps unique filesystem partitions (default `32`, at most `256`; a
   larger value is lowered to 256 with a warning).
 
+Swap:
+
+- Node (`MemMetrics`): `SwapTotalBytes` (`0` when the host has no swap), `SwapUsedBytes`, and the
+  cumulative page counters `SwapInPagesTotal` / `SwapOutPagesTotal` (`pswpin` / `pswpout`). Alert on
+  activity, not usage: `rate(pletor_node_memmetrics_swapoutpagestotal[5m]) > 0` for a sustained
+  period means the host is actively swapping, while a high `SwapUsedBytes` with a flat counter is
+  idle swap.
+- cgroup (`co.pletor.cgroup:type=MemMetrics`): `SwapUsageBytes` and `SwapLimitBytes` of the
+  container's own cgroup (ancestors are not considered). A limit of `0` means the container may not
+  swap (the usual Kubernetes setting); `-1` means unlimited or unavailable. cgroup v1 reports swap
+  as `memsw - memory` and needs swap accounting enabled (`swapaccount=1`), otherwise `-1`.
+- Kubernetes nodes usually run without swap, so `SwapTotalBytes` is `0` and the counters stay flat.
+- The counters reset at reboot; `rate()` and `increase()` handle it.
+
 Pressure stall information (PSI):
 
 - `PressureMetrics` reports how much of the time tasks were stalled waiting for CPU, memory or

@@ -105,4 +105,46 @@ public interface NodeMemMetricsMBean {
   @JmxMetricHint("gauge")
   @JmxMetricUnit("bytes")
   long getFilePageCacheBytes();
+
+  /**
+   * Returns the total swap space (swap devices and files) of the host.
+   *
+   * @return the swap size in bytes, {@code 0} when the host has no swap, or {@code -1} when
+   *     unavailable
+   */
+  @JmxMetricHint("gauge")
+  @JmxMetricUnit("bytes")
+  long getSwapTotalBytes();
+
+  /**
+   * Returns the swap space currently in use ({@code SwapTotal - SwapFree}).
+   *
+   * @return the used swap in bytes, or {@code -1} when unavailable
+   */
+  @JmxMetricHint("gauge")
+  @JmxMetricUnit("bytes")
+  long getSwapUsedBytes();
+
+  /**
+   * Returns the cumulative number of pages swapped in from disk since boot ({@code pswpin} in
+   * {@code /proc/vmstat}).
+   *
+   * <p>Swap activity matters more than swap usage: a steady value with a high {@code SwapUsedBytes}
+   * is idle swap, while a rising rate means the host is actively swapping.
+   *
+   * @return the page count, or {@code -1} when unavailable
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("pages")
+  long getSwapInPagesTotal();
+
+  /**
+   * Returns the cumulative number of pages swapped out to disk since boot ({@code pswpout} in
+   * {@code /proc/vmstat}).
+   *
+   * @return the page count, or {@code -1} when unavailable
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("pages")
+  long getSwapOutPagesTotal();
 }
