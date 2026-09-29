@@ -17,6 +17,9 @@ trap 'rm -rf "$WORK"' EXIT
 
 echo "== using $("$JAVA_BIN" -version 2>&1 | head -1)"
 
+echo "== manifest: the entry point must be the tiny launcher, not the class with static state"
+unzip -p "$JAR" META-INF/MANIFEST.MF | tr -d '\r' | grep -q '^Premain-Class: co.pletor.nodemetrics.agent.AgentLauncher$'
+
 echo "== CLI: help"
 "$JAVA_BIN" -jar "$JAR" help > /dev/null
 
@@ -37,5 +40,29 @@ if [ -n "$(ls -A "$WORK/app-no-config")" ]; then
   ls -la "$WORK/app-no-config" >&2
   exit 1
 fi
+
+echo "== a broken agent jar must not stop the application from starting"
+# Remove one class the agent needs, as happens when a jar is replaced or truncated while deploying.
+BROKEN="$WORK/broken-agent.jar"
+python3 - "$JAR" "$BROKEN" <<'PY'
+import sys, zipfile
+src = zipfile.ZipFile(sys.argv[1])
+dst = zipfile.ZipFile(sys.argv[2], "w", zipfile.ZIP_DEFLATED)
+for item in src.infolist():
+    if item.filename != "co/pletor/nodemetrics/agent/ThrottledLogger.class":
+        dst.writestr(item, src.read(item.filename))
+dst.close()
+PY
+mkdir -p "$WORK/app-broken-agent"
+OUT="$(cd "$WORK/app-broken-agent" && "$JAVA_BIN" "-javaagent:$BROKEN" "$HERE/AppStarted.java" 2>&1)" || {
+  echo "SMOKE FAILURE: the JVM did not start with a broken agent jar:" >&2
+  echo "$OUT" >&2
+  exit 1
+}
+echo "$OUT" | grep -q '^APPLICATION STARTED$' || {
+  echo "SMOKE FAILURE: the application did not run with a broken agent jar:" >&2
+  echo "$OUT" >&2
+  exit 1
+}
 
 echo "smoke test passed"

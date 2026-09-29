@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- The agent can no longer take the application down or stall it at startup:
+  - The `Premain-Class` is now `AgentLauncher`, a tiny class without static state that starts one
+    daemon thread and returns. Previously a failure while initializing `MetricsAgent` (e.g. a
+    missing class after the agent jar was replaced during a deployment) aborted the whole JVM
+    (exit 134) before the application started, and the initialization ran on the application's main
+    thread: about 370 ms versus about 57 ms now (10 ms without the agent). The MBeans now appear
+    shortly after `main()` starts.
+  - Agent threads had no uncaught-exception handler, so an `Error` escaping one of them was passed
+    to the application's default handler, which many applications use to exit the JVM. Every agent
+    thread now has its own handler, and the dispatcher, workers and config watcher survive any
+    `Throwable` (the watcher restarts itself with backoff).
+  - Startup is split into independent steps; one metric that fails to initialize is skipped and the
+    rest still start.
+
 ### Build and CI
 
 - Upgraded `org.cyclonedx.bom` from 1.10.0 to 3.4.1 and moved the SBOM configuration to its new API:

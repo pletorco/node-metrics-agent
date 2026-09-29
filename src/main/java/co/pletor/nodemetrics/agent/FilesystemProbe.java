@@ -33,12 +33,9 @@ final class FilesystemProbe {
             30L,
             TimeUnit.SECONDS,
             new SynchronousQueue<>(),
-            runnable -> {
-              Thread t =
-                  new Thread(runnable, "node-metrics-fs-probe-" + THREAD_COUNTER.incrementAndGet());
-              t.setDaemon(true);
-              return t;
-            },
+            runnable ->
+                AgentThreads.daemon(
+                    "node-metrics-fs-probe-" + THREAD_COUNTER.incrementAndGet(), runnable),
             new ThreadPoolExecutor.AbortPolicy());
   }
 

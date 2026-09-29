@@ -24,6 +24,7 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,6 +36,13 @@ import org.junit.jupiter.api.io.TempDir;
  * behavior via a fake WatchKey implementation
  */
 class ConfigReloaderTest {
+
+  @BeforeEach
+  void resetSharedLogThrottling() {
+    // Several assertions look for a warning that the static throttled logger only emits once a
+    // minute; other test classes (in the same JVM) may already have used up that slot.
+    ThrottleTestSupport.resetAll();
+  }
 
   @TempDir Path tempDir;
 

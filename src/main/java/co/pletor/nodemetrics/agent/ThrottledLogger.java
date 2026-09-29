@@ -40,6 +40,12 @@ final class ThrottledLogger {
     this.maxKeys = maxKeys;
   }
 
+  // Visible for testing: forget all throttling state, as if nothing had been logged yet.
+  void reset() {
+    states.clear();
+    keyCount.set(0);
+  }
+
   /** Returns the number of log attempts dropped because the key cap was exceeded. */
   long overflowCount() {
     return overflowCount.sum();

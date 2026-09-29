@@ -60,6 +60,26 @@ If the JMX exporter is attached, confirm the scrape endpoint responds:
 curl -s http://localhost:9404/metrics | grep '^pletor_' | head
 ```
 
+## Isolation From The Application
+
+The agent is designed never to be on the application's hot path and never to let its own failures
+reach the application:
+
+- It does not instrument or transform application classes, and application threads never run agent
+  code. JMX attribute reads return cached values.
+- `-javaagent` startup is asynchronous. The entry point (`AgentLauncher`) only starts one daemon
+  thread and returns, adding roughly 50 ms to JVM startup (measured: about 10 ms without the
+  agent, about 57 ms with it). The MBeans therefore appear a short moment after `main()` starts, so
+  do not treat their absence in the first second as a failure.
+- The entry class has no static state. If anything the agent needs cannot be loaded (for example
+  the agent jar was replaced or truncated during a deployment), one line is printed to stderr and
+  the application starts normally.
+- Every agent thread has its own uncaught-exception handler and its loops survive any `Throwable`,
+  so errors on agent threads never reach the application's default uncaught-exception handler.
+- Startup is split into independent steps: a metric that cannot start (for example a missing JDK
+  class on an unusual JVM) is skipped and logged as `startup step failed`, and the other metrics
+  still start.
+
 ## Configuration Reload
 
 The agent watches the active config file and also polls as a fallback.

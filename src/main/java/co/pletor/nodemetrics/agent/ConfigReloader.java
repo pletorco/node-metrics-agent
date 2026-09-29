@@ -50,6 +50,7 @@ final class ConfigReloader implements Runnable {
   private static final ThrottledLogger THROTTLED_LOGGER = new ThrottledLogger(LOGGER, 60_000L);
   private static final String LOG_KEY_WATCHER_REGISTRATION_FAILED = "watcher-registration-failed";
   private static final String LOG_KEY_CONFIG_RELOAD_FAILED = "config-reload-failed";
+  private static final String LOG_KEY_WATCHER_FAILED = "config-watcher-failed";
 
   private static final long BASE_RELOAD_BACKOFF_MS = 1_000L;
   private static final long MAX_RELOAD_BACKOFF_MS = 60_000L;
@@ -106,16 +107,34 @@ final class ConfigReloader implements Runnable {
   @Override
   public void run() {
     Path dir = resolveWatchDir(configPath);
-    try (WatchService ws = FileSystems.getDefault().newWatchService()) {
-      boolean watching = registerDirectorySafely(ws, dir);
-      watchLoop(ws, watching);
-    } catch (InterruptedException e) {
-      // Preserve interrupt status and exit the watcher thread gracefully.
-      Thread.currentThread().interrupt();
-      LOGGER.log(Level.INFO, "[node-metrics-agent] config watcher interrupted, stopping");
-    } catch (Exception e) {
-      // Any other unexpected failure should be logged but must not crash the JVM.
-      LOGGER.log(Level.SEVERE, "[node-metrics-agent] config watcher failed", e);
+    long backoffMs = BASE_RELOAD_BACKOFF_MS;
+    while (running) {
+      try (WatchService ws = FileSystems.getDefault().newWatchService()) {
+        boolean watching = registerDirectorySafely(ws, dir);
+        watchLoop(ws, watching);
+        return;
+      } catch (InterruptedException e) {
+        // Preserve interrupt status and exit the watcher thread gracefully.
+        Thread.currentThread().interrupt();
+        LOGGER.log(Level.INFO, "[node-metrics-agent] config watcher interrupted, stopping");
+        return;
+      } catch (Throwable t) { // NOSONAR
+        // Includes Errors such as NoClassDefFoundError after the agent jar was replaced on disk.
+        // The watcher must neither die nor let the error reach the application: log it, back off
+        // and start over.
+        THROTTLED_LOGGER.log(
+            Level.WARNING,
+            LOG_KEY_WATCHER_FAILED,
+            t,
+            () -> "[node-metrics-agent] config watcher failed, restarting it");
+        try {
+          Thread.sleep(backoffMs);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return;
+        }
+        backoffMs = Math.min(backoffMs * 2, MAX_RELOAD_BACKOFF_MS);
+      }
     }
   }
 
@@ -294,7 +313,7 @@ final class ConfigReloader implements Runnable {
       lastSeenMtime = mtime;
       lastChecksum = cfg.checksum;
       consecutiveReloadFailures = 0;
-    } catch (Exception e) {
+    } catch (Throwable e) {
       // Do not break the agent on configuration reload failure;
       // keep using the last known good configuration.
       recordReloadFailure();
