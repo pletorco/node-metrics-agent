@@ -56,6 +56,12 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    */
   private volatile long workingSet = -1L;
 
+  /** Last observed cgroup swap usage in bytes; -1 means "unavailable". */
+  private volatile long swapUsage = -1L;
+
+  /** Last observed cgroup swap limit in bytes; -1 means "unlimited or unavailable". */
+  private volatile long swapLimit = -1L;
+
   /**
    * Captured cgroup metadata (version, path, resolved base directory, etc.).
    *
@@ -77,7 +83,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   protected void doRefresh() {
     // Non-Linux environments: expose no values.
     if (!LinuxProcFs.isLinux()) {
-      limit = usage = workingSet = -1L;
+      limit = usage = workingSet = swapUsage = swapLimit = -1L;
       return;
     }
 
@@ -97,6 +103,8 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
         limit = lim;
         usage = cur;
         workingSet = computeWorkingSet(base, cur, "inactive_file");
+        swapUsage = readNumber(base.resolve("memory.swap.current"));
+        swapLimit = readNumber(base.resolve("memory.swap.max"));
 
       } else if ("v1".equals(cg.version)) {
         // ----- cgroup v1 -----
@@ -113,15 +121,50 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
         usage = cur;
         // v1 exposes the hierarchical figure as total_inactive_file (what cAdvisor uses).
         workingSet = computeWorkingSet(base, cur, "total_inactive_file", "inactive_file");
+        computeV1Swap(base, cur);
 
       } else {
         // Unknown or unsupported cgroup version.
-        limit = usage = workingSet = -1L;
+        limit = usage = workingSet = swapUsage = swapLimit = -1L;
       }
     } catch (Throwable t) {
       // On any read/parse error keep metrics safe and clearly unavailable.
       recordRefreshFailure(t);
-      limit = usage = workingSet = -1L;
+      limit = usage = workingSet = swapUsage = swapLimit = -1L;
+    }
+  }
+
+  /**
+   * cgroup v1 accounts memory and swap together ({@code memsw}), so swap alone is the difference.
+   * The files exist only when swap accounting is enabled; otherwise both values stay -1.
+   */
+  private void computeV1Swap(Path base, long memoryUsage) {
+    long memsw = readNumber(base.resolve("memory.memsw.usage_in_bytes"));
+    swapUsage = (memsw >= 0L && memoryUsage >= 0L) ? Math.max(0L, memsw - memoryUsage) : -1L;
+
+    long memswLimit = unlessUnlimited(readNumber(base.resolve("memory.memsw.limit_in_bytes")));
+    long ownMemoryLimit = unlessUnlimited(readNumber(base.resolve("memory.limit_in_bytes")));
+    swapLimit =
+        (memswLimit >= 0L && ownMemoryLimit >= 0L)
+            ? Math.max(0L, memswLimit - ownMemoryLimit)
+            : -1L;
+  }
+
+  private static long unlessUnlimited(long v1Value) {
+    return v1Value >= Long.MAX_VALUE / 2 ? -1L : v1Value;
+  }
+
+  /**
+   * Reads a file holding a single number. {@code "max"}, a missing file and parse errors all give
+   * -1, the same convention as {@link LinuxProcFs#readFirstNumber(Path)}; kept separate so the swap
+   * files are read independently of the memory ones.
+   */
+  private static long readNumber(Path file) {
+    try {
+      String text = Files.readString(file).trim();
+      return "max".equals(text) ? -1L : Long.parseLong(text);
+    } catch (IOException | RuntimeException e) {
+      return -1L;
     }
   }
 
@@ -250,5 +293,27 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   @Override
   public String getCgroupPath() {
     return cg.path == null ? "" : cg.path;
+  }
+
+  /**
+   * Returns the swap used by the cgroup.
+   *
+   * @return the swap usage in bytes, or -1 when unavailable
+   */
+  @Override
+  public long getSwapUsageBytes() {
+    refreshOnRead();
+    return swapUsage;
+  }
+
+  /**
+   * Returns the swap limit of the cgroup.
+   *
+   * @return the limit in bytes, 0 when swap is not allowed, or -1 when unlimited/unavailable
+   */
+  @Override
+  public long getSwapLimitBytes() {
+    refreshOnRead();
+    return swapLimit;
   }
 }

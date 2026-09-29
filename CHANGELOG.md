@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Swap metrics. `co.pletor.node:type=MemMetrics`: `SwapTotalBytes` (`0` without swap), `SwapUsedBytes`
+  and the cumulative counters `SwapInPagesTotal` / `SwapOutPagesTotal` (from `/proc/vmstat`
+  `pswpin` / `pswpout`; a missing `/proc/vmstat` is `-1`, not a failure).
+  `co.pletor.cgroup:type=MemMetrics`: `SwapUsageBytes` and `SwapLimitBytes` for the container's own
+  cgroup (v2 `memory.swap.current` / `memory.swap.max`; v1 derived from `memsw`; `-1` when swap is
+  not accounted). Exporter rules updated so the page counters are exported as counters.
 - Pressure stall information (PSI) metrics: `co.pletor.node:type=PressureMetrics` (from
   `/proc/pressure`, host-wide) and `co.pletor.cgroup:type=PressureMetrics` (the container's own
   `cpu.pressure`, `memory.pressure` and `io.pressure`, cgroup v2). For CPU, memory and I/O, each

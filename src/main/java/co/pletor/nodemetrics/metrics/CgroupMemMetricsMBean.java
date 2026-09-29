@@ -36,6 +36,32 @@ public interface CgroupMemMetricsMBean {
   long getMemoryWorkingSetBytes();
 
   /**
+   * Returns the swap currently used by the cgroup, in bytes.
+   *
+   * <p>cgroup v2 reports it directly ({@code memory.swap.current}); on cgroup v1 it is {@code
+   * memory.memsw.usage_in_bytes - memory.usage_in_bytes}. {@code -1} when the kernel does not
+   * account swap for cgroups (for example {@code swapaccount=0} on v1).
+   *
+   * @return the swap usage in bytes, or {@code -1} when unavailable
+   */
+  @JmxMetricHint("gauge")
+  @JmxMetricUnit("bytes")
+  long getSwapUsageBytes();
+
+  /**
+   * Returns the swap limit of the cgroup itself, in bytes.
+   *
+   * <p>Unlike {@code MemoryLimitBytes}, ancestor cgroups are not considered. {@code 0} means the
+   * cgroup may not swap at all (the usual Kubernetes setting); {@code -1} means unlimited or
+   * unavailable.
+   *
+   * @return the swap limit in bytes, {@code 0} for none allowed, or {@code -1}
+   */
+  @JmxMetricHint("gauge")
+  @JmxMetricUnit("bytes")
+  long getSwapLimitBytes();
+
+  /**
    * Returns the cgroup version (e.g. v1 or v2).
    *
    * @return the cgroup version string

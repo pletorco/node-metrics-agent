@@ -113,6 +113,7 @@ Exported Prometheus metric names use the `pletor_*` prefix, for example:
 - `pletor_node_iorates_diskreadbytestotal` (cumulative counters: use `rate()`)
 - `pletor_node_cpumetrics_systemcpuiowaitticks` (cumulative counter)
 - `pletor_node_pressuremetrics_memoryfulltotalmicros` (cumulative counter: stalled microseconds)
+- `pletor_node_memmetrics_swapoutpagestotal` (cumulative counter: pages swapped out)
 - `pletor_proc_fdmetrics_openfiledescriptorcount`
 - `pletor_agent_observability_queuefillratio`
 

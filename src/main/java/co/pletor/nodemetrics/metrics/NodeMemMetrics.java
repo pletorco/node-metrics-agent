@@ -4,6 +4,7 @@ import com.sun.management.OperatingSystemMXBean;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Method;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -33,6 +34,13 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   private volatile long shmemBytes = -1L;
 
   private volatile long filePageCacheBytes = -1L;
+
+  // ----- Swap (Linux only) -----
+
+  private volatile long swapTotalBytes = -1L;
+  private volatile long swapUsedBytes = -1L;
+  private volatile long swapInPagesTotal = -1L;
+  private volatile long swapOutPagesTotal = -1L;
 
   /**
    * Creates a new {@code NodeMemMetrics} instance with all metrics initialized to {@code -1}.
@@ -77,6 +85,31 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
       recordRefreshFailure(e);
       resetAll();
     }
+    pollSwapActivity();
+  }
+
+  /**
+   * Reads the cumulative swap-in/out page counters from {@code /proc/vmstat}. Independent of the
+   * {@code /proc/meminfo} read: a problem here leaves the memory figures untouched.
+   */
+  private void pollSwapActivity() {
+    long in = -1L;
+    long out = -1L;
+    try {
+      for (String line : readProcVmstatLines()) {
+        if (line.startsWith("pswpin ")) {
+          in = MemStatsUtil.parseCounterLine(line);
+        } else if (line.startsWith("pswpout ")) {
+          out = MemStatsUtil.parseCounterLine(line);
+        }
+      }
+    } catch (NoSuchFileException e) {
+      // No /proc/vmstat on this system: unavailable, not a failure.
+    } catch (IOException | RuntimeException e) {
+      recordRefreshFailure(e);
+    }
+    swapInPagesTotal = in;
+    swapOutPagesTotal = out;
   }
 
   /** Small holder for parsed {@code /proc/meminfo} values (in kB). */
@@ -92,6 +125,9 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     long dirtyKb = -1L;
     long writebackKb = -1L;
     long slabReclaimableKb = -1L;
+
+    long swapTotalKb = -1L;
+    long swapFreeKb = -1L;
   }
 
   /**
@@ -122,6 +158,10 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
         s.writebackKb = MemStatsUtil.parseKbLine(line);
       } else if (line.startsWith("SReclaimable:")) {
         s.slabReclaimableKb = MemStatsUtil.parseKbLine(line);
+      } else if (line.startsWith("SwapTotal:")) {
+        s.swapTotalKb = MemStatsUtil.parseKbLine(line);
+      } else if (line.startsWith("SwapFree:")) {
+        s.swapFreeKb = MemStatsUtil.parseKbLine(line);
       }
     }
 
@@ -137,6 +177,16 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     applyCoreMetrics(s);
     applyDiskMetrics(s);
     applyCacheMetrics(s);
+    applySwapMetrics(s);
+  }
+
+  /** Apply swap capacity and usage ({@code SwapTotal}, {@code SwapTotal - SwapFree}). */
+  private void applySwapMetrics(MemInfoSnapshot s) {
+    swapTotalBytes = kbToBytes(s.swapTotalKb);
+    swapUsedBytes =
+        (s.swapTotalKb >= 0L && s.swapFreeKb >= 0L)
+            ? Math.max(0L, s.swapTotalKb - s.swapFreeKb) * 1024L
+            : -1L;
   }
 
   /** Calculate and apply core memory metrics (Total, Free, Available, Used). */
@@ -251,6 +301,9 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     buffersBytes = -1L;
     shmemBytes = -1L;
     filePageCacheBytes = -1L;
+
+    swapTotalBytes = -1L;
+    swapUsedBytes = -1L;
   }
 
   // =========================
@@ -299,13 +352,17 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
       totalBytes = usedBytes = freeBytes = availableBytes = -1L;
     }
 
-    // Non-Linux: cache-related fields are not available.
+    // Non-Linux: cache-related and swap fields are not available.
     dirtyBytes = -1L;
     writebackBytes = -1L;
     cachedBytes = -1L;
     buffersBytes = -1L;
     shmemBytes = -1L;
     filePageCacheBytes = -1L;
+    swapTotalBytes = -1L;
+    swapUsedBytes = -1L;
+    swapInPagesTotal = -1L;
+    swapOutPagesTotal = -1L;
   }
 
   /**
@@ -375,6 +432,11 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   /** Overridden in tests to provide mock /proc/meminfo lines or throw exceptions. */
   List<String> readProcMemInfoLines() throws IOException {
     return LinuxProcFs.readLines(Path.of("/proc/meminfo"));
+  }
+
+  // Visible for testing
+  List<String> readProcVmstatLines() throws IOException {
+    return LinuxProcFs.readLines(Path.of("/proc/vmstat"));
   }
 
   // ----- MBean getters -----
@@ -448,5 +510,29 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   public long getFilePageCacheBytes() {
     refreshOnRead();
     return filePageCacheBytes;
+  }
+
+  @Override
+  public long getSwapTotalBytes() {
+    refreshOnRead();
+    return swapTotalBytes;
+  }
+
+  @Override
+  public long getSwapUsedBytes() {
+    refreshOnRead();
+    return swapUsedBytes;
+  }
+
+  @Override
+  public long getSwapInPagesTotal() {
+    refreshOnRead();
+    return swapInPagesTotal;
+  }
+
+  @Override
+  public long getSwapOutPagesTotal() {
+    refreshOnRead();
+    return swapOutPagesTotal;
   }
 }
