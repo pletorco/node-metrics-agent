@@ -12,7 +12,7 @@ plugins {
     id("com.gradleup.shadow") version "9.3.0"
 
     // SonarQube code quality analysis
-    id("org.sonarqube") version "7.1.0.6387"
+    id("org.sonarqube") version "7.5.0.8588"
 
     // JaCoCo test coverage
     jacoco
