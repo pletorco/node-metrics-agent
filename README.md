@@ -124,6 +124,7 @@ Common commands:
 ./gradlew test
 ./gradlew jacocoTestReport
 ./gradlew checkstyleMain checkstyleTest
+./gradlew spotlessCheck   # spotlessApply fixes formatting
 ./gradlew cyclonedxBom
 ./gradlew trivyScan
 ```

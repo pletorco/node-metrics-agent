@@ -40,6 +40,18 @@ JAVA_BIN=/path/to/jdk11/bin/java scripts/smoke-test.sh build/libs/node-metrics-a
 `shadowJar` does not run the tests; run `./gradlew check` (tests and checkstyle) as well before
 releasing. The release workflow does both.
 
+### Formatting
+
+Java sources are formatted with google-java-format through Spotless. `./gradlew check` and CI run
+`spotlessCheck`; fix formatting with:
+
+```bash
+./gradlew spotlessApply
+```
+
+`.git-blame-ignore-revs` lists the one-off reformatting commit; use
+`git config blame.ignoreRevsFile .git-blame-ignore-revs` to skip it in `git blame`.
+
 ### Checkstyle warning ratchet
 
 The code base predates the Google-style rules, so checkstyle reports warnings that are not fixed yet.

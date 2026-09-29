@@ -33,7 +33,7 @@ jobs:
           cache: gradle
 
       - name: Test and lint
-        run: ./gradlew --no-daemon test checkstyleMain checkstyleTest
+        run: ./gradlew --no-daemon spotlessCheck test checkstyleMain checkstyleTest
 
       - name: Upload test reports
         if: always()

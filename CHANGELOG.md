@@ -24,6 +24,11 @@ All notable changes to this project will be documented in this file.
 
 ### Build and CI
 
+- Source is formatted with google-java-format through Spotless (`spotlessCheck` runs in `check` and
+  CI, `spotlessApply` fixes). The one-off reformatting commit is listed in `.git-blame-ignore-revs`.
+- Checkstyle warnings reduced from 321 (main) / 602 (test) to 46 / 21 and the ratchet lowered
+  accordingly. Remaining warnings need renames of public names or judgment calls.
+
 - Optional signed build provenance for release jars, in a separate job that only runs when the
   repository variable `ATTEST_RELEASE_ARTIFACTS` is `true` (see `CONTRIBUTING.md`).
 
