@@ -48,6 +48,14 @@ class CgroupMemMetricsTest {
     Field pathField = cg.getClass().getDeclaredField("path");
     pathField.setAccessible(true);
     pathField.set(cg, path);
+
+    // Do not inherit the mount root of the host running the tests. With a real root, the
+    // effective-limit lookup also reads ancestor directories, which consumes the mocked
+    // readFirstNumber sequence these tests rely on (and differs between cgroup v1 and v2 hosts).
+    // Tests that exercise ancestors set the root explicitly.
+    Field baseDirField = cg.getClass().getDeclaredField("baseDir");
+    baseDirField.setAccessible(true);
+    baseDirField.set(cg, null);
   }
 
   // ------- 1. Non-Linux (isLinux == false) -------
