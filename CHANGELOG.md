@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `CgroupCpuLimitCores` on `co.pletor.node:type=CpuMetrics`: the effective CPU limit of the
+  container in cores (CFS quota over period; the tightest finite limit of the cgroup and its
+  ancestors, like `MemoryLimitBytes`; `-1` when unlimited or unavailable). With
+  `CgroupCpuUsageNanosTotal` it gives CPU use as a share of the limit. Read from `cpu.max` (v2) or
+  `cpu.cfs_quota_us` / `cpu.cfs_period_us` (v1).
 - Swap metrics. `co.pletor.node:type=MemMetrics`: `SwapTotalBytes` (`0` without swap), `SwapUsedBytes`
   and the cumulative counters `SwapInPagesTotal` / `SwapOutPagesTotal` (from `/proc/vmstat`
   `pswpin` / `pswpout`; a missing `/proc/vmstat` is `-1`, not a failure).
