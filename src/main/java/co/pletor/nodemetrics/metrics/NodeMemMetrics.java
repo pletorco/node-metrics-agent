@@ -16,7 +16,7 @@ import java.util.List;
  * {@link OperatingSystemMXBean}, using container-aware APIs when available,
  * while other fields are reported as {@code -1}.
  */
-public class NodeMemMetrics implements NodeMemMetricsMBean, RefreshManagedMetric {
+public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemMetricsMBean {
 
   // ----- Core memory usage -----
 
@@ -47,44 +47,18 @@ public class NodeMemMetrics implements NodeMemMetricsMBean, RefreshManagedMetric
   }
 
   // ------------------------------------------------------------------------
-  // Polling / Refeshing
+  // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  private static final long REFRESH_INTERVAL_MS = 500L;
-  private final RefreshCadence refreshCadence = new RefreshCadence(REFRESH_INTERVAL_MS);
-  private volatile boolean readRefreshEnabled = true;
-
   /**
-   * Refresh metrics if the cache is stale.
+   * Refresh the metric values.
    */
-  private void refresh() {
-    if (!refreshCadence.tryAcquire()) {
-      return;
-    }
-
+  @Override
+  protected void doRefresh() {
     if (LinuxProcFs.isLinux()) {
       pollFromProcMeminfo();
     } else {
       pollFromOsMxBean();
-    }
-  }
-
-  /**
-   * Force refresh of metrics (for testing).
-   */
-  public void poll() {
-    refreshCadence.force();
-    refresh();
-  }
-
-  @Override
-  public void setReadRefreshEnabled(boolean enabled) {
-    readRefreshEnabled = enabled;
-  }
-
-  private void refreshOnRead() {
-    if (readRefreshEnabled) {
-      refresh();
     }
   }
 
@@ -105,6 +79,7 @@ public class NodeMemMetrics implements NodeMemMetricsMBean, RefreshManagedMetric
       applyMemInfoSnapshot(snapshot);
 
     } catch (IOException | RuntimeException e) {
+      recordRefreshFailure(e);
       resetAll();
     }
   }
@@ -337,6 +312,7 @@ public class NodeMemMetrics implements NodeMemMetricsMBean, RefreshManagedMetric
         totalBytes = usedBytes = freeBytes = availableBytes = -1L;
       }
     } catch (Throwable t) {
+      recordRefreshFailure(t);
       totalBytes = usedBytes = freeBytes = availableBytes = -1L;
     }
 

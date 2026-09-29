@@ -92,8 +92,19 @@ class MetricsAgentTest {
     f.set(cfg, maxPartitions);
   }
 
+  private static Field declaredFieldInHierarchy(Class<?> type, String fieldName) throws NoSuchFieldException {
+    for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+      try {
+        return c.getDeclaredField(fieldName);
+      } catch (NoSuchFieldException ignored) {
+        // try the superclass
+      }
+    }
+    throw new NoSuchFieldException(fieldName);
+  }
+
   private static boolean getBooleanField(Object target, String fieldName) throws Exception {
-    Field f = target.getClass().getDeclaredField(fieldName);
+    Field f = declaredFieldInHierarchy(target.getClass(), fieldName);
     f.setAccessible(true);
     return f.getBoolean(target);
   }

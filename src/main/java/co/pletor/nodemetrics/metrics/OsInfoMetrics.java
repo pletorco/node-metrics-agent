@@ -20,7 +20,7 @@ import java.util.Locale;
  * All values are cached in volatile fields and refreshed on {@link #poll()}.
  * On any error, individual fields may fall back to empty string or -1.
  */
-public class OsInfoMetrics implements OsInfoMetricsMBean, RefreshManagedMetric {
+public class OsInfoMetrics extends AbstractRefreshingMetric implements OsInfoMetricsMBean {
 
   /**
    * Constant info metric for use as a Prometheus *_info value.
@@ -59,21 +59,14 @@ public class OsInfoMetrics implements OsInfoMetricsMBean, RefreshManagedMetric {
   }
 
   // ------------------------------------------------------------------------
-  // Polling / Refeshing
+  // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  private static final long REFRESH_INTERVAL_MS = 500L;
-  private final RefreshCadence refreshCadence = new RefreshCadence(REFRESH_INTERVAL_MS);
-  private volatile boolean readRefreshEnabled = true;
-
   /**
-   * Refresh metrics if the cache is stale.
+   * Refresh the metric values.
    */
-  private void refresh() {
-    if (!refreshCadence.tryAcquire()) {
-      return;
-    }
-
+  @Override
+  protected void doRefresh() {
     // Optimization: OS info is static. If already populated, do not re-read.
     if (!osName.isEmpty()) {
       return;
@@ -82,6 +75,7 @@ public class OsInfoMetrics implements OsInfoMetricsMBean, RefreshManagedMetric {
     try {
       refreshValues();
     } catch (Exception e) {
+      recordRefreshFailure(e);
       applyFallbackValues();
     }
   }
@@ -120,25 +114,6 @@ public class OsInfoMetrics implements OsInfoMetricsMBean, RefreshManagedMetric {
   }
 
 
-
-  /**
-   * Force refresh of metrics (for testing).
-   */
-  public void poll() {
-    refreshCadence.force();
-    refresh();
-  }
-
-  @Override
-  public void setReadRefreshEnabled(boolean enabled) {
-    readRefreshEnabled = enabled;
-  }
-
-  private void refreshOnRead() {
-    if (readRefreshEnabled) {
-      refresh();
-    }
-  }
 
   // ----- Linux-specific implementation -----
 

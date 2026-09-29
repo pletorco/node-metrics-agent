@@ -4,10 +4,12 @@ package co.pletor.nodemetrics.metrics;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import com.sun.management.OperatingSystemMXBean;
+import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
@@ -772,5 +774,21 @@ class NodeMemMetricsTest {
 
   private void bypassRefresh(NodeMemMetrics metrics) {
     metrics.setReadRefreshEnabled(false);
+  }
+
+  @Test
+  void poll_shouldReportRefreshErrorWhenMeminfoIsUnreadable() {
+    org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
+    NodeMemMetrics metrics = new NodeMemMetrics() {
+      @Override
+      List<String> readProcMemInfoLines() throws IOException {
+        throw new IOException("simulated");
+      }
+    };
+
+    metrics.poll();
+
+    assertNotNull(metrics.lastRefreshError());
+    assertEquals("simulated", metrics.lastRefreshError().getMessage());
   }
 }

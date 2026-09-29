@@ -76,6 +76,8 @@ If reload fails, the previous working configuration remains active.
 - `pletor_agent_observability_droppedcount` increases above baseline
 - `pletor_agent_observability_queuefillratio >= 0.80`
 - `pletor_agent_observability_maxtaskstalenessms` rises for a sustained period
+  (seconds behind schedule; healthy tasks stay near `0` whatever their refresh interval)
+- `pletor_agent_observability_failingtaskcount > 0` for a sustained period
 - filesystem usable bytes drops below service thresholds
 - FD usage approaches max FD limit
 - cgroup memory usage/limit ratio stays above `0.90`
@@ -87,6 +89,21 @@ Queue pressure:
 - Check `QueueFillRatio`, `DroppedCount`, `EndToEndLatencyMillis`, and `MaxTaskStalenessMs`.
 - `DEGRADED` drops low-priority filesystem refresh first.
 - `BYPASS` drops all refresh work until pressure falls.
+
+Failing metric refreshes:
+
+- `FailingTaskCount > 0` means at least one metric could not be read on its last refresh (for
+  example an unreadable `/proc` file or an unavailable filesystem). The affected MBean exposes
+  sentinel values (`-1`) or its last known values.
+- `FailingTasks` (JMX only, a string attribute) lists the task names, e.g. `fs:/data,cpu`.
+- `ErrorCount` / `SinkFailureCount` count every failed refresh. The first failure of each
+  minute is also logged at WARNING with a stack trace.
+
+Refresh intervals:
+
+- CPU, memory, cgroup memory and I/O rates refresh every dispatch cycle (`500 ms`).
+- File descriptors refresh every `5 s`, filesystem and OS runtime (uptime, mounts) every `10 s`,
+  and static OS info every `5 min`.
 
 Filesystem MBeans:
 

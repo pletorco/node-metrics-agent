@@ -87,14 +87,14 @@ rules:
   # ----------------------------------------------------------------------------
   # [agent] co.pletor.agent
   # Exports internal telemetry pipeline counters/gauges.
-  # Note: string attributes (for example, Mode) are intentionally excluded here.
+  # Note: string attributes (for example, Mode, FailingTasks) are intentionally excluded here.
   # ============================================================================
   - pattern: 'co.pletor.agent<type=(.+?)(?:,(.+))?><>(ProcessedCount|EnqueueCount|DequeueCount|DroppedCount|ErrorCount|SinkSuccessCount|SinkFailureCount|SinkRetryCount|ModeTransitionCount|ThrottledLoggerOverflowCount):'
     name: pletor_agent_$1_$3
     type: COUNTER
     cache: true
 
-  - pattern: 'co.pletor.agent<type=(.+?)(?:,(.+))?><>(QueueDepth|QueueFillRatio|EndToEndLatencyMillis|MaxTaskStalenessMs):'
+  - pattern: 'co.pletor.agent<type=(.+?)(?:,(.+))?><>(QueueDepth|QueueFillRatio|EndToEndLatencyMillis|MaxTaskStalenessMs|FailingTaskCount):'
     name: pletor_agent_$1_$3
     type: GAUGE
     cache: true

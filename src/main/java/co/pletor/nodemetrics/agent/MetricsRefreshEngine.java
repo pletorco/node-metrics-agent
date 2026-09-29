@@ -2,14 +2,21 @@ package co.pletor.nodemetrics.agent;
 
 import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
 
+
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Asynchronous metric refresh engine.
@@ -17,6 +24,10 @@ import java.util.function.Consumer;
  * Dispatcher thread enqueues poll tasks periodically, and worker thread executes them off the JMX read path.
  */
 final class MetricsRefreshEngine implements AutoCloseable {
+  private static final Logger LOGGER = Logger.getLogger(MetricsRefreshEngine.class.getName());
+  private static final ThrottledLogger THROTTLED_LOGGER = new ThrottledLogger(LOGGER, 60_000L);
+  private static final String LOG_KEY_REFRESH_FAILED = "metric-refresh-failed";
+
   private final long dispatchIntervalMs;
   private final ArrayBlockingQueue<QueuedTask> queue;
   private final Consumer<TelemetryMode> modeListener;
@@ -40,13 +51,41 @@ final class MetricsRefreshEngine implements AutoCloseable {
     final String name;
     final RefreshManagedMetric metric;
     final boolean lowPriority;
+    /** Minimum time between two refreshes of this task; {@code 0} means every dispatch cycle. */
+    final long intervalMs;
+    final long intervalNanos;
+    final long registeredAtEpochMs = System.currentTimeMillis();
     /** Epoch-millisecond timestamp of the last successful poll; 0 if never polled. */
     final AtomicLong lastSuccessEpochMs = new AtomicLong(0L);
+    /** Consecutive failed polls; reset to 0 by the next successful poll. */
+    final AtomicInteger consecutiveFailures = new AtomicInteger(0);
+    /** {@code System.nanoTime()} at which the dispatcher may enqueue this task next. */
+    private volatile long nextDueNanos = System.nanoTime();
 
     RefreshTask(String name, RefreshManagedMetric metric, boolean lowPriority) {
+      this(name, metric, lowPriority, 0L);
+    }
+
+    RefreshTask(String name, RefreshManagedMetric metric, boolean lowPriority, long intervalMs) {
       this.name = name;
       this.metric = metric;
       this.lowPriority = lowPriority;
+      this.intervalMs = Math.max(0L, intervalMs);
+      this.intervalNanos = TimeUnit.MILLISECONDS.toNanos(this.intervalMs);
+    }
+
+    boolean isDue(long nowNanos) {
+      return nowNanos - nextDueNanos >= 0L;
+    }
+
+    void scheduleNext(long nowNanos) {
+      nextDueNanos = nowNanos + intervalNanos;
+    }
+
+    boolean isSameSchedule(RefreshTask other) {
+      return metric == other.metric
+          && lowPriority == other.lowPriority
+          && intervalMs == other.intervalMs;
     }
   }
 
@@ -71,8 +110,32 @@ final class MetricsRefreshEngine implements AutoCloseable {
     this.modeListener = modeListener;
   }
 
+  /**
+   * Replace the task set. A task that is unchanged (same name, metric, priority and interval)
+   * keeps its existing instance, so success/failure history and staleness survive config reloads.
+   */
   void setTasks(List<RefreshTask> tasks) {
-    tasksRef.set(List.copyOf(tasks));
+    Map<String, RefreshTask> existing = new HashMap<>();
+    for (RefreshTask old : tasksRef.get()) {
+      existing.put(old.name, old);
+    }
+    List<RefreshTask> merged = new ArrayList<>(tasks.size());
+    for (RefreshTask task : tasks) {
+      RefreshTask old = existing.get(task.name);
+      merged.add(old != null && old.isSameSchedule(task) ? old : task);
+    }
+    tasksRef.set(List.copyOf(merged));
+  }
+
+  /** Names of tasks whose most recent poll failed, in registration order. */
+  List<String> failingTaskNames() {
+    List<String> names = new ArrayList<>();
+    for (RefreshTask t : tasksRef.get()) {
+      if (t.consecutiveFailures.get() > 0) {
+        names.add(t.name);
+      }
+    }
+    return names;
   }
 
   int queueSize() {
@@ -130,11 +193,13 @@ final class MetricsRefreshEngine implements AutoCloseable {
   }
 
   /**
-   * Returns the age in milliseconds of the task that has gone the longest without a successful poll.
+   * Returns how far behind schedule the most overdue task is, in milliseconds: the time since its
+   * last successful poll minus its refresh interval (never negative).
    * <p>
-   * Returns {@code 0} if no tasks are registered or none has been polled yet.
-   * This value rises during {@code BYPASS} mode (when tasks are dropped) and
-   * can be used to detect stale metric data in monitoring dashboards.
+   * A healthy task is always close to {@code 0}, whatever its interval. The value rises during
+   * {@code BYPASS} mode (when tasks are dropped) and when a task keeps failing. A task that has
+   * never succeeded counts from its registration time once it has failed at least once. Returns
+   * {@code 0} if no tasks are registered or none has been polled yet.
    */
   long maxTaskStalenessMs() {
     List<RefreshTask> tasks = tasksRef.get();
@@ -142,14 +207,17 @@ final class MetricsRefreshEngine implements AutoCloseable {
       return 0L;
     }
     long now = System.currentTimeMillis();
-    long maxAge = 0L;
+    long maxOverdue = 0L;
     for (RefreshTask t : tasks) {
-      long last = t.lastSuccessEpochMs.get();
-      if (last > 0L) {
-        maxAge = Math.max(maxAge, now - last);
+      long baseline = t.lastSuccessEpochMs.get();
+      if (baseline <= 0L && t.consecutiveFailures.get() > 0) {
+        baseline = t.registeredAtEpochMs;
+      }
+      if (baseline > 0L) {
+        maxOverdue = Math.max(maxOverdue, now - baseline - t.intervalMs);
       }
     }
-    return maxAge;
+    return maxOverdue;
   }
 
   void start() {
@@ -210,10 +278,16 @@ final class MetricsRefreshEngine implements AutoCloseable {
   private void dispatchCycle(List<RefreshTask> tasks) {
     long droppedThisCycle = 0L;
     long enqueueFailures = 0L;
+    long now = System.nanoTime();
     for (RefreshTask task : tasks) {
+      if (!task.isDue(now)) {
+        continue;
+      }
       if (shouldDropTask(task)) {
         droppedThisCycle++;
-      } else if (!enqueue(task)) {
+      } else if (enqueue(task)) {
+        task.scheduleNext(now);
+      } else {
         droppedThisCycle++;
         enqueueFailures++;
       }
@@ -253,15 +327,38 @@ final class MetricsRefreshEngine implements AutoCloseable {
 
   private void processQueuedTask(QueuedTask queuedTask) {
     dequeuedCount.increment();
+    RefreshTask task = queuedTask.task;
     try {
-      queuedTask.task.metric.poll();
-      queuedTask.task.lastSuccessEpochMs.set(System.currentTimeMillis());
-      sinkSuccessCount.increment();
-    } catch (Exception | Error ignored) { // NOSONAR - worker must stay alive on metric failures
-      sinkFailureCount.increment();
+      task.metric.poll();
+      // Metrics absorb read failures to keep JMX reads exception-free; they report them here.
+      Throwable absorbed = task.metric.lastRefreshError();
+      if (absorbed == null) {
+        recordSuccess(task);
+      } else {
+        recordFailure(task, absorbed);
+      }
+    } catch (Exception | Error e) { // NOSONAR - worker must stay alive on metric failures
+      recordFailure(task, e);
     } finally {
       recordEndToEndLatency(queuedTask.enqueuedAtNanos);
     }
+  }
+
+  private void recordSuccess(RefreshTask task) {
+    task.lastSuccessEpochMs.set(System.currentTimeMillis());
+    task.consecutiveFailures.set(0);
+    sinkSuccessCount.increment();
+  }
+
+  private void recordFailure(RefreshTask task, Throwable error) {
+    task.consecutiveFailures.incrementAndGet();
+    sinkFailureCount.increment();
+    THROTTLED_LOGGER.log(
+        Level.WARNING,
+        LOG_KEY_REFRESH_FAILED,
+        error,
+        () -> "[node-metrics-agent] metric refresh failed: task=" + task.name
+    );
   }
 
   private void recordEndToEndLatency(long enqueuedAtNanos) {

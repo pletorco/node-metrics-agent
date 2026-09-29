@@ -27,7 +27,7 @@ import java.util.Locale;
  * </ul>
  * The refresh mechanism is invoked on-demand when JMX attributes are queried.
  */
-public class CpuMetrics implements CpuMetricsMBean, RefreshManagedMetric {
+public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMBean {
 
   // ------------------------------------------------------------------------
   // MXBean-backed metrics
@@ -161,45 +161,19 @@ public class CpuMetrics implements CpuMetricsMBean, RefreshManagedMetric {
   }
 
   // ------------------------------------------------------------------------
-  // Polling / Refeshing
+  // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  private static final long REFRESH_INTERVAL_MS = 500L;
-  private final RefreshCadence refreshCadence = new RefreshCadence(REFRESH_INTERVAL_MS);
-  private volatile boolean readRefreshEnabled = true;
-
   /**
-   * Refresh metrics if the cache is stale.
+   * Refresh the metric values.
    */
-  private void refresh() {
-    if (!refreshCadence.tryAcquire()) {
-      return;
-    }
-
+  @Override
+  protected void doRefresh() {
     // Update common MXBean-backed metrics
     updateMxBeanMetrics();
 
     // Update Linux-specific extended metrics
     updateExtendedLinuxMetrics();
-  }
-
-  /**
-   * Force refresh of metrics (for testing).
-   */
-  public void poll() {
-    refreshCadence.force();
-    refresh();
-  }
-
-  @Override
-  public void setReadRefreshEnabled(boolean enabled) {
-    readRefreshEnabled = enabled;
-  }
-
-  private void refreshOnRead() {
-    if (readRefreshEnabled) {
-      refresh();
-    }
   }
 
   /**
@@ -227,6 +201,7 @@ public class CpuMetrics implements CpuMetricsMBean, RefreshManagedMetric {
       processCpuTimeNanos = (cpuTime >= 0L) ? cpuTime : 0L;
     } catch (RuntimeException e) {
       // On any unexpected failure we keep previously computed values.
+      recordRefreshFailure(e);
     }
   }
 
@@ -256,8 +231,9 @@ public class CpuMetrics implements CpuMetricsMBean, RefreshManagedMetric {
       if (times != null) {
         computeCpuStateRatios(times);
       }
-    } catch (Exception ignored) {
+    } catch (Exception e) {
       // On failure we keep the last successfully computed values.
+      recordRefreshFailure(e);
     }
 
     // Update load averages (1m / 5m / 15m) from /proc/loadavg
@@ -268,8 +244,9 @@ public class CpuMetrics implements CpuMetricsMBean, RefreshManagedMetric {
         loadAvg5m = la.load5;
         loadAvg15m = la.load15;
       }
-    } catch (Exception ignored) {
+    } catch (Exception e) {
       // Keep previous values.
+      recordRefreshFailure(e);
     }
 
     // Update cgroup CPU throttling metrics, if available
@@ -278,8 +255,9 @@ public class CpuMetrics implements CpuMetricsMBean, RefreshManagedMetric {
       if (cg != null) {
         computeCgroupRatios(cg);
       }
-    } catch (Exception ignored) {
+    } catch (Exception e) {
       // Keep previous values.
+      recordRefreshFailure(e);
     }
   }
 

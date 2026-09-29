@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `FailingTaskCount` and `FailingTasks` on `co.pletor.agent:type=Observability`, and a throttled
+  WARNING log, so failed metric refreshes are visible. Previously beans absorbed read failures
+  silently, so `ErrorCount`/`SinkFailureCount` stayed at 0 and staleness was reset by failed polls.
+
+### Changed
+
+- Refresh tasks have individual intervals: file descriptors every 5 s, filesystem and OS runtime
+  every 10 s, OS info every 5 min; other metrics keep the 500 ms cadence. This reduces the cost of
+  counting file descriptors on brokers with very many open files.
+- `MaxTaskStalenessMs` now means "milliseconds behind schedule" (time since last success minus the
+  task's interval), so healthy tasks stay near 0 regardless of interval. A task that never
+  succeeds is now counted from its registration time instead of being ignored.
+- Task success/failure history is preserved across configuration reloads.
+- Metric beans share a common `AbstractRefreshingMetric` base class instead of eight copies of the
+  same refresh/poll boilerplate.
+
 ### Fixed
 
 - Network throughput is no longer inflated on container hosts: only interfaces backed by a real

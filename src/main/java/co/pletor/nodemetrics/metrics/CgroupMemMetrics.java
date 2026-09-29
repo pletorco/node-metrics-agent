@@ -23,7 +23,7 @@ import java.nio.file.Path;
  *       very large values to represent "unlimited"; those are converted to -1 using a simple heuristic.</li>
  * </ul>
  */
-public class CgroupMemMetrics implements CgroupMemMetricsMBean, RefreshManagedMetric {
+public class CgroupMemMetrics extends AbstractRefreshingMetric implements CgroupMemMetricsMBean {
 
   /**
    * Last observed memory limit in bytes.
@@ -54,21 +54,14 @@ public class CgroupMemMetrics implements CgroupMemMetricsMBean, RefreshManagedMe
   }
 
   // ------------------------------------------------------------------------
-  // Polling / Refeshing
+  // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  private static final long REFRESH_INTERVAL_MS = 500L;
-  private final RefreshCadence refreshCadence = new RefreshCadence(REFRESH_INTERVAL_MS);
-  private volatile boolean readRefreshEnabled = true;
-
   /**
-   * Refresh metrics if the cache is stale.
+   * Refresh the metric values.
    */
-  private void refresh() {
-    if (!refreshCadence.tryAcquire()) {
-      return;
-    }
-
+  @Override
+  protected void doRefresh() {
     // Non-Linux environments: expose no values.
     if (!LinuxProcFs.isLinux()) {
       limit = usage = -1L;
@@ -115,26 +108,8 @@ public class CgroupMemMetrics implements CgroupMemMetricsMBean, RefreshManagedMe
       }
     } catch (Throwable t) {
       // On any read/parse error keep metrics safe and clearly unavailable.
+      recordRefreshFailure(t);
       limit = usage = -1L;
-    }
-  }
-
-  /**
-   * Force refresh of metrics (for testing).
-   */
-  public void poll() {
-    refreshCadence.force();
-    refresh();
-  }
-
-  @Override
-  public void setReadRefreshEnabled(boolean enabled) {
-    readRefreshEnabled = enabled;
-  }
-
-  private void refreshOnRead() {
-    if (readRefreshEnabled) {
-      refresh();
     }
   }
 

@@ -14,7 +14,7 @@ import java.lang.management.ManagementFactory;
  * </ul>
  * On unsupported platforms, both values are reported as {@code -1}.
  */
-public class FdMetrics implements FdMetricsMBean, RefreshManagedMetric {
+public class FdMetrics extends AbstractRefreshingMetric implements FdMetricsMBean {
 
   /**
    * Base operating system MXBean used to obtain FD metrics.
@@ -42,20 +42,14 @@ public class FdMetrics implements FdMetricsMBean, RefreshManagedMetric {
   }
 
   // ------------------------------------------------------------------------
-  // Polling / Refeshing
+  // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  private static final long REFRESH_INTERVAL_MS = 500L;
-  private final RefreshCadence refreshCadence = new RefreshCadence(REFRESH_INTERVAL_MS);
-  private volatile boolean readRefreshEnabled = true;
-
   /**
-   * Refresh metrics if the cache is stale.
+   * Refresh the metric values.
    */
-  private void refresh() {
-    if (!refreshCadence.tryAcquire()) {
-      return;
-    }
+  @Override
+  protected void doRefresh() {
     try {
       if (base instanceof com.sun.management.UnixOperatingSystemMXBean) {
         com.sun.management.UnixOperatingSystemMXBean u = (com.sun.management.UnixOperatingSystemMXBean) base;
@@ -68,27 +62,9 @@ public class FdMetrics implements FdMetricsMBean, RefreshManagedMetric {
       }
     } catch (Throwable t) {
       // On any failure, expose metrics as unsupported.
+      recordRefreshFailure(t);
       open = -1L;
       max = -1L;
-    }
-  }
-
-  /**
-   * Force refresh of metrics (for testing).
-   */
-  public void poll() {
-    refreshCadence.force();
-    refresh();
-  }
-
-  @Override
-  public void setReadRefreshEnabled(boolean enabled) {
-    readRefreshEnabled = enabled;
-  }
-
-  private void refreshOnRead() {
-    if (readRefreshEnabled) {
-      refresh();
     }
   }
 

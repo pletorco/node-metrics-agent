@@ -183,4 +183,21 @@ class FsMetricsTest {
   private void bypassRefresh(FsMetrics metrics) {
     metrics.setReadRefreshEnabled(false);
   }
+
+  @Test
+  void poll_shouldReportRefreshErrorForMissingPathAndClearItOnceItExists(@org.junit.jupiter.api.io.TempDir Path tmp)
+      throws Exception {
+    Path dir = tmp.resolve("later");
+    FsMetrics metrics = new FsMetrics(dir);
+
+    metrics.poll();
+    assertNotNull(metrics.lastRefreshError(), "Unreadable path must be reported, not silently absorbed");
+    metrics.setReadRefreshEnabled(false);
+    assertEquals(-1L, metrics.getTotalBytes());
+
+    java.nio.file.Files.createDirectories(dir);
+    metrics.poll();
+    assertNull(metrics.lastRefreshError(), "Error must clear after a successful refresh");
+    assertTrue(metrics.getTotalBytes() > 0L);
+  }
 }

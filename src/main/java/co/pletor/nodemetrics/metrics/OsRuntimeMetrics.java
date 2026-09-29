@@ -18,7 +18,7 @@ import java.util.List;
  * On non-Linux platforms, falls back to RuntimeMXBean uptime and
  * FileStore enumeration.
  */
-public class OsRuntimeMetrics implements OsRuntimeMetricsMBean, RefreshManagedMetric {
+public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRuntimeMetricsMBean {
 
   private volatile long uptimeSeconds = 0L;
   private volatile int mountCount = -1;
@@ -35,20 +35,14 @@ public class OsRuntimeMetrics implements OsRuntimeMetricsMBean, RefreshManagedMe
   }
 
   // ------------------------------------------------------------------------
-  // Polling / Refeshing
+  // Polling / Refreshing
   // ------------------------------------------------------------------------
 
-  private static final long REFRESH_INTERVAL_MS = 500L;
-  private final RefreshCadence refreshCadence = new RefreshCadence(REFRESH_INTERVAL_MS);
-  private volatile boolean readRefreshEnabled = true;
-
   /**
-   * Refresh metrics if the cache is stale.
+   * Refresh the metric values.
    */
-  private void refresh() {
-    if (!refreshCadence.tryAcquire()) {
-      return;
-    }
+  @Override
+  protected void doRefresh() {
     try {
       if (LinuxProcFs.isLinux()) {
         pollLinux();
@@ -57,28 +51,10 @@ public class OsRuntimeMetrics implements OsRuntimeMetricsMBean, RefreshManagedMe
       }
     } catch (Exception e) {
       // Agent stability first: never let runtime metrics failures escape.
+      recordRefreshFailure(e);
       uptimeSeconds = 0L;
       mountCount = -1;
       mounts = new String[0];
-    }
-  }
-
-  /**
-   * Force refresh of metrics (for testing).
-   */
-  public void poll() {
-    refreshCadence.force();
-    refresh();
-  }
-
-  @Override
-  public void setReadRefreshEnabled(boolean enabled) {
-    readRefreshEnabled = enabled;
-  }
-
-  private void refreshOnRead() {
-    if (readRefreshEnabled) {
-      refresh();
     }
   }
 
@@ -112,6 +88,7 @@ public class OsRuntimeMetrics implements OsRuntimeMetricsMBean, RefreshManagedMe
       }
       return (long) sec;
     } catch (IOException | NumberFormatException e) {
+      recordRefreshFailure(e);
       return 0L;
     }
   }
@@ -130,6 +107,7 @@ public class OsRuntimeMetrics implements OsRuntimeMetricsMBean, RefreshManagedMe
       List<String> lines = LinuxProcFs.readLines(p);
       return lines.toArray(new String[0]);
     } catch (IOException e) {
+      recordRefreshFailure(e);
       return new String[0];
     }
   }

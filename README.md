@@ -12,7 +12,7 @@ The agent is designed to run inside production JVMs with a fail-open posture:
 - bounded asynchronous refresh pipeline
 - overload modes: `NORMAL`, `DEGRADED`, `BYPASS`
 - runtime configuration reload for filesystem metrics
-- self-observability MBeans for queue pressure, drops, latency, and staleness
+- self-observability MBeans for queue pressure, drops, latency, staleness, and failing metric refreshes
 - Prometheus JMX exporter example rules using the `pletor_*` metric prefix
 
 Current version: `0.8.0`

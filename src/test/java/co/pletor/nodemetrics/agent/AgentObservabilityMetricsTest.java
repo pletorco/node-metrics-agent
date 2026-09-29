@@ -110,4 +110,32 @@ class AgentObservabilityMetricsTest {
       // no-op
     }
   }
+
+  @Test
+  void observabilityMetrics_shouldReportFailingTasks() {
+    MetricsRefreshEngineTest.AbsorbingMetric broken = new MetricsRefreshEngineTest.AbsorbingMetric();
+    broken.error.set(new java.io.IOException("boom"));
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setTasks(List.of(
+        new MetricsRefreshEngine.RefreshTask("cpu", new MetricsRefreshEngineTest.AbsorbingMetric(), false),
+        new MetricsRefreshEngine.RefreshTask("fs:/data", broken, true)
+    ));
+    AgentObservabilityMetrics metrics = new AgentObservabilityMetrics(
+        () -> engine, () -> TelemetryMode.NORMAL, () -> 0L);
+
+    assertEquals(0, metrics.getFailingTaskCount());
+    assertEquals("", metrics.getFailingTasks());
+
+    try {
+      engine.start();
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (metrics.getFailingTaskCount() == 0 && System.nanoTime() < deadline) {
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10L));
+      }
+      assertEquals(1, metrics.getFailingTaskCount());
+      assertEquals("fs:/data", metrics.getFailingTasks());
+    } finally {
+      engine.stop();
+    }
+  }
 }

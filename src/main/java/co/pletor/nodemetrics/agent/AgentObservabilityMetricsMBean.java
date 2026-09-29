@@ -43,13 +43,28 @@ public interface AgentObservabilityMetricsMBean {
   double getEndToEndLatencyMillis();
 
   /**
-   * Age in milliseconds of the task that has gone the longest without a successful poll.
+   * How far behind schedule the most overdue refresh task is, in milliseconds: time since its last
+   * successful poll minus its refresh interval (never negative).
    * <p>
-   * Rises when the engine is in {@code BYPASS} mode or when a task consistently fails.
-   * A value of {@code 0} means all tasks have been polled recently or none exist yet.
+   * Rises when the engine is in {@code BYPASS} mode or when a task consistently fails, and stays
+   * near {@code 0} for healthy tasks regardless of their individual refresh intervals.
    */
   @JmxMetricHint("gauge")
   long getMaxTaskStalenessMs();
+
+  /**
+   * Number of refresh tasks whose most recent poll failed (for example an unreadable
+   * {@code /proc} file or an unavailable filesystem). {@code 0} means every task is healthy.
+   */
+  @JmxMetricHint("gauge")
+  int getFailingTaskCount();
+
+  /**
+   * Comma-separated names of the tasks counted by {@link #getFailingTaskCount()}, or an empty
+   * string when all tasks are healthy.
+   */
+  @JmxMetricHint("gauge")
+  String getFailingTasks();
 
   /**
    * Number of log attempts dropped because the {@link ThrottledLogger} key cap was exceeded.
