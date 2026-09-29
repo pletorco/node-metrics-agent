@@ -176,4 +176,39 @@ class IoRatesTest {
                         + "|bytes packets errs drop fifo colls carrier compressed\n"
                         + String.format("  eth0: %d 1 0 0 0 0 0 0 %d 1 0 0 0 0 0 0%n", rxBytes, txBytes));
     }
+
+    @Test
+    @DisplayName("Cumulative byte counters are exposed and monotonic across polls")
+    void cumulativeTotalsAreExposed(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
+        java.nio.file.Path proc = tmp.resolve("proc");
+        java.nio.file.Files.createDirectories(proc.resolve("net"));
+        java.nio.file.Path sys = tmp.resolve("sys");
+        java.nio.file.Files.createDirectories(sys);
+
+        LinuxProcFs.setProcRoot(proc);
+        LinuxProcFs.setSysRoot(sys);
+        try {
+            IoRates ioRates = new IoRates();
+            ioRates.setReadRefreshEnabled(false);
+            assertEquals(-1L, ioRates.getDiskReadBytesTotal(), "Unavailable before the first read");
+
+            writeCounters(proc, 1000L, 500L, 10_000L, 20_000L);
+            ioRates.poll();
+            assertEquals(1000L * 512L, ioRates.getDiskReadBytesTotal());
+            assertEquals(500L * 512L, ioRates.getDiskWriteBytesTotal());
+            assertEquals(10_000L, ioRates.getNetRxBytesTotal());
+            assertEquals(20_000L, ioRates.getNetTxBytesTotal());
+
+            writeCounters(proc, 3048L, 600L, 12_500L, 26_000L);
+            ioRates.poll();
+            assertEquals(3048L * 512L, ioRates.getDiskReadBytesTotal());
+            assertEquals(600L * 512L, ioRates.getDiskWriteBytesTotal());
+            assertEquals(12_500L, ioRates.getNetRxBytesTotal());
+            assertEquals(26_000L, ioRates.getNetTxBytesTotal());
+        } finally {
+            LinuxProcFs.setProcRoot(java.nio.file.Paths.get("/proc"));
+            LinuxProcFs.setSysRoot(java.nio.file.Paths.get("/sys"));
+        }
+    }
 }

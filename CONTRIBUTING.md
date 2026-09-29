@@ -13,13 +13,38 @@ This project runs inside host JVM processes, so contributions should preserve ho
 
 ## Development Setup
 
-Use JDK 21 for builds. The produced bytecode targets Java 11.
+Use JDK 21 for builds. Code is compiled with `--release 11`, so it can only use the Java 11 API and
+the produced bytecode targets Java 11 (the agent runs inside Kafka brokers and other Java 11+ JVMs).
 
 ```bash
 ./gradlew test
 ./gradlew checkstyleMain checkstyleTest
 ./gradlew jacocoTestReport
 ```
+
+Run the tests on an older runtime (the JDK must be installed or discoverable by Gradle):
+
+```bash
+./gradlew test -PtestJavaVersion=11
+```
+
+Smoke-test the packaged jar as a real `-javaagent` (CLI, MBean registration, refresh pipeline, no
+files created in the application's working directory):
+
+```bash
+./gradlew shadowJar
+scripts/smoke-test.sh build/libs/node-metrics-agent-*-all.jar
+JAVA_BIN=/path/to/jdk11/bin/java scripts/smoke-test.sh build/libs/node-metrics-agent-*-all.jar
+```
+
+`shadowJar` does not run the tests; run `./gradlew check` (tests and checkstyle) as well before
+releasing. The release workflow does both.
+
+### Checkstyle warning ratchet
+
+The code base predates the Google-style rules, so checkstyle reports warnings that are not fixed yet.
+`build.gradle.kts` caps them (`maxWarnings` for `checkstyleMain` and `checkstyleTest`): a change that
+adds warnings fails the build. When you fix warnings, lower the numbers in the same change.
 
 Security checks:
 

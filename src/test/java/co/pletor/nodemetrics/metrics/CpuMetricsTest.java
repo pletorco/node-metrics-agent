@@ -567,4 +567,53 @@ class CpuMetricsTest {
         "Idle window must not keep the previous throttled ratio");
     assertEquals(0L, metrics.getCgroupCpuThrottledCount());
   }
+
+  @Test
+  @DisplayName("cumulative CPU tick counters follow /proc/stat and never depend on the previous snapshot")
+  void cumulativeCpuTicksAreExposedFromTheFirstSnapshot() throws Exception {
+    CpuMetrics metrics = new CpuMetrics((OperatingSystemMXBean) null);
+    bypassRefresh(metrics);
+    assertEquals(-1L, metrics.getSystemCpuTotalTicks(), "Unavailable before the first read");
+
+    Class<?> cpuTimesClass = CpuMetrics.CpuTimes.class;
+    Constructor<?> ctor = cpuTimesClass.getDeclaredConstructor(
+        long.class, long.class, long.class, long.class, long.class, long.class, long.class, long.class);
+    ctor.setAccessible(true);
+    Method compute = CpuMetrics.class.getDeclaredMethod("computeCpuStateRatios", cpuTimesClass);
+    compute.setAccessible(true);
+
+    // user nice system idle iowait irq softirq steal
+    compute.invoke(metrics, ctor.newInstance(10L, 1L, 5L, 100L, 2L, 3L, 4L, 5L));
+    assertEquals(130L, metrics.getSystemCpuTotalTicks());
+    assertEquals(2L, metrics.getSystemCpuIoWaitTicks());
+    assertEquals(5L, metrics.getSystemCpuStealTicks());
+
+    compute.invoke(metrics, ctor.newInstance(20L, 1L, 15L, 130L, 7L, 3L, 4L, 8L));
+    assertEquals(188L, metrics.getSystemCpuTotalTicks());
+    assertEquals(7L, metrics.getSystemCpuIoWaitTicks());
+    assertEquals(8L, metrics.getSystemCpuStealTicks());
+  }
+
+  @Test
+  @DisplayName("cumulative cgroup CPU counters mirror cpu.stat, including when a field is unsupported")
+  void cumulativeCgroupCountersAreExposed() throws Exception {
+    CpuMetrics metrics = new CpuMetrics((OperatingSystemMXBean) null);
+    bypassRefresh(metrics);
+
+    Class<?> cgroupClass = CpuMetrics.CgroupCpuStats.class;
+    Constructor<?> ctor = cgroupClass.getDeclaredConstructor(long.class, long.class, long.class);
+    ctor.setAccessible(true);
+    Method compute = CpuMetrics.class.getDeclaredMethod("computeCgroupRatios", cgroupClass);
+    compute.setAccessible(true);
+
+    compute.invoke(metrics, ctor.newInstance(1_000_000L, 100_000L, 5L));
+    assertEquals(1_000_000L, metrics.getCgroupCpuUsageNanosTotal());
+    assertEquals(100_000L, metrics.getCgroupCpuThrottledTimeNanosTotal());
+    assertEquals(5L, metrics.getCgroupCpuThrottledPeriodsTotal());
+
+    compute.invoke(metrics, ctor.newInstance(2_000_000L, -1L, 9L));
+    assertEquals(2_000_000L, metrics.getCgroupCpuUsageNanosTotal());
+    assertEquals(-1L, metrics.getCgroupCpuThrottledTimeNanosTotal(), "Unsupported field stays -1");
+    assertEquals(9L, metrics.getCgroupCpuThrottledPeriodsTotal());
+  }
 }

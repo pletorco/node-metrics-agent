@@ -38,6 +38,14 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
   private volatile double netTxBps = 0.0;
 
   /**
+   * Cumulative byte counters as of the last successful read; -1 until the first one.
+   */
+  private volatile long diskReadTotal = -1L;
+  private volatile long diskWriteTotal = -1L;
+  private volatile long netRxTotal = -1L;
+  private volatile long netTxTotal = -1L;
+
+  /**
    * Previous cumulative disk/network counters and timestamp used to compute deltas.
    */
   private long prevReadBytes = -1L;
@@ -105,6 +113,10 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
   private void refreshLinuxSnapshot() throws SnapshotReadException {
     // Read current snapshot, compute new rates, and store snapshot for the next poll.
     Snapshot snapshot = readSnapshot();
+    diskReadTotal = snapshot.readBytes;
+    diskWriteTotal = snapshot.writeBytes;
+    netRxTotal = snapshot.rxBytes;
+    netTxTotal = snapshot.txBytes;
     updateRates(snapshot);
     storeSnapshot(snapshot);
   }
@@ -254,5 +266,29 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
   public double getNetTxBytesPerSec() {
     refreshOnRead();
     return netTxBps;
+  }
+
+  @Override
+  public long getDiskReadBytesTotal() {
+    refreshOnRead();
+    return diskReadTotal;
+  }
+
+  @Override
+  public long getDiskWriteBytesTotal() {
+    refreshOnRead();
+    return diskWriteTotal;
+  }
+
+  @Override
+  public long getNetRxBytesTotal() {
+    refreshOnRead();
+    return netRxTotal;
+  }
+
+  @Override
+  public long getNetTxBytesTotal() {
+    refreshOnRead();
+    return netTxTotal;
   }
 }

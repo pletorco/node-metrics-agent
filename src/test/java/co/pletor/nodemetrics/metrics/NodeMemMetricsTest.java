@@ -18,6 +18,8 @@ import java.lang.reflect.Proxy;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledForJreRange;
+import org.junit.jupiter.api.condition.JRE;
 
 /**
  * Unit tests for {@link NodeMemMetrics}.
@@ -79,7 +81,7 @@ class NodeMemMetricsTest {
         + "Writeback:         2000 kB\n"
         + "SReclaimable:      8000 kB\n";
 
-    List<String> lines = meminfoSample.lines().toList();
+    List<String> lines = meminfoSample.lines().collect(java.util.stream.Collectors.toList());
 
     // Access private parseMemInfo(List<String>) via reflection
     Method parseMemInfo = NodeMemMetrics.class.getDeclaredMethod("parseMemInfo", List.class);
@@ -328,6 +330,7 @@ class NodeMemMetricsTest {
   // Non-Linux MXBean helpers: getTotalMemoryPortable / getFreeMemoryPortable
   // ----------------------------------------------------
 
+  @EnabledForJreRange(min = JRE.JAVA_14) // getTotalMemorySize/getFreeMemorySize exist since JDK 14
   @Test
   @DisplayName("getTotalMemoryPortable should prefer getTotalMemorySize when it returns positive")
   void getTotalMemoryPortablePrefersNewApi() throws Exception {
@@ -412,6 +415,7 @@ class NodeMemMetricsTest {
     assertEquals(5678L, total, "Exception during new API should cause fallback");
   }
 
+  @EnabledForJreRange(min = JRE.JAVA_14) // getTotalMemorySize/getFreeMemorySize exist since JDK 14
   @Test
   @DisplayName("getFreeMemoryPortable should prefer getFreeMemorySize when it returns non-negative")
   void getFreeMemoryPortablePrefersNewApi() throws Exception {
@@ -741,7 +745,7 @@ class NodeMemMetricsTest {
     NodeMemMetrics metrics = new NodeMemMetrics();
     // Only Total and Free provided, others missing
     String partialInfo = "MemTotal: 100 kB\nMemFree: 20 kB\n";
-    List<String> lines = partialInfo.lines().toList();
+    List<String> lines = partialInfo.lines().collect(java.util.stream.Collectors.toList());
 
     Method parseMethod = NodeMemMetrics.class.getDeclaredMethod("parseMemInfo", List.class);
     parseMethod.setAccessible(true);

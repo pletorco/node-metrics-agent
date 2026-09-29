@@ -49,7 +49,7 @@ class OsRuntimeMetricsTest {
     String mountsText =
         "/dev/sda1 / ext4 rw,relatime 0 0\n"
             + "tmpfs /run tmpfs rw,nosuid,nodev 0 0\n";
-    List<String> mountLines = mountsText.lines().toList();
+    List<String> mountLines = mountsText.lines().collect(java.util.stream.Collectors.toList());
 
     try (MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class);
          MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class)) {
@@ -99,7 +99,7 @@ class OsRuntimeMetricsTest {
     Path mountsPath = Path.of("/proc/mounts");
 
     String mountsText = "/dev/sdb1 /data ext4 rw,relatime 0 0";
-    List<String> mountLines = mountsText.lines().toList();
+    List<String> mountLines = mountsText.lines().collect(java.util.stream.Collectors.toList());
 
     try (MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class);
          MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class)) {

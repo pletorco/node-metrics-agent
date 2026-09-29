@@ -124,6 +124,21 @@ Filesystem MBeans:
 - Paths on the same partition are deduplicated.
 - `fsmetrics_max_partitions` caps unique filesystem partitions.
 
+Rates and ratios (prefer counters):
+
+- `SystemCpuIoWaitRatio`, `SystemCpuStealRatio`, `CgroupCpuThrottledRatio` and the
+  `*BytesPerSec` values describe only the last refresh window (about 500 ms), so a scrape every
+  15-60 s samples one arbitrary window. The cumulative counters give exact averages over any range:
+  - I/O wait ratio: `rate(pletor_node_cpumetrics_systemcpuiowaitticks[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks[5m])`
+  - steal ratio: same with `systemcpustealticks`
+  - cgroup throttled share: `rate(..._cgroupcputhrottledtimenanostotal[5m]) / (rate(..._cgroupcputhrottledtimenanostotal[5m]) + rate(..._cgroupcpuusagenanostotal[5m]))`
+  - disk/network throughput: `rate(pletor_node_iorates_diskreadbytestotal[5m])`, and likewise for
+    `diskwritebytestotal`, `netrxbytestotal`, `nettxbytestotal`
+- The exporter may append `_total` to counter names depending on its version.
+- Disk and network totals sum the counted devices/interfaces; if one disappears (for example a
+  veth pair on a container host) the sum drops once, which Prometheus treats as a counter reset.
+- `CgroupCpuThrottledCount` is a per-window delta (a gauge), not a counter.
+
 Cgroup metrics:
 
 - `MemoryLimitBytes = -1` means unlimited or unavailable.

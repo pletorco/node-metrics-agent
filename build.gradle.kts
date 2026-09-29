@@ -150,8 +150,21 @@ dependencies {
 //   - Run tests sequentially
 //   - Always generate JaCoCo coverage report after tests
 // -----------------------------------------------------------------------------
+// Run the tests on another JVM to verify runtime compatibility, for example:
+//   ./gradlew test -PtestJavaVersion=11
+// The build itself always uses the Java 21 toolchain.
+val testJavaVersion = providers.gradleProperty("testJavaVersion").map { it.toInt() }
+
 tasks.test {
     useJUnitPlatform()
+
+    if (testJavaVersion.isPresent) {
+        javaLauncher.set(
+            javaToolchains.launcherFor {
+                languageVersion.set(JavaLanguageVersion.of(testJavaVersion.get()))
+            }
+        )
+    }
 
     // Similar to Maven Surefire parallel = none
     maxParallelForks = 1
@@ -191,6 +204,11 @@ tasks.jacocoTestReport {
 // -----------------------------------------------------------------------------
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
+
+    // Compile against the Java 11 API, not just Java 11 bytecode. With only
+    // source/targetCompatibility, code built on JDK 21 could call newer APIs that
+    // then fail at runtime on the Java 11+ JVMs (for example Kafka brokers).
+    options.release.set(11)
 
     // If you need extra compiler arguments in the future, add here:
     // options.compilerArgs.addAll(
@@ -236,8 +254,8 @@ tasks.jar {
 // Shaded (fat) agent JAR with relocated dependencies to avoid clashes
 // -----------------------------------------------------------------------------
 tasks.shadowJar {
-    dependsOn(tasks.test)
-    dependsOn(tasks.jacocoTestReport)
+    // Tests are not a prerequisite of packaging: run `check` (tests + checkstyle) separately.
+    // CI and the release workflow do so explicitly.
     dependsOn(tasks.cyclonedxBom)
     // Classifier "all" -> artifact name: *-all.jar
     archiveClassifier.set("all")
@@ -518,3 +536,9 @@ tasks.withType<Checkstyle>().configureEach {
         html.required.set(true)
     }
 }
+
+// Warning ratchet: the code base predates the style rules, so a warning-free build is not
+// realistic yet, but the count must never grow. Fix warnings and lower these numbers together
+// (checkstyleMain / checkstyleTest print the current count when it exceeds the limit).
+tasks.named<Checkstyle>("checkstyleMain") { maxWarnings = 321 }
+tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 602 }

@@ -1,0 +1,16 @@
+version: 2
+
+updates:
+  # GitHub Actions are referenced by tag; Dependabot proposes updates as they are released.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # Gradle plugins and dependencies declared in build.gradle.kts, plus the wrapper.
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
