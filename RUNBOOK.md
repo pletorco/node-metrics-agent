@@ -14,7 +14,7 @@ JMX-to-Prometheus bridge.
 3. Add the JVM option:
 
 ```bash
--javaagent:/opt/pletor/node-metrics-agent-0.8.0-all.jar=/opt/pletor/node-metrics.yml
+-javaagent:/opt/pletor/node-metrics-agent-0.9.0-all.jar=/opt/pletor/node-metrics.yml
 ```
 
 4. For Prometheus scraping, also attach the
