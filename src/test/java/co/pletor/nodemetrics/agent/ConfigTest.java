@@ -49,6 +49,12 @@ class ConfigTest {
     Config c6 = Config.defaults();
     c6.fsmetricsMaxPartitions = Config.DEFAULT_FSMETRICS_MAX_PARTITIONS + 1;
     assertNotEquals(base, c6);
+
+    // refresh_interval_seconds 다를 때
+    Config c7 = Config.defaults();
+    c7.refreshIntervalSeconds = Config.DEFAULT_REFRESH_INTERVAL_SECONDS + 1;
+    assertNotEquals(base, c7);
+    assertNotEquals(base.hashCode(), c7.hashCode());
   }
 
   @Test
@@ -83,5 +89,6 @@ class ConfigTest {
 
     assertTrue(s.contains("fsmetrics_paths=[/]"));
     assertTrue(s.contains("fsmetrics_max_partitions=" + Config.DEFAULT_FSMETRICS_MAX_PARTITIONS));
+    assertTrue(s.contains("refresh_interval_seconds=" + Config.DEFAULT_REFRESH_INTERVAL_SECONDS));
   }
 }

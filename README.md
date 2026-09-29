@@ -62,12 +62,14 @@ Supported keys:
 | Key | Type | Default | Description |
 |---|---:|---:|---|
 | `fsmetrics_max_partitions` | integer | `32` | Maximum unique filesystem partitions to monitor |
+| `refresh_interval_seconds` | integer (1-60) | `2` | How often CPU, memory, cgroup memory and I/O rates are refreshed in the background (file descriptors: at most every 30 s) |
 | `fsmetrics_paths` | list | `[/]` | Candidate paths for filesystem metrics |
 
 Example:
 
 ```yaml
 fsmetrics_max_partitions: 32
+refresh_interval_seconds: 2
 fsmetrics_paths:
   - /data/kafka-logs
   - /boot

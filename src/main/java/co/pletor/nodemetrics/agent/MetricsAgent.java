@@ -108,13 +108,16 @@ public class MetricsAgent {
   private static final long REFRESH_DISPATCH_INTERVAL_MS = 500L;
   private static final int REFRESH_QUEUE_CAPACITY = 1024;
 
-  // Per-task refresh intervals. Fast metrics (0) are refreshed on every dispatch cycle; metrics
-  // that are expensive to read or change slowly are refreshed less often.
-  private static final long FAST_REFRESH_INTERVAL_MS = 0L;
-  private static final long FD_REFRESH_INTERVAL_MS = 5_000L;
+  // Per-task refresh intervals. The fast metrics use the configured refresh_interval_seconds;
+  // metrics that are expensive to read or change slowly are refreshed less often.
+  private static final long FD_REFRESH_INTERVAL_MS = 30_000L;
   private static final long FS_REFRESH_INTERVAL_MS = 10_000L;
   private static final long OS_RUNTIME_REFRESH_INTERVAL_MS = 10_000L;
   private static final long OS_INFO_REFRESH_INTERVAL_MS = 300_000L;
+
+  /** Refresh interval of the fast metrics; guarded by {@link #APPLY_LOCK}. */
+  private static long fastRefreshIntervalMs =
+      TimeUnit.SECONDS.toMillis(Config.DEFAULT_REFRESH_INTERVAL_SECONDS);
 
   private static CgroupMemMetrics cgroupMemBean;
   private static CpuMetrics cpuBean;
@@ -409,6 +412,16 @@ public class MetricsAgent {
       return Config.DEFAULT_FSMETRICS_MAX_PARTITIONS;
     }
     return cfg.fsmetricsMaxPartitions;
+  }
+
+  private static long resolveFastRefreshIntervalMs(Config cfg) {
+    Integer seconds = cfg == null ? null : cfg.refreshIntervalSeconds;
+    if (seconds == null
+        || seconds < Config.MIN_REFRESH_INTERVAL_SECONDS
+        || seconds > Config.MAX_REFRESH_INTERVAL_SECONDS) {
+      seconds = Config.DEFAULT_REFRESH_INTERVAL_SECONDS;
+    }
+    return TimeUnit.SECONDS.toMillis(seconds);
   }
 
   private static LinkedHashSet<String> applyPartitionDedupAndCap(
@@ -718,11 +731,12 @@ public class MetricsAgent {
 
   private static List<MetricsRefreshEngine.RefreshTask> buildRefreshTasksLocked() {
     List<MetricsRefreshEngine.RefreshTask> tasks = new ArrayList<>();
-    addHighPriorityTask(tasks, "cgroup-mem", cgroupMemBean, FAST_REFRESH_INTERVAL_MS);
-    addHighPriorityTask(tasks, "cpu", cpuBean, FAST_REFRESH_INTERVAL_MS);
-    addHighPriorityTask(tasks, "fd", fdBean, FD_REFRESH_INTERVAL_MS);
-    addHighPriorityTask(tasks, "io-rates", ioRatesBean, FAST_REFRESH_INTERVAL_MS);
-    addHighPriorityTask(tasks, "node-mem", nodeMemBean, FAST_REFRESH_INTERVAL_MS);
+    long fastMs = fastRefreshIntervalMs;
+    addHighPriorityTask(tasks, "cgroup-mem", cgroupMemBean, fastMs);
+    addHighPriorityTask(tasks, "cpu", cpuBean, fastMs);
+    addHighPriorityTask(tasks, "fd", fdBean, Math.max(FD_REFRESH_INTERVAL_MS, fastMs));
+    addHighPriorityTask(tasks, "io-rates", ioRatesBean, fastMs);
+    addHighPriorityTask(tasks, "node-mem", nodeMemBean, fastMs);
     addHighPriorityTask(tasks, "os-info", osInfoBean, OS_INFO_REFRESH_INTERVAL_MS);
     addHighPriorityTask(tasks, "os-runtime", osRuntimeBean, OS_RUNTIME_REFRESH_INTERVAL_MS);
 
@@ -788,6 +802,7 @@ public class MetricsAgent {
         unregisterRemovedFsBeans(newPaths);
 
         // 4) Update async refresh targets.
+        fastRefreshIntervalMs = resolveFastRefreshIntervalMs(newCfg);
         updateRefreshEngineTasksLocked();
 
         // 5) Update current config and log.

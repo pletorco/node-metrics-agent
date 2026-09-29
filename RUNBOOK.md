@@ -134,9 +134,14 @@ Stuck filesystem calls:
 
 Refresh intervals:
 
-- CPU, memory, cgroup memory and I/O rates refresh every dispatch cycle (`500 ms`).
-- File descriptors refresh every `5 s`, filesystem and OS runtime (uptime, mounts) every `10 s`,
-  and static OS info every `5 min`.
+- Values are refreshed by background threads, never by a scrape: reading an MBean attribute only
+  returns the last stored value, so scrape frequency (or the number of scrapers) does not change
+  the agent's work.
+- CPU, memory, cgroup memory and I/O rates refresh every `refresh_interval_seconds` (default `2 s`,
+  range 1-60). Keep it well below your scrape interval; values are at most this old.
+- File descriptors refresh every `30 s` (or `refresh_interval_seconds` if that is larger), filesystem
+  and OS runtime (uptime, mounts) every `10 s`, and static OS info every `5 min`.
+- The setting is reloaded with the rest of the configuration file.
 
 Filesystem MBeans:
 
@@ -147,7 +152,7 @@ Filesystem MBeans:
 Rates and ratios (prefer counters):
 
 - `SystemCpuIoWaitRatio`, `SystemCpuStealRatio`, `CgroupCpuThrottledRatio` and the
-  `*BytesPerSec` values describe only the last refresh window (about 500 ms), so a scrape every
+  `*BytesPerSec` values describe only the last refresh window (`refresh_interval_seconds`, 2 s by default), so a scrape every
   15-60 s samples one arbitrary window. The cumulative counters give exact averages over any range:
   - I/O wait ratio: `rate(pletor_node_cpumetrics_systemcpuiowaitticks[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks[5m])`
   - steal ratio: same with `systemcpustealticks`

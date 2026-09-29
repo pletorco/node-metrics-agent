@@ -185,6 +185,59 @@ class ConfigLoaderTest {
   }
 
   @Test
+  void load_usesDefaultRefreshIntervalWhenMissing() throws Exception {
+    Config c =
+        ConfigLoader.load(writeYaml("config-refresh-missing.yml", "fsmetrics_paths:\n  - /\n"));
+
+    assertEquals(Config.DEFAULT_REFRESH_INTERVAL_SECONDS, c.refreshIntervalSeconds);
+  }
+
+  @Test
+  void load_readsRefreshIntervalSeconds() throws Exception {
+    Config c =
+        ConfigLoader.load(writeYaml("config-refresh-ok.yml", "refresh_interval_seconds: 5\n"));
+    assertEquals(5, c.refreshIntervalSeconds);
+
+    Config asString =
+        ConfigLoader.load(
+            writeYaml("config-refresh-str.yml", "refresh_interval_seconds: \"10\"\n"));
+    assertEquals(10, asString.refreshIntervalSeconds);
+  }
+
+  @Test
+  void load_acceptsRefreshIntervalBounds() throws Exception {
+    Config min =
+        ConfigLoader.load(
+            writeYaml(
+                "config-refresh-min.yml",
+                "refresh_interval_seconds: " + Config.MIN_REFRESH_INTERVAL_SECONDS + "\n"));
+    Config max =
+        ConfigLoader.load(
+            writeYaml(
+                "config-refresh-max.yml",
+                "refresh_interval_seconds: " + Config.MAX_REFRESH_INTERVAL_SECONDS + "\n"));
+
+    assertEquals(Config.MIN_REFRESH_INTERVAL_SECONDS, min.refreshIntervalSeconds);
+    assertEquals(Config.MAX_REFRESH_INTERVAL_SECONDS, max.refreshIntervalSeconds);
+  }
+
+  @Test
+  void load_usesDefaultRefreshIntervalWhenInvalidOrOutOfRange() throws Exception {
+    String[] bad = {"0", "-3", "61", "100000", "abc", "1.5x", "[1]"};
+    for (int i = 0; i < bad.length; i++) {
+      Config c =
+          ConfigLoader.load(
+              writeYaml(
+                  "config-refresh-bad-" + i + ".yml",
+                  "refresh_interval_seconds: " + bad[i] + "\n"));
+      assertEquals(
+          Config.DEFAULT_REFRESH_INTERVAL_SECONDS,
+          c.refreshIntervalSeconds,
+          "refresh_interval_seconds: " + bad[i]);
+    }
+  }
+
+  @Test
   void load_throwsIllegalArgumentException_whenYamlIsNotMap() {
     // 루트가 리스트인 YAML -> Map 아님
     String yaml = "- 1\n" + " 2";

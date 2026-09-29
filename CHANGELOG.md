@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- New setting `refresh_interval_seconds` (1-60, default 2) for how often CPU, memory, cgroup memory
+  and I/O rates are refreshed in the background. They were refreshed every 500 ms, about 30 times
+  per 15 s scrape; values are now at most 2 s old by default. The ratio gauges (I/O wait, steal,
+  cgroup throttling) and `*BytesPerSec` now describe the last 2 s window instead of 500 ms, which
+  is less noisy; the counters are unchanged. File descriptors are refreshed every 30 s instead of
+  5 s (counting them costs about 1.3 ms at 5,000 and 9 ms at 15,000 open descriptors).
+
 ### Fixed
 
 - The agent can no longer take the application down or stall it at startup:
