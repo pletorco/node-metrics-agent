@@ -4,14 +4,61 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-29
+
+Behavior changes to know before upgrading: MBeans appear about 0.5 s after `main()` starts (up to
+5 s when no MBeanServer exists yet), `INFO` log lines appear about 10 s after startup, the ratio
+gauges describe a 2 s window instead of 500 ms, and file descriptors are counted every 30 s.
+
+### Added
+
+- Setting `refresh_interval_seconds` (1-60, default 2): how often CPU, memory, cgroup memory and
+  I/O rates are refreshed in the background.
+- Cumulative counters so rates can be computed over any time range with Prometheus `rate()`:
+  `SystemCpuTotalTicks`, `SystemCpuIoWaitTicks`, `SystemCpuStealTicks`,
+  `CgroupCpuThrottledPeriodsTotal`, `CgroupCpuThrottledTimeNanosTotal`, `CgroupCpuUsageNanosTotal`
+  on `co.pletor.node:type=CpuMetrics`, and `DiskReadBytesTotal`, `DiskWriteBytesTotal`,
+  `NetRxBytesTotal`, `NetTxBytesTotal` on `co.pletor.node:type=IoRates`. The existing ratio and
+  per-second gauges are unchanged, but they only describe the last refresh window (2 s by default).
+- `MemoryWorkingSetBytes` on `co.pletor.cgroup:type=MemMetrics` (exported as
+  `pletor_cgroup_memmetrics_memoryworkingsetbytes`): cgroup usage minus inactive file cache, from
+  `memory.stat` (`inactive_file` on v2, `total_inactive_file` on v1). `MemoryUsageBytes` includes
+  reclaimable page cache and overstates memory pressure for page-cache-heavy workloads.
+- Filesystem metrics now refresh on a separate background lane (3 worker threads) with at most one
+  queued or running instance per task. Previously a single worker served every metric, so one
+  blocked `statvfs` (dead NFS mount) froze all metrics and pushed the engine into `BYPASS`.
+- `StuckTaskCount` and `StuckTasks` on `co.pletor.agent:type=Observability` report tasks whose
+  refresh has been running for more than 30 seconds.
+- `FailingTaskCount` and `FailingTasks` on `co.pletor.agent:type=Observability`, and a throttled
+  WARNING log, so failed metric refreshes are visible. Previously beans absorbed read failures
+  silently, so `ErrorCount`/`SinkFailureCount` stayed at 0 and staleness was reset by failed polls.
+
 ### Changed
 
-- New setting `refresh_interval_seconds` (1-60, default 2) for how often CPU, memory, cgroup memory
-  and I/O rates are refreshed in the background. They were refreshed every 500 ms, about 30 times
-  per 15 s scrape; values are now at most 2 s old by default. The ratio gauges (I/O wait, steal,
-  cgroup throttling) and `*BytesPerSec` now describe the last 2 s window instead of 500 ms, which
-  is less noisy; the counters are unchanged. File descriptors are refreshed every 30 s instead of
-  5 s (counting them costs about 1.3 ms at 5,000 and 9 ms at 15,000 open descriptors).
+- Metrics are refreshed by background threads, never by a scrape. CPU, memory, cgroup memory and
+  I/O rates were refreshed every 500 ms, about 30 times per 15 s scrape; they now follow
+  `refresh_interval_seconds` (values are at most 2 s old by default). The ratio gauges (I/O wait,
+  steal, cgroup throttling) and `*BytesPerSec` now describe the last 2 s window instead of 500 ms,
+  which is less noisy; the counters are unchanged. Measured engine work over 20 s: 168 refreshes
+  before, 44 with the default.
+- Refresh tasks have individual intervals: file descriptors every 30 s (or `refresh_interval_seconds`
+  if larger), filesystem and OS runtime every 10 s, OS info every 5 min. This reduces the cost of
+  counting file descriptors on brokers with very many open files (about 1.3 ms at 5,000 and 9 ms at
+  15,000 open descriptors per count).
+- Overload modes are derived from the critical lane only. Skipped runs of a hung background task
+  are counted in `DroppedCount` (once per refresh interval) but do not change the mode.
+- `MaxTaskStalenessMs` now means "milliseconds behind schedule" (time since last success minus the
+  task's interval), so healthy tasks stay near 0 regardless of interval. A task that never
+  succeeds is now counted from its registration time instead of being ignored.
+- Task success/failure history is preserved across configuration reloads.
+- Metric beans share a common `AbstractRefreshingMetric` base class instead of eight copies of the
+  same refresh/poll boilerplate.
+- `CpuMetrics` reads only the aggregate line of `/proc/stat` instead of every line, and resolves the
+  location of the cgroup `cpu.stat` once a minute (or after a read failure) instead of on every
+  poll. About 16% less time per poll on a 4-core host; the saving grows with the CPU count.
+- `fsmetrics_max_partitions` is capped at 256; larger values were accepted up to `Integer.MAX_VALUE`,
+  so a typo could register an unbounded number of MBeans and refresh tasks. A larger value is now
+  lowered to 256 with a warning.
 
 ### Fixed
 
@@ -34,36 +81,6 @@ All notable changes to this project will be documented in this file.
     agent got there first (reproduced with a custom `LogManager`). Records below `WARNING` are now
     held back for 10 s (keeping their time) and `WARNING`+ are published at once; when no
     MBeanServer exists yet the agent waits up to 5 s for the application to create it.
-- `fsmetrics_max_partitions` is capped at 256; larger values were accepted up to `Integer.MAX_VALUE`,
-  so a typo could register an unbounded number of MBeans and refresh tasks. A larger value is now
-  lowered to 256 with a warning.
-
-### Build and CI
-
-- Upgraded `org.cyclonedx.bom` from 1.10.0 to 3.4.1 and moved the SBOM configuration to its new API:
-  `includeConfigs` is now set on `cyclonedxDirectBom`, `cyclonedxBom` aggregates it and writes
-  `build/reports/bom.json` through `jsonOutput`, and `schemaVersion` uses `org.cyclonedx.Version`.
-  Left at the plugin defaults, the SBOM would have listed 56 components (test and build tooling)
-  instead of the one runtime dependency that ships in the jar. The SBOM is otherwise equivalent
-  (same component, CycloneDX 1.5, same dependency graph); the root component's purl and `bom-ref`
-  now use the plugin's `?project_path=` form, and license texts are no longer embedded (SPDX ids
-  are kept), which shrinks it from 16.8 KB to 3.3 KB.
-
-### Build and CI
-
-- Checkstyle warnings reduced from 46 (main) / 21 (test) to 0 and the ratchet is now `maxWarnings =
-  0`, so any new warning fails the build. `MBean` is an allowed abbreviation in names (required by
-  the JMX Standard MBean convention); the other fixes are Javadoc, blank lines, `final` locals and a
-  few private or test-only renames. No public API changed.
-
-### Changed
-
-- `CpuMetrics` reads only the aggregate line of `/proc/stat` instead of every line, and resolves the
-  location of the cgroup `cpu.stat` once a minute (or after a read failure) instead of on every
-  poll. About 16% less time per poll on a 4-core host; the saving grows with the CPU count.
-
-### Fixed
-
 - `MemoryLimitBytes` is now the effective cgroup limit: the tightest finite limit of the cgroup and
   its ancestors. Previously a container without its own limit inside a limited Kubernetes pod (or
   with a limit larger than the pod's) reported `-1` / an unreachable value, so limit-based alerts
@@ -73,84 +90,8 @@ All notable changes to this project will be documented in this file.
   a path that does not answer is still registered (and then reported as a stuck task) instead of
   freezing the caller. At startup the caller is the application's main thread, so a dead NFS mount
   listed in `fsmetrics_paths` could previously delay JVM startup indefinitely.
-
-### Build and CI
-
-- Source is formatted with google-java-format through Spotless (`spotlessCheck` runs in `check` and
-  CI, `spotlessApply` fixes). The one-off reformatting commit is listed in `.git-blame-ignore-revs`.
-- Checkstyle warnings reduced from 321 (main) / 602 (test) to 46 / 21 and the ratchet lowered
-  accordingly. Remaining warnings need renames of public names or judgment calls.
-
-- Optional signed build provenance for release jars, in a separate job that only runs when the
-  repository variable `ATTEST_RELEASE_ARTIFACTS` is `true` (see `CONTRIBUTING.md`).
-
-- Compile with `--release 11` so the Java 11 API is enforced, not just Java 11 bytecode. This
-  immediately caught `Stream.toList()` (Java 16) in tests.
-- CI runs the tests on Java 11 and 17 (`-PtestJavaVersion`) in addition to the Java 21 build, and
-  smoke-tests the shaded jar as a `-javaagent` on Java 11, 17 and 21 (`scripts/smoke-test.sh`). The
-  smoke test covers the CLI, MBean registration, refresh pipeline health and that the agent creates
-  no files in the application's working directory.
-- Checkstyle warnings are capped by a ratchet (`maxWarnings`): new warnings fail the build.
-- `shadowJar` no longer depends on `test`; CI and the release workflow run `check` explicitly.
-- Release workflow verifies the tag before building, runs `check` and the smoke test, and publishes
-  a `SHA256SUMS` file next to the jar and SBOM.
-- CI validates the Gradle wrapper, cancels superseded runs, and jobs have timeouts.
-- Added Dependabot for GitHub Actions and Gradle.
-
-### Added
-
-- Cumulative counters so rates can be computed over any time range with Prometheus `rate()`:
-  `SystemCpuTotalTicks`, `SystemCpuIoWaitTicks`, `SystemCpuStealTicks`,
-  `CgroupCpuThrottledPeriodsTotal`, `CgroupCpuThrottledTimeNanosTotal`, `CgroupCpuUsageNanosTotal`
-  on `co.pletor.node:type=CpuMetrics`, and `DiskReadBytesTotal`, `DiskWriteBytesTotal`,
-  `NetRxBytesTotal`, `NetTxBytesTotal` on `co.pletor.node:type=IoRates`. The existing ratio and
-  per-second gauges are unchanged, but they only describe the last ~500 ms window.
-
-### Fixed
-
 - `CgroupCpuThrottledCount` is a per-window delta but was declared and exported as a counter. It is
   now a gauge (metric type only; the value is unchanged).
-
-### Added
-
-- `MemoryWorkingSetBytes` on `co.pletor.cgroup:type=MemMetrics` (exported as
-  `pletor_cgroup_memmetrics_memoryworkingsetbytes`): cgroup usage minus inactive file cache, from
-  `memory.stat` (`inactive_file` on v2, `total_inactive_file` on v1). `MemoryUsageBytes` includes
-  reclaimable page cache and overstates memory pressure for page-cache-heavy workloads.
-
-### Added
-
-- Filesystem metrics now refresh on a separate background lane (3 worker threads) with at most one
-  queued or running instance per task. Previously a single worker served every metric, so one
-  blocked `statvfs` (dead NFS mount) froze all metrics and pushed the engine into `BYPASS`.
-- `StuckTaskCount` and `StuckTasks` on `co.pletor.agent:type=Observability` report tasks whose
-  refresh has been running for more than 30 seconds.
-
-### Changed
-
-- Overload modes are derived from the critical lane only. Skipped runs of a hung background task
-  are counted in `DroppedCount` (once per refresh interval) but do not change the mode.
-
-### Added
-
-- `FailingTaskCount` and `FailingTasks` on `co.pletor.agent:type=Observability`, and a throttled
-  WARNING log, so failed metric refreshes are visible. Previously beans absorbed read failures
-  silently, so `ErrorCount`/`SinkFailureCount` stayed at 0 and staleness was reset by failed polls.
-
-### Changed
-
-- Refresh tasks have individual intervals: file descriptors every 5 s, filesystem and OS runtime
-  every 10 s, OS info every 5 min; other metrics keep the 500 ms cadence. This reduces the cost of
-  counting file descriptors on brokers with very many open files.
-- `MaxTaskStalenessMs` now means "milliseconds behind schedule" (time since last success minus the
-  task's interval), so healthy tasks stay near 0 regardless of interval. A task that never
-  succeeds is now counted from its registration time instead of being ignored.
-- Task success/failure history is preserved across configuration reloads.
-- Metric beans share a common `AbstractRefreshingMetric` base class instead of eight copies of the
-  same refresh/poll boilerplate.
-
-### Fixed
-
 - Network throughput is no longer inflated on container hosts: only interfaces backed by a real
   device are summed (bridges, veth pairs, VLANs and bond masters are skipped). Inside a container
   network namespace, where the only interface is virtual, all non-loopback interfaces are summed.
@@ -171,11 +112,45 @@ All notable changes to this project will be documented in this file.
 - Filesystem MBeans are now registered for paths containing `, = : * ?` (ObjectName value quoting).
 - `init-config` / `init-kafka-config` quote paths that YAML would otherwise misread (`#`, `: `, ...).
 
+### Build and CI
+
+- Upgraded `org.cyclonedx.bom` from 1.10.0 to 3.4.1 and moved the SBOM configuration to its new API:
+  `includeConfigs` is now set on `cyclonedxDirectBom`, `cyclonedxBom` aggregates it and writes
+  `build/reports/bom.json` through `jsonOutput`, and `schemaVersion` uses `org.cyclonedx.Version`.
+  Left at the plugin defaults, the SBOM would have listed 56 components (test and build tooling)
+  instead of the one runtime dependency that ships in the jar. The SBOM is otherwise equivalent
+  (same component, CycloneDX 1.5, same dependency graph); the root component's purl and `bom-ref`
+  now use the plugin's `?project_path=` form, and license texts are no longer embedded (SPDX ids
+  are kept), which shrinks it from 16.8 KB to 3.3 KB.
+- Source is formatted with google-java-format through Spotless (`spotlessCheck` runs in `check` and
+  CI, `spotlessApply` fixes). The one-off reformatting commit is listed in `.git-blame-ignore-revs`.
+- Checkstyle warnings reduced from 321 (main) / 602 (test) to 0 and capped by a ratchet
+  (`maxWarnings = 0`), so any new warning fails the build. `MBean` is an allowed abbreviation in
+  names (required by the JMX Standard MBean convention); the fixes are Javadoc, blank lines,
+  `final` locals and a few private or test-only renames. No public API changed.
+- Optional signed build provenance for release jars, in a separate job that only runs when the
+  repository variable `ATTEST_RELEASE_ARTIFACTS` is `true` (see `CONTRIBUTING.md`).
+- Compile with `--release 11` so the Java 11 API is enforced, not just Java 11 bytecode. This
+  immediately caught `Stream.toList()` (Java 16) in tests.
+- CI runs the tests on Java 11 and 17 (`-PtestJavaVersion`) in addition to the Java 21 build, and
+  smoke-tests the shaded jar as a `-javaagent` on Java 11, 17 and 21 (`scripts/smoke-test.sh`). The
+  smoke test covers the CLI, MBean registration, refresh pipeline health, that the agent creates
+  no files in the application's working directory, that a broken agent jar cannot stop the
+  application from starting, and that the agent does not initialize the `LogManager` or the
+  platform MBeanServer before the application does.
+- `shadowJar` no longer depends on `test`; CI and the release workflow run `check` explicitly.
+- Release workflow verifies the tag before building, runs `check` and the smoke test, and publishes
+  a `SHA256SUMS` file next to the jar and SBOM.
+- CI validates the Gradle wrapper, cancels superseded runs, and jobs have timeouts.
+- Added Dependabot for GitHub Actions and Gradle.
+
 ### Documentation
 
 - Clarified that the agent registers JMX MBeans and does not expose an HTTP metrics endpoint by
   itself.
 - Added Prometheus JMX exporter usage guidance.
+- `RUNBOOK.md` documents how the agent is isolated from the application, the refresh intervals and
+  the startup timing of MBeans and log lines.
 
 ## [0.8.0] - 2026-06-20
 

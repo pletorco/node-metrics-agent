@@ -1,7 +1,7 @@
 # Policy Status
 
-Date: 2026-06-20
-Target: `node-metrics-agent` `0.8.0`
+Date: 2026-09-29
+Target: `node-metrics-agent` `0.9.0`
 
 ## Module Classification
 
