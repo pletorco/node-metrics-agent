@@ -9,10 +9,11 @@ package kr.pletor.nodemetrics.metrics;
  * cgroup ({@code kr.pletor.cgroup:type=PressureMetrics}, cgroup v2 only).
  *
  * <p>"some" means at least one task was stalled, "full" means all non-idle tasks were stalled at
- * the same time. Every attribute is {@code -1} when PSI is unavailable (kernel older than 4.20, PSI
- * disabled, cgroup v1, non-Linux) or, for the CPU "full" line, when the kernel predates 5.13. The
- * {@code TotalMicros} attributes are cumulative counters: {@code rate(x[5m]) / 1e6} is the stalled
- * share over any window, which is more precise than the kernel's fixed averages.
+ * the same time. When PSI is unavailable (kernel older than 4.20, PSI disabled, cgroup v1,
+ * non-Linux) or, for the CPU "full" line, when the kernel predates 5.13, the {@code Avg10} gauges
+ * are {@code -1} and the {@code TotalMicros} counters are {@code null} (absent). The {@code
+ * TotalMicros} attributes are cumulative counters: {@code rate(x[5m]) / 1e6} is the stalled share
+ * over any window, which is more precise than the kernel's fixed averages.
  */
 public interface PressureMetricsMBean {
 
@@ -30,11 +31,11 @@ public interface PressureMetricsMBean {
    * Returns the cumulative time during which at least one task was stalled waiting for CPU, in
    * microseconds.
    *
-   * @return microseconds since boot (or cgroup creation), or {@code -1} when unavailable
+   * @return microseconds since boot (or cgroup creation), or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("microseconds")
-  long getCpuSomeTotalMicros();
+  Long getCpuSomeTotalMicros();
 
   /**
    * Returns the share of the last 10 seconds during which all non-idle tasks were stalled at the
@@ -50,11 +51,11 @@ public interface PressureMetricsMBean {
    * Returns the cumulative time during which all non-idle tasks were stalled at the same time
    * waiting for CPU, in microseconds.
    *
-   * @return microseconds since boot (or cgroup creation), or {@code -1} when unavailable
+   * @return microseconds since boot (or cgroup creation), or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("microseconds")
-  long getCpuFullTotalMicros();
+  Long getCpuFullTotalMicros();
 
   /**
    * Returns the share of the last 10 seconds during which at least one task was stalled waiting for
@@ -70,11 +71,11 @@ public interface PressureMetricsMBean {
    * Returns the cumulative time during which at least one task was stalled waiting for memory, in
    * microseconds.
    *
-   * @return microseconds since boot (or cgroup creation), or {@code -1} when unavailable
+   * @return microseconds since boot (or cgroup creation), or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("microseconds")
-  long getMemorySomeTotalMicros();
+  Long getMemorySomeTotalMicros();
 
   /**
    * Returns the share of the last 10 seconds during which all non-idle tasks were stalled at the
@@ -90,11 +91,11 @@ public interface PressureMetricsMBean {
    * Returns the cumulative time during which all non-idle tasks were stalled at the same time
    * waiting for memory, in microseconds.
    *
-   * @return microseconds since boot (or cgroup creation), or {@code -1} when unavailable
+   * @return microseconds since boot (or cgroup creation), or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("microseconds")
-  long getMemoryFullTotalMicros();
+  Long getMemoryFullTotalMicros();
 
   /**
    * Returns the share of the last 10 seconds during which at least one task was stalled waiting for
@@ -110,11 +111,11 @@ public interface PressureMetricsMBean {
    * Returns the cumulative time during which at least one task was stalled waiting for I/O, in
    * microseconds.
    *
-   * @return microseconds since boot (or cgroup creation), or {@code -1} when unavailable
+   * @return microseconds since boot (or cgroup creation), or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("microseconds")
-  long getIoSomeTotalMicros();
+  Long getIoSomeTotalMicros();
 
   /**
    * Returns the share of the last 10 seconds during which all non-idle tasks were stalled at the
@@ -130,9 +131,9 @@ public interface PressureMetricsMBean {
    * Returns the cumulative time during which all non-idle tasks were stalled at the same time
    * waiting for I/O, in microseconds.
    *
-   * @return microseconds since boot (or cgroup creation), or {@code -1} when unavailable
+   * @return microseconds since boot (or cgroup creation), or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("microseconds")
-  long getIoFullTotalMicros();
+  Long getIoFullTotalMicros();
 }

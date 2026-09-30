@@ -1,6 +1,7 @@
 package kr.pletor.nodemetrics.metrics;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.sun.management.OperatingSystemMXBean;
 import java.nio.file.Files;
@@ -64,12 +65,12 @@ class CpuModeTicksTest {
   }
 
   @Test
-  void ticksAreMinusOneBeforeTheFirstSuccessfulRead() {
+  void ticksAreAbsentBeforeTheFirstSuccessfulRead() {
     CpuMetrics m = new CpuMetrics((OperatingSystemMXBean) null);
     m.setReadRefreshEnabled(false);
 
-    assertEquals(-1L, m.getSystemCpuUserTicks());
-    assertEquals(-1L, m.getSystemCpuIdleTicks());
-    assertEquals(-1L, m.getSystemCpuSoftIrqTicks());
+    assertNull(m.getSystemCpuUserTicks());
+    assertNull(m.getSystemCpuIdleTicks());
+    assertNull(m.getSystemCpuSoftIrqTicks());
   }
 }

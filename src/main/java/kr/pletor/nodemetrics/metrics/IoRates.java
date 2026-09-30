@@ -250,26 +250,26 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
   }
 
   @Override
-  public long getDiskReadBytesTotal() {
+  public Long getDiskReadBytesTotal() {
     refreshOnRead();
-    return diskReadTotal;
+    return counterOrNull(diskReadTotal);
   }
 
   @Override
-  public long getDiskWriteBytesTotal() {
+  public Long getDiskWriteBytesTotal() {
     refreshOnRead();
-    return diskWriteTotal;
+    return counterOrNull(diskWriteTotal);
   }
 
   @Override
-  public long getNetRxBytesTotal() {
+  public Long getNetRxBytesTotal() {
     refreshOnRead();
-    return netRxTotal;
+    return counterOrNull(netRxTotal);
   }
 
   @Override
-  public long getNetTxBytesTotal() {
+  public Long getNetTxBytesTotal() {
     refreshOnRead();
-    return netTxTotal;
+    return counterOrNull(netTxTotal);
   }
 }

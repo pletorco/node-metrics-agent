@@ -356,9 +356,9 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    * @return the count, or -1 when unavailable
    */
   @Override
-  public long getMemoryMaxEventsTotal() {
+  public Long getMemoryMaxEventsTotal() {
     refreshOnRead();
-    return maxEvents;
+    return counterOrNull(maxEvents);
   }
 
   /**
@@ -367,9 +367,9 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    * @return the count, or -1 when unavailable
    */
   @Override
-  public long getMemoryHighEventsTotal() {
+  public Long getMemoryHighEventsTotal() {
     refreshOnRead();
-    return highEvents;
+    return counterOrNull(highEvents);
   }
 
   /**
@@ -378,8 +378,8 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    * @return the count, or -1 when unavailable
    */
   @Override
-  public long getMemoryOomKillTotal() {
+  public Long getMemoryOomKillTotal() {
     refreshOnRead();
-    return oomKills;
+    return counterOrNull(oomKills);
   }
 }

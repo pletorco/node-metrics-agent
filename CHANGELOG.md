@@ -78,15 +78,24 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- The example exporter rules exported cumulative counters as `COUNTER`. With the Prometheus JMX
-  exporter 1.x, a counter that reads `-1` (source unavailable: no PSI, no cgroup, an old kernel)
-  makes the **whole scrape fail** (HTTP 500, "counters cannot have a negative value"), and every
-  other counter was exposed with an extra `_total` suffix. They are now `UNTYPED`, which keeps the
-  value and the name as documented, and `rate()`/`increase()` work on them unchanged. **Upgrade
-  note:** with exporter 1.x, series that used to carry `_total` (for example
-  `pletor_node_iorates_diskreadbytestotal_total`) are now exposed without it; exporter 0.x names do
-  not change. The agent's own `kr.pletor.agent` counters stay `COUNTER`. See "Unavailable values and
-  the exporter" in `RUNBOOK.md`.
+- With the Prometheus JMX exporter 1.x, a cumulative counter that reads `-1` (source unavailable:
+  no PSI, no cgroup, an old kernel) typed as `COUNTER` makes the **whole scrape fail** (HTTP 500,
+  "counters cannot have a negative value"; checked with 1.0.1 and 1.6.0), hiding every metric of the
+  target. The agent now reports an unavailable counter as **absent** (`null` over JMX, skipped by
+  the exporter; it appears once the source becomes available) instead of `-1`. This affects the 50
+  cumulative counters of `CpuMetrics`, `IoRates`, `DiskIoMetrics`, `NetworkMetrics`,
+  `PressureMetrics`, `ProcessMetrics`, `OsRuntimeMetrics` and the memory `MemMetrics` beans; gauges
+  keep `-1`, and the agent's own `kr.pletor.agent` counters are unchanged. The example rules keep
+  the counters typed `COUNTER`, so exporter 1.x exposes them as `<attribute>_total` exactly as
+  before (series names do not change). An attribute whose value is `null` is also left out of the
+  MBean's attribute list until it has a value, because exporter 1.6.0 fails the whole scrape with a
+  `NullPointerException` on a `null` value in an MBean that a rule customizes with
+  `attributesAsLabels`. **Note for JMX clients:** a counter attribute can be `null` or not listed.
+  See "Unavailable values and the exporter" in `RUNBOOK.md`; a test rejects a counter getter that
+  is not a boxed `Long`.
+- CI scrapes the shaded jar through real JMX exporters (1.0.1 and 1.6.0, jars pinned by SHA-256)
+  with `scripts/exporter-scrape-test.sh`, which requires HTTP 200, the agent's series, `_total`
+  counters and no negative counter.
 
 ## [0.9.0] - 2026-09-29
 

@@ -130,3 +130,44 @@ jobs:
 
       - name: Smoke test on Java ${{ matrix.java }}
         run: scripts/smoke-test.sh dist/*-all.jar
+
+  # ...and scrape it through real Prometheus JMX exporters: an exporter can fail the whole scrape on
+  # what the agent exposes (a negative counter, a null value next to attributesAsLabels), which no
+  # unit test can show. The jars are pinned by SHA-256.
+  exporter:
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - exporter: "1.0.1"
+            url: https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/1.0.1/jmx_prometheus_javaagent-1.0.1.jar
+            sha256: 7d61f737fd661610ccc14aea79764faa1ea94a340cbc8f0029b3d2edea3d80c1
+          - exporter: "1.6.0"
+            url: https://github.com/prometheus/jmx_exporter/releases/download/1.6.0/jmx_prometheus_javaagent-1.6.0.jar
+            sha256: a95983fd96e865d2bcdf911cc500e7c82808c27ab9fd226bf96732b6c3d8c46e
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download jar
+        uses: actions/download-artifact@v8
+        with:
+          name: agent-jar
+          path: dist
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download JMX exporter ${{ matrix.exporter }}
+        run: |
+          curl -fsSL --retry 3 -o exporter.jar "${{ matrix.url }}"
+          echo "${{ matrix.sha256 }}  exporter.jar" | sha256sum -c -
+
+      - name: Scrape through JMX exporter ${{ matrix.exporter }}
+        run: scripts/exporter-scrape-test.sh dist/*-all.jar exporter.jar

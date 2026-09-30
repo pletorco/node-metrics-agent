@@ -3,6 +3,7 @@ package kr.pletor.nodemetrics.metrics;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.DisplayName;
@@ -207,7 +208,7 @@ class IoRatesTest {
     try {
       IoRates ioRates = new IoRates();
       ioRates.setReadRefreshEnabled(false);
-      assertEquals(-1L, ioRates.getDiskReadBytesTotal(), "Unavailable before the first read");
+      assertNull(ioRates.getDiskReadBytesTotal(), "Unavailable before the first read");
 
       writeCounters(proc, 1000L, 500L, 10_000L, 20_000L);
       ioRates.poll();

@@ -116,12 +116,12 @@ Exported Prometheus metric names use the `pletor_*` prefix, for example:
 - `pletor_node_memmetrics_availablememorybytes`
 - `pletor_cgroup_memmetrics_memoryusagebytes`
 - `pletor_cgroup_memmetrics_memoryworkingsetbytes`
-- `pletor_node_iorates_diskreadbytestotal` (cumulative counters: use `rate()`)
-- `pletor_node_cpumetrics_systemcpuiowaitticks` (cumulative counter)
-- `pletor_node_pressuremetrics_memoryfulltotalmicros` (cumulative counter: stalled microseconds)
-- `pletor_node_memmetrics_swapoutpagestotal` (cumulative counter: pages swapped out)
-- `pletor_node_networkmetrics_tcpretranssegstotal` (cumulative counter)
-- `pletor_node_diskiometrics_diskiotimemillistotal` (cumulative counter)
+- `pletor_node_iorates_diskreadbytestotal_total` (cumulative counters: use `rate()`)
+- `pletor_node_cpumetrics_systemcpuiowaitticks_total` (cumulative counter)
+- `pletor_node_pressuremetrics_memoryfulltotalmicros_total` (cumulative counter: stalled microseconds)
+- `pletor_node_memmetrics_swapoutpagestotal_total` (cumulative counter: pages swapped out)
+- `pletor_node_networkmetrics_tcpretranssegstotal_total` (cumulative counter)
+- `pletor_node_diskiometrics_diskiotimemillistotal_total` (cumulative counter)
 - `pletor_proc_processmetrics_residentsetbytes`
 - `pletor_proc_fdmetrics_openfiledescriptorcount`
 - `pletor_agent_observability_queuefillratio`

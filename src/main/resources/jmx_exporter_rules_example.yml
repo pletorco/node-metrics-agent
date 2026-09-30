@@ -32,13 +32,12 @@ metricCustomizers:
 
 rules:
   # ============================================================================
-  # Cumulative counters are exported as UNTYPED, not COUNTER, on purpose.
-  # An attribute that its source cannot provide (no PSI, no cgroup, an old kernel) reports -1. The
-  # Prometheus JMX exporter 1.x rejects a negative COUNTER and then fails the WHOLE scrape (HTTP
-  # 500), so a single unavailable counter would hide every metric of the target. UNTYPED keeps the
-  # value and the name (no "_total" suffix is appended), and rate()/increase() work on it as on a
-  # counter. Alert and dashboard queries should ignore -1 (see prometheus_alerts_example.yml).
-  # The agent's own counters (kr.pletor.agent) are never negative and stay COUNTER.
+  # Cumulative counters are typed COUNTER, so the exporter names them "<attribute>_total" (for
+  # example pletor_node_iorates_diskreadbytestotal_total).
+  # A counter whose source is unavailable on this host (no PSI, no cgroup, an old kernel) is absent
+  # (null over JMX) and the exporter skips it. Gauges report -1 when unavailable; filter that in
+  # queries (see prometheus_alerts_example.yml). Never expose a counter as -1: the exporter 1.x
+  # rejects a negative COUNTER and fails the whole scrape (HTTP 500).
   # ============================================================================
 
   # ============================================================================
@@ -54,7 +53,7 @@ rules:
   # ============================================================================
   - pattern: 'kr.pletor.cgroup<type=(.+?)(?:,(.+))?><>(CgroupCpuThrottledCount|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_cgroup_$1_$3
-    type: UNTYPED
+    type: COUNTER
     cache: true
 
   - pattern: 'kr.pletor.cgroup<type=(.+?)(?:,(.+))?><>(.+):'
@@ -70,7 +69,7 @@ rules:
   # ============================================================================
   - pattern: 'kr.pletor.node<type=(.+?)(?:,(.+))?><>(ProcessCpuTimeNanos|UptimeSeconds|SystemCpu[A-Za-z]+Ticks|CgroupCpuThrottledPeriodsTotal|CgroupCpuThrottledTimeNanosTotal|CgroupCpuUsageNanosTotal|DiskReadBytesTotal|DiskWriteBytesTotal|NetRxBytesTotal|NetTxBytesTotal|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_node_$1_$3
-    type: UNTYPED
+    type: COUNTER
     cache: true
 
   - pattern: 'kr.pletor.node<type=FsMetrics, path=(.+)><>(.+):'
@@ -91,7 +90,7 @@ rules:
   # ============================================================================
   - pattern: 'kr.pletor.proc<type=(.+?)(?:,(.+))?><>(IoReadBytesTotal|IoWriteBytesTotal):'
     name: pletor_proc_$1_$3
-    type: UNTYPED
+    type: COUNTER
     cache: true
 
   - pattern: 'kr.pletor.proc<type=(.+?)(?:,(.+))?><>(.+):'

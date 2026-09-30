@@ -137,7 +137,7 @@ Prometheus alerting rules; check it with `promtool check rules` and tune the thr
 - FD usage approaches max FD limit
 - cgroup memory working set / limit ratio stays above `0.90`
   (`memoryworkingsetbytes / memorylimitbytes`, only when the limit is not `-1`)
-- pressure: sustained `rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros[5m]) / 1e6` above
+- pressure: sustained `rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros_total[5m]) / 1e6` above
   zero means the container's tasks are stalled on memory (reclaim or swapping); the same for
   `iofull` and `cpusome` points at storage or CPU contention (see "Pressure stall information")
 
@@ -160,20 +160,25 @@ Failing metric refreshes:
 
 Unavailable values and the exporter:
 
-- An attribute whose source is unavailable on this host (no PSI, no cgroup, an old kernel) reports
-  `-1`, and a cumulative counter that has not been read yet does too.
-- The Prometheus JMX exporter 1.x rejects a negative `COUNTER` and then fails the **whole scrape**
-  (HTTP 500, "counters cannot have a negative value"), so one unavailable counter would hide every
-  metric of the target. The example rules therefore export the agent's cumulative counters as
-  `UNTYPED`: the value and the name are kept (with `COUNTER` the exporter 1.x would also append
-  `_total`), and `rate()` and `increase()` work on them as on counters. If you write your own rules,
-  do not type these attributes `COUNTER`. The agent's own `kr.pletor.agent` counters are never
-  negative and stay `COUNTER`.
-- Queries should ignore `-1`: `rate()`/`increase()` of a constant `-1` is `0`, and for gauges use a
-  filter such as `x >= 0` or `limit > 0` before dividing. A counter that becomes available later
-  (or is unavailable at the first scrape) jumps from `-1` to its full value once, which
-  `increase()` counts as a single large increase; ignore the first window after a restart when
-  alerting on absolute increases.
+- A **gauge** whose source is unavailable on this host (no PSI, no cgroup, an old kernel) reports
+  `-1`. Filter it in queries: `x >= 0` or `limit > 0` before dividing.
+- A **counter** (`@JmxMetricHint("counter")`, exported as `..._total`) whose source is unavailable is
+  **absent**: the getter returns `null` over JMX and the exporter skips it, so no series exists for
+  it, and it appears once the source becomes available. `rate()` and `increase()` need no filter, and
+  an alert on it stays silent on a host without the source.
+- The reason is the exporter: the Prometheus JMX exporter 1.x rejects a negative `COUNTER` and then
+  fails the **whole scrape** (HTTP 500, "counters cannot have a negative value"), so one counter that
+  reported `-1` would hide every metric of the target (checked with 1.0.1 and 1.6.0). If you write
+  your own rules, keep counters `COUNTER` and never map an unavailable value to a negative number.
+- A `null` value is safe only because the agent also leaves such an attribute out of the MBean's
+  attribute list until it has a value. Exporter 1.6.0 fails the whole scrape with a
+  `NullPointerException` when a `null` value sits in an MBean that a rule customizes with
+  `attributesAsLabels` (the example rules do for the cgroup memory MBean), whereas an attribute that is
+  not listed is never read. A JMX client therefore sees the counter appear and disappear with its
+  source, and reading it directly returns `null`.
+- `attributesAsLabels` labels (`CgroupVersion`, `CgroupPath`, the `OsInfoMetrics` labels) were not
+  applied by exporter 1.0.1 in the same test, and were by 1.6.0; use a recent exporter if you want them.
+- The agent's own `kr.pletor.agent` counters are never unavailable and are plain `long` values.
 - `src/main/resources/prometheus_alerts_example.yml` has example alerts that follow these rules;
   the build checks that every metric name in it is one the example exporter rules produce.
 
@@ -214,7 +219,8 @@ Disk I/O (`DiskIoMetrics`):
 
 - Operation counts and I/O time from `/proc/diskstats`, summed over the same physical (leaf) block
   devices as the disk byte counters, so there is no per-device breakdown. All are cumulative
-  counters (`rate()`); the `-1` sentinel means `/proc/diskstats` or a countable device is missing.
+  counters (`rate()`); they are absent (and `DiskIoInProgress` / `DiskDeviceCount` are `-1`) when
+  `/proc/diskstats` or a countable device is missing.
 - Average latency: `rate(diskreadtimemillistotal[5m]) / rate(diskreadscompletedtotal[5m])` (and the
   write equivalent), in milliseconds per operation.
 - Average device utilization: `rate(diskiotimemillistotal[5m]) / 1000 / diskdevicecount`. It is an
@@ -229,7 +235,7 @@ Network errors and TCP (`NetworkMetrics`):
 - Retransmit ratio: `rate(tcpretranssegstotal[5m]) / rate(tcpoutsegstotal[5m])`. A sustained rise
   is an early sign of a network problem. `tcplistenoverflowstotal` / `tcplistendropstotal` rising
   means the application accepts connections too slowly.
-- Each source is independent: a missing file only makes its own attributes `-1` (not a failure).
+- Each source is independent: a missing file only makes its own attributes absent (not a failure).
 
 JVM process (`ProcessMetrics`):
 
@@ -240,7 +246,7 @@ JVM process (`ProcessMetrics`):
 - `ResidentAnonBytes` (heap and private memory) and `ResidentFileBytes` (mapped files) split the
   resident set. `ThreadCount` counts native threads, including JVM-internal ones.
 - `IoReadBytesTotal` / `IoWriteBytesTotal` are the bytes this process caused to hit storage
-  (`/proc/self/io`, excluding page-cache hits); they are `-1` when the kernel has no task I/O
+  (`/proc/self/io`, excluding page-cache hits); they are absent when the kernel has no task I/O
   accounting or access is denied.
 - Context switches are not exposed: `/proc/self/status` reports them for the main thread only.
 
@@ -250,8 +256,8 @@ CPU time per mode:
   `SystemCpuUserTicks`, `SystemCpuNiceTicks`, `SystemCpuSystemTicks`, `SystemCpuIdleTicks`,
   `SystemCpuIrqTicks` and `SystemCpuSoftIrqTicks`, next to the existing total, I/O wait and steal
   ticks. Ticks are in `USER_HZ` (normally 100 per second).
-- Share of CPU time in a state over any window: `rate(pletor_node_cpumetrics_systemcpusystemticks[5m])
-  / rate(pletor_node_cpumetrics_systemcputotalticks[5m])`. A high `system` or `softirq` share points
+- Share of CPU time in a state over any window: `rate(pletor_node_cpumetrics_systemcpusystemticks_total[5m])
+  / rate(pletor_node_cpumetrics_systemcputotalticks_total[5m])`. A high `system` or `softirq` share points
   at system-call or network-processing load, a high `nice` share at background jobs.
 
 OOM kills:
@@ -266,11 +272,11 @@ OOM kills:
   termination reason (`kube_pod_container_status_last_terminated_reason`, the restart count) for
   that. The cgroup counter is reliable for other processes in the container and for services whose
   cgroup outlives the JVM (a systemd service).
-- Both are `-1` on kernels older than 4.13.
+- Both are absent on kernels older than 4.13.
 - `MemoryMaxEventsTotal` counts the times the container's memory use reached its limit and the
   kernel had to reclaim or kill (`max` in `memory.events` on v2, `memory.failcnt` on v1). It rises
-  before the first OOM kill, so `rate(...memorymaxeventstotal[5m]) > 0` for several minutes is the
-  earlier warning. `MemoryHighEventsTotal` counts crossings of `memory.high` (v2 only, `-1` on v1);
+  before the first OOM kill, so `rate(...memorymaxeventstotal_total[5m]) > 0` for several minutes is the
+  earlier warning. `MemoryHighEventsTotal` counts crossings of `memory.high` (v2 only, absent on v1);
   it stays `0` unless `memory.high` is set, which Kubernetes does only with the memory QoS feature.
 
 Process limit (PIDs):
@@ -312,7 +318,7 @@ CPU limit:
   `MemoryLimitBytes` it is the tightest finite CFS quota of the cgroup and its ancestors, so a
   container without a quota is still bounded by its pod.
 - CPU use as a share of the limit, only where the limit is not `-1`:
-  `rate(pletor_node_cpumetrics_cgroupcpuusagenanostotal[5m]) / 1e9 / pletor_node_cpumetrics_cgroupcpulimitcores`.
+  `rate(pletor_node_cpumetrics_cgroupcpuusagenanostotal_total[5m]) / 1e9 / pletor_node_cpumetrics_cgroupcpulimitcores`.
   A ratio near `1` together with a rising `CgroupCpuThrottledTimeNanosTotal` means the container is
   running into its limit.
 - Read from `cpu.max` (cgroup v2) or `cpu.cfs_quota_us` / `cpu.cfs_period_us` (v1). Inside a
@@ -325,7 +331,7 @@ Swap:
 
 - Node (`MemMetrics`): `SwapTotalBytes` (`0` when the host has no swap), `SwapUsedBytes`, and the
   cumulative page counters `SwapInPagesTotal` / `SwapOutPagesTotal` (`pswpin` / `pswpout`). Alert on
-  activity, not usage: `rate(pletor_node_memmetrics_swapoutpagestotal[5m]) > 0` for a sustained
+  activity, not usage: `rate(pletor_node_memmetrics_swapoutpagestotal_total[5m]) > 0` for a sustained
   period means the host is actively swapping, while a high `SwapUsedBytes` with a flat counter is
   idle swap.
 - cgroup (`kr.pletor.cgroup:type=MemMetrics`): `SwapUsageBytes` and `SwapLimitBytes` of the
@@ -346,9 +352,9 @@ Pressure stall information (PSI):
   `kr.pletor.cgroup:type=PressureMetrics` reads the container's own `*.pressure` files (cgroup v2).
 - `*Avg10` is the kernel's 10-second average in percent (0-100). `*TotalMicros` is a cumulative
   counter of stalled microseconds: `rate(x[5m]) / 1e6` is the stalled share of any window, e.g.
-  `rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros[5m]) / 1e6`. The 60 s and 300 s
+  `rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros_total[5m]) / 1e6`. The 60 s and 300 s
   kernel averages are not exposed because the counter gives the same over any window.
-- Every attribute is `-1` when PSI is unavailable: kernel older than 4.20, PSI disabled
+- Every attribute is unavailable (the `*Avg10` gauges are `-1`, the `*TotalMicros` counters are absent) when PSI is unavailable: kernel older than 4.20, PSI disabled
   (`psi=0`), cgroup v1 (the cgroup MBean only), non-Linux, or the CPU `full` line on kernels older
   than 5.13. This is not reported as a failing task.
 
@@ -357,13 +363,14 @@ Rates and ratios (prefer counters):
 - `SystemCpuIoWaitRatio`, `SystemCpuStealRatio`, `CgroupCpuThrottledRatio` and the
   `*BytesPerSec` values describe only the last refresh window (`refresh_interval_seconds`, 2 s by default), so a scrape every
   15-60 s samples one arbitrary window. The cumulative counters give exact averages over any range:
-  - I/O wait ratio: `rate(pletor_node_cpumetrics_systemcpuiowaitticks[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks[5m])`
+  - I/O wait ratio: `rate(pletor_node_cpumetrics_systemcpuiowaitticks_total[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks_total[5m])`
   - steal ratio: same with `systemcpustealticks`
-  - cgroup throttled share: `rate(..._cgroupcputhrottledtimenanostotal[5m]) / (rate(..._cgroupcputhrottledtimenanostotal[5m]) + rate(..._cgroupcpuusagenanostotal[5m]))`
-  - disk/network throughput: `rate(pletor_node_iorates_diskreadbytestotal[5m])`, and likewise for
+  - cgroup throttled share: `rate(..._cgroupcputhrottledtimenanostotal_total[5m]) / (rate(..._cgroupcputhrottledtimenanostotal_total[5m]) + rate(..._cgroupcpuusagenanostotal_total[5m]))`
+  - disk/network throughput: `rate(pletor_node_iorates_diskreadbytestotal_total[5m])`, and likewise for
     `diskwritebytestotal`, `netrxbytestotal`, `nettxbytestotal`
-- The example rules export counters as `UNTYPED`, so the names above are used as written, with no
-  `_total` suffix (see "Unavailable values and the exporter" below).
+- Counters are typed `COUNTER` in the example rules, so the exporter appends `_total` to their
+  names (`..._diskreadbytestotal_total`); the shorthand names in this document (`diskiotimemillistotal`,
+  `tcpretranssegstotal`, ...) are the attribute names without the prefix and suffix.
 - Disk and network totals sum the counted devices/interfaces; if one disappears (for example a
   veth pair on a container host) the sum drops once, which Prometheus treats as a counter reset.
 - `CgroupCpuThrottledCount` is a per-window delta (a gauge), not a counter.

@@ -99,7 +99,7 @@ class DiskAndNetworkMetricsTest {
   void diskWithoutStatsOrDevicesIsUnavailableWithoutFailure() throws Exception {
     DiskIoMetrics missing = new DiskIoMetrics();
     missing.poll();
-    assertEquals(-1L, missing.getDiskReadsCompletedTotal());
+    assertNull(missing.getDiskReadsCompletedTotal());
     assertEquals(-1L, missing.getDiskDeviceCount());
     assertNull(missing.lastRefreshError());
 
@@ -107,7 +107,7 @@ class DiskAndNetworkMetricsTest {
     write("diskstats", diskLine("nvme9n9", 1, 1, 1)); // no such leaf device
     DiskIoMetrics none = new DiskIoMetrics();
     none.poll();
-    assertEquals(-1L, none.getDiskIoTimeMillisTotal());
+    assertNull(none.getDiskIoTimeMillisTotal());
   }
 
   @Test
@@ -121,7 +121,7 @@ class DiskAndNetworkMetricsTest {
     Files.createDirectory(proc.resolve("diskstats")); // unreadable as a file
     m.poll();
 
-    assertEquals(-1L, m.getDiskReadsCompletedTotal(), "a directory is not a regular file");
+    assertNull(m.getDiskReadsCompletedTotal(), "a directory is not a regular file");
   }
 
   // --------------------------------------------------------------- network
@@ -192,20 +192,20 @@ class DiskAndNetworkMetricsTest {
     m.poll();
 
     assertEquals(3L, m.getNetRxErrorsTotal());
-    assertEquals(-1L, m.getTcpOutSegsTotal());
+    assertNull(m.getTcpOutSegsTotal());
     assertEquals(-1L, m.getTcpCurrEstab());
     assertEquals(11L, m.getTcpListenOverflowsTotal());
     assertNull(m.lastRefreshError(), "an absent file is not a failure");
   }
 
   @Test
-  void nothingAvailableIsAllMinusOne() {
+  void nothingAvailableIsAllAbsent() {
     NetworkMetrics m = new NetworkMetrics();
     m.poll();
 
-    assertEquals(-1L, m.getNetRxErrorsTotal());
-    assertEquals(-1L, m.getTcpRetransSegsTotal());
-    assertEquals(-1L, m.getTcpTimeoutsTotal());
+    assertNull(m.getNetRxErrorsTotal());
+    assertNull(m.getTcpRetransSegsTotal());
+    assertNull(m.getTcpTimeoutsTotal());
     assertNull(m.lastRefreshError());
   }
 
@@ -217,7 +217,7 @@ class DiskAndNetworkMetricsTest {
     m.poll();
 
     assertEquals(55L, m.getTcpOutSegsTotal());
-    assertEquals(-1L, m.getTcpRetransSegsTotal());
+    assertNull(m.getTcpRetransSegsTotal());
   }
 
   @Test

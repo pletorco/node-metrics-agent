@@ -132,21 +132,21 @@ public interface NodeMemMetricsMBean {
    * <p>Swap activity matters more than swap usage: a steady value with a high {@code SwapUsedBytes}
    * is idle swap, while a rising rate means the host is actively swapping.
    *
-   * @return the page count, or {@code -1} when unavailable
+   * @return the page count, or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("pages")
-  long getSwapInPagesTotal();
+  Long getSwapInPagesTotal();
 
   /**
    * Returns the cumulative number of pages swapped out to disk since boot ({@code pswpout} in
    * {@code /proc/vmstat}).
    *
-   * @return the page count, or {@code -1} when unavailable
+   * @return the page count, or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("pages")
-  long getSwapOutPagesTotal();
+  Long getSwapOutPagesTotal();
 
   /**
    * Returns the cumulative number of processes killed by the kernel's out-of-memory killer on this
@@ -157,9 +157,9 @@ public interface NodeMemMetricsMBean {
    * JVM itself is not visible to the agent (it dies with the process); use the orchestrator's
    * termination reason for that.
    *
-   * @return the count, or {@code -1} when unavailable
+   * @return the count, or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("kills")
-  long getSystemOomKillTotal();
+  Long getSystemOomKillTotal();
 }

@@ -10,7 +10,7 @@ public interface OsRuntimeMetricsMBean {
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("seconds")
-  long getUptimeSeconds();
+  Long getUptimeSeconds();
 
   /**
    * Returns the count of file system mounts.

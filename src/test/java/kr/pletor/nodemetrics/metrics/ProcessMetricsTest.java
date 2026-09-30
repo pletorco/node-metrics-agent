@@ -79,8 +79,8 @@ class ProcessMetricsTest {
     m.poll();
 
     assertEquals(2_500_000L * 1024L, m.getResidentSetBytes());
-    assertEquals(-1L, m.getIoReadBytesTotal());
-    assertEquals(-1L, m.getIoWriteBytesTotal());
+    assertNull(m.getIoReadBytesTotal());
+    assertNull(m.getIoWriteBytesTotal());
     assertNull(m.lastRefreshError(), "task I/O accounting is often absent");
   }
 
@@ -93,7 +93,7 @@ class ProcessMetricsTest {
     m.poll();
 
     assertEquals(123L, m.getThreadCount());
-    assertEquals(-1L, m.getIoWriteBytesTotal());
+    assertNull(m.getIoWriteBytesTotal());
     assertNull(m.lastRefreshError());
   }
 

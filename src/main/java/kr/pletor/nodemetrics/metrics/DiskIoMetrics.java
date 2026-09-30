@@ -62,39 +62,39 @@ public class DiskIoMetrics extends AbstractRefreshingMetric implements DiskIoMet
   }
 
   @Override
-  public long getDiskReadsCompletedTotal() {
+  public Long getDiskReadsCompletedTotal() {
     refreshOnRead();
-    return readsCompleted;
+    return counterOrNull(readsCompleted);
   }
 
   @Override
-  public long getDiskWritesCompletedTotal() {
+  public Long getDiskWritesCompletedTotal() {
     refreshOnRead();
-    return writesCompleted;
+    return counterOrNull(writesCompleted);
   }
 
   @Override
-  public long getDiskReadTimeMillisTotal() {
+  public Long getDiskReadTimeMillisTotal() {
     refreshOnRead();
-    return readTimeMillis;
+    return counterOrNull(readTimeMillis);
   }
 
   @Override
-  public long getDiskWriteTimeMillisTotal() {
+  public Long getDiskWriteTimeMillisTotal() {
     refreshOnRead();
-    return writeTimeMillis;
+    return counterOrNull(writeTimeMillis);
   }
 
   @Override
-  public long getDiskIoTimeMillisTotal() {
+  public Long getDiskIoTimeMillisTotal() {
     refreshOnRead();
-    return ioTimeMillis;
+    return counterOrNull(ioTimeMillis);
   }
 
   @Override
-  public long getDiskWeightedIoTimeMillisTotal() {
+  public Long getDiskWeightedIoTimeMillisTotal() {
     refreshOnRead();
-    return weightedIoTimeMillis;
+    return counterOrNull(weightedIoTimeMillis);
   }
 
   @Override

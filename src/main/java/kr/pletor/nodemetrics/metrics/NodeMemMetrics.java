@@ -532,20 +532,20 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   }
 
   @Override
-  public long getSwapInPagesTotal() {
+  public Long getSwapInPagesTotal() {
     refreshOnRead();
-    return swapInPagesTotal;
+    return counterOrNull(swapInPagesTotal);
   }
 
   @Override
-  public long getSwapOutPagesTotal() {
+  public Long getSwapOutPagesTotal() {
     refreshOnRead();
-    return swapOutPagesTotal;
+    return counterOrNull(swapOutPagesTotal);
   }
 
   @Override
-  public long getSystemOomKillTotal() {
+  public Long getSystemOomKillTotal() {
     refreshOnRead();
-    return oomKillTotal;
+    return counterOrNull(oomKillTotal);
   }
 }

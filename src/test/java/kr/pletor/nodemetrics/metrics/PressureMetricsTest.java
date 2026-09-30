@@ -69,7 +69,7 @@ class PressureMetricsTest {
 
     assertEquals(10L, m.getCpuSomeTotalMicros());
     assertEquals(-1.0, m.getCpuFullAvg10());
-    assertEquals(-1L, m.getCpuFullTotalMicros());
+    assertNull(m.getCpuFullTotalMicros());
     assertNull(m.lastRefreshError());
   }
 
@@ -78,8 +78,8 @@ class PressureMetricsTest {
     PressureMetrics m = nodeMetrics();
 
     assertEquals(-1.0, m.getMemorySomeAvg10());
-    assertEquals(-1L, m.getMemorySomeTotalMicros());
-    assertEquals(-1L, m.getIoFullTotalMicros());
+    assertNull(m.getMemorySomeTotalMicros());
+    assertNull(m.getIoFullTotalMicros());
     assertNull(m.lastRefreshError(), "PSI being absent is not a refresh failure");
   }
 
@@ -90,7 +90,7 @@ class PressureMetricsTest {
 
     PressureMetrics m = nodeMetrics();
 
-    assertEquals(-1L, m.getMemorySomeTotalMicros());
+    assertNull(m.getMemorySomeTotalMicros());
     assertNull(m.lastRefreshError());
   }
 
@@ -100,7 +100,7 @@ class PressureMetricsTest {
     m.poll();
 
     assertEquals(-1.0, m.getCpuSomeAvg10());
-    assertEquals(-1L, m.getMemoryFullTotalMicros());
+    assertNull(m.getMemoryFullTotalMicros());
     assertNull(m.lastRefreshError());
   }
 
@@ -113,7 +113,7 @@ class PressureMetricsTest {
 
     assertEquals(4.0, m.getMemorySomeAvg10());
     assertEquals(77L, m.getMemorySomeTotalMicros());
-    assertEquals(-1L, m.getCpuSomeTotalMicros());
+    assertNull(m.getCpuSomeTotalMicros());
   }
 
   @Test
@@ -126,7 +126,7 @@ class PressureMetricsTest {
 
     PressureMetrics m = nodeMetrics();
 
-    assertEquals(-1L, m.getMemorySomeTotalMicros());
+    assertNull(m.getMemorySomeTotalMicros());
     assertEquals(1.25, m.getMemoryFullAvg10());
     assertEquals(99L, m.getMemoryFullTotalMicros());
     assertNull(m.lastRefreshError());

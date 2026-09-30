@@ -763,7 +763,7 @@ public class MetricsAgent {
   private static void registerStandardMBeanSafely(
       Object bean, Class<?> mbeanInterface, ObjectName objectName) {
     try {
-      StandardMBean wrapped = new StandardMBean(bean, (Class) mbeanInterface);
+      StandardMBean wrapped = new AbsentValueHider(bean, (Class) mbeanInterface);
       svr.registerMBean(wrapped, objectName);
     } catch (Throwable e) { // NOSONAR
       THROTTLED_LOGGER.log(

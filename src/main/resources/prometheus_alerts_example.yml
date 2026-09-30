@@ -2,9 +2,10 @@
 # Prometheus JMX exporter, using jmx_exporter_rules_example.yml.
 #
 # Thresholds are starting points for a JVM service such as a Kafka broker: tune them to the
-# workload. Every expression tolerates the agent's -1 "unavailable" value: a comparison such as
-# "> 0" or ">= 0" drops the series, and rate()/increase() of a constant -1 is 0, so a host without
-# the source (no PSI, no cgroup, an old kernel) stays silent instead of alerting.
+# workload. Counters are exported as "<attribute>_total" (the exporter appends the suffix) and an
+# unavailable counter is absent, so a rule on it stays silent on a host without the source (no PSI,
+# no cgroup, an old kernel). Gauges report -1 when unavailable, so the ratio expressions below
+# filter with ">= 0" / "> 0" before dividing.
 #
 # Prefer the cumulative counters with rate()/increase() over the "ratio" and "per second" gauges:
 # those describe only the last refresh window, the counters give exact averages over any range.
@@ -46,7 +47,7 @@ groups:
           summary: "Container working set is above 90% of its memory limit on {{ $labels.instance }}"
 
       - alert: ContainerMemoryLimitHit
-        expr: rate(pletor_cgroup_memmetrics_memorymaxeventstotal[5m]) > 0
+        expr: rate(pletor_cgroup_memmetrics_memorymaxeventstotal_total[5m]) > 0
         for: 10m
         labels: {severity: warning}
         annotations:
@@ -54,21 +55,21 @@ groups:
           description: "The kernel is reclaiming or killing at the limit; this precedes OOM kills."
 
       - alert: OomKill
-        expr: increase(pletor_cgroup_memmetrics_memoryoomkilltotal[10m]) > 0 or increase(pletor_node_memmetrics_systemoomkilltotal[10m]) > 0
+        expr: increase(pletor_cgroup_memmetrics_memoryoomkilltotal_total[10m]) > 0 or increase(pletor_node_memmetrics_systemoomkilltotal_total[10m]) > 0
         labels: {severity: critical}
         annotations:
           summary: "The kernel OOM killer fired on {{ $labels.instance }}"
           description: "A kill of the JVM itself cannot be seen here (the agent dies with it); on Kubernetes use the container termination reason."
 
       - alert: SwapInUse
-        expr: rate(pletor_node_memmetrics_swapoutpagestotal[5m]) > 0
+        expr: rate(pletor_node_memmetrics_swapoutpagestotal_total[5m]) > 0
         for: 15m
         labels: {severity: warning}
         annotations:
           summary: "The host keeps swapping out on {{ $labels.instance }}"
 
       - alert: MemoryPressure
-        expr: rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros[5m]) / 1e6 > 0.05 or rate(pletor_node_pressuremetrics_memoryfulltotalmicros[5m]) / 1e6 > 0.05
+        expr: rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros_total[5m]) / 1e6 > 0.05 or rate(pletor_node_pressuremetrics_memoryfulltotalmicros_total[5m]) / 1e6 > 0.05
         for: 10m
         labels: {severity: warning}
         annotations:
@@ -77,7 +78,7 @@ groups:
   - name: node-metrics-agent-cpu-and-io
     rules:
       - alert: CpuThrottled
-        expr: rate(pletor_node_cpumetrics_cgroupcputhrottledtimenanostotal[5m]) / (rate(pletor_node_cpumetrics_cgroupcputhrottledtimenanostotal[5m]) + rate(pletor_node_cpumetrics_cgroupcpuusagenanostotal[5m])) > 0.25
+        expr: rate(pletor_node_cpumetrics_cgroupcputhrottledtimenanostotal_total[5m]) / (rate(pletor_node_cpumetrics_cgroupcputhrottledtimenanostotal_total[5m]) + rate(pletor_node_cpumetrics_cgroupcpuusagenanostotal_total[5m])) > 0.25
         for: 10m
         labels: {severity: warning}
         annotations:
@@ -85,35 +86,35 @@ groups:
           description: "The CPU limit (CgroupCpuLimitCores) is too low for the load."
 
       - alert: CpuPressure
-        expr: rate(pletor_cgroup_pressuremetrics_cpusometotalmicros[5m]) / 1e6 > 0.20 or rate(pletor_node_pressuremetrics_cpusometotalmicros[5m]) / 1e6 > 0.20
+        expr: rate(pletor_cgroup_pressuremetrics_cpusometotalmicros_total[5m]) / 1e6 > 0.20 or rate(pletor_node_pressuremetrics_cpusometotalmicros_total[5m]) / 1e6 > 0.20
         for: 10m
         labels: {severity: warning}
         annotations:
           summary: "Tasks wait for a CPU more than 20% of the time on {{ $labels.instance }}"
 
       - alert: CpuIoWait
-        expr: rate(pletor_node_cpumetrics_systemcpuiowaitticks[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks[5m]) > 0.30
+        expr: rate(pletor_node_cpumetrics_systemcpuiowaitticks_total[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks_total[5m]) > 0.30
         for: 15m
         labels: {severity: warning}
         annotations:
           summary: "CPUs spend over 30% of their time waiting for I/O on {{ $labels.instance }}"
 
       - alert: CpuSteal
-        expr: rate(pletor_node_cpumetrics_systemcpustealticks[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks[5m]) > 0.10
+        expr: rate(pletor_node_cpumetrics_systemcpustealticks_total[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks_total[5m]) > 0.10
         for: 15m
         labels: {severity: warning}
         annotations:
           summary: "The hypervisor takes over 10% of the CPU time on {{ $labels.instance }}"
 
       - alert: DiskBusy
-        expr: rate(pletor_node_diskiometrics_diskiotimemillistotal[5m]) / 1000 / (pletor_node_diskiometrics_diskdevicecount > 0) > 0.90
+        expr: rate(pletor_node_diskiometrics_diskiotimemillistotal_total[5m]) / 1000 / (pletor_node_diskiometrics_diskdevicecount > 0) > 0.90
         for: 15m
         labels: {severity: warning}
         annotations:
           summary: "Disks are busy over 90% of the time (average over devices) on {{ $labels.instance }}"
 
       - alert: IoPressure
-        expr: rate(pletor_cgroup_pressuremetrics_iofulltotalmicros[5m]) / 1e6 > 0.10 or rate(pletor_node_pressuremetrics_iofulltotalmicros[5m]) / 1e6 > 0.10
+        expr: rate(pletor_cgroup_pressuremetrics_iofulltotalmicros_total[5m]) / 1e6 > 0.10 or rate(pletor_node_pressuremetrics_iofulltotalmicros_total[5m]) / 1e6 > 0.10
         for: 10m
         labels: {severity: warning}
         annotations:
@@ -122,20 +123,20 @@ groups:
   - name: node-metrics-agent-network
     rules:
       - alert: TcpRetransmits
-        expr: rate(pletor_node_networkmetrics_tcpretranssegstotal[5m]) / (rate(pletor_node_networkmetrics_tcpoutsegstotal[5m]) > 100) > 0.02
+        expr: rate(pletor_node_networkmetrics_tcpretranssegstotal_total[5m]) / (rate(pletor_node_networkmetrics_tcpoutsegstotal_total[5m]) > 100) > 0.02
         for: 10m
         labels: {severity: warning}
         annotations:
           summary: "Over 2% of TCP segments are retransmitted on {{ $labels.instance }}"
 
       - alert: TcpListenOverflow
-        expr: increase(pletor_node_networkmetrics_tcplistenoverflowstotal[5m]) > 0
+        expr: increase(pletor_node_networkmetrics_tcplistenoverflowstotal_total[5m]) > 0
         labels: {severity: warning}
         annotations:
           summary: "The accept queue of a listening socket overflowed on {{ $labels.instance }}"
 
       - alert: NetworkErrors
-        expr: rate(pletor_node_networkmetrics_netrxerrorstotal[5m]) + rate(pletor_node_networkmetrics_nettxerrorstotal[5m]) > 0
+        expr: rate(pletor_node_networkmetrics_netrxerrorstotal_total[5m]) + rate(pletor_node_networkmetrics_nettxerrorstotal_total[5m]) > 0
         for: 10m
         labels: {severity: warning}
         annotations:

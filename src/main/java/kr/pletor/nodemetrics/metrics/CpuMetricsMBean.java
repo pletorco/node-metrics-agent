@@ -42,7 +42,7 @@ public interface CpuMetricsMBean {
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("nanoseconds")
-  long getProcessCpuTimeNanos();
+  Long getProcessCpuTimeNanos();
 
   /**
    * Returns the system-wide CPU IO wait ratio.
@@ -109,62 +109,62 @@ public interface CpuMetricsMBean {
    *
    * <p>Divide the {@code rate()} of {@link #getSystemCpuIoWaitTicks()} or {@link
    * #getSystemCpuStealTicks()} by the {@code rate()} of this value to get a ratio over any time
-   * range. {@code -1} when unavailable.
+   * range. {@code null} when unavailable.
    *
    * @return total CPU ticks
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("ticks")
-  long getSystemCpuTotalTicks();
+  Long getSystemCpuTotalTicks();
 
   /**
-   * Returns the cumulative time CPUs spent waiting for I/O, in clock ticks. {@code -1} when
+   * Returns the cumulative time CPUs spent waiting for I/O, in clock ticks. {@code null} when
    * unavailable.
    *
    * @return I/O wait ticks
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("ticks")
-  long getSystemCpuIoWaitTicks();
+  Long getSystemCpuIoWaitTicks();
 
   /**
-   * Returns the cumulative time stolen by the hypervisor, in clock ticks. {@code -1} when
+   * Returns the cumulative time stolen by the hypervisor, in clock ticks. {@code null} when
    * unavailable.
    *
    * @return steal ticks
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("ticks")
-  long getSystemCpuStealTicks();
+  Long getSystemCpuStealTicks();
 
   /**
    * Returns the cumulative number of periods in which the cgroup was throttled ({@code
-   * nr_throttled}). {@code -1} when unavailable.
+   * nr_throttled}). {@code null} when unavailable.
    *
    * @return throttled periods since the cgroup was created
    */
   @JmxMetricHint("counter")
-  long getCgroupCpuThrottledPeriodsTotal();
+  Long getCgroupCpuThrottledPeriodsTotal();
 
   /**
-   * Returns the cumulative time the cgroup spent throttled, in nanoseconds. {@code -1} when
+   * Returns the cumulative time the cgroup spent throttled, in nanoseconds. {@code null} when
    * unavailable.
    *
    * @return throttled time since the cgroup was created
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("nanoseconds")
-  long getCgroupCpuThrottledTimeNanosTotal();
+  Long getCgroupCpuThrottledTimeNanosTotal();
 
   /**
-   * Returns the cumulative CPU time used by the cgroup, in nanoseconds. {@code -1} when
+   * Returns the cumulative CPU time used by the cgroup, in nanoseconds. {@code null} when
    * unavailable.
    *
    * @return cgroup CPU usage since the cgroup was created
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("nanoseconds")
-  long getCgroupCpuUsageNanosTotal();
+  Long getCgroupCpuUsageNanosTotal();
 
   /**
    * Returns the effective CPU limit of the cgroup, in cores: the tightest finite CFS quota of the
@@ -185,13 +185,13 @@ public interface CpuMetricsMBean {
    * ({@code USER_HZ}, normally 100 per second), from the aggregate line of {@code /proc/stat}.
    *
    * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
-   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   * share of CPU time in this state over any window. {@code null} when unavailable.
    *
    * @return ticks since boot
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("ticks")
-  long getSystemCpuUserTicks();
+  Long getSystemCpuUserTicks();
 
   /**
    * Returns the cumulative CPU time spent running user-space processes with a positive nice value
@@ -199,13 +199,13 @@ public interface CpuMetricsMBean {
    * aggregate line of {@code /proc/stat}.
    *
    * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
-   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   * share of CPU time in this state over any window. {@code null} when unavailable.
    *
    * @return ticks since boot
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("ticks")
-  long getSystemCpuNiceTicks();
+  Long getSystemCpuNiceTicks();
 
   /**
    * Returns the cumulative CPU time spent running kernel code on behalf of processes (system
@@ -213,39 +213,39 @@ public interface CpuMetricsMBean {
    * {@code /proc/stat}.
    *
    * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
-   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   * share of CPU time in this state over any window. {@code null} when unavailable.
    *
    * @return ticks since boot
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("ticks")
-  long getSystemCpuSystemTicks();
+  Long getSystemCpuSystemTicks();
 
   /**
    * Returns the cumulative CPU time spent idle, with no I/O outstanding, in clock ticks ({@code
    * USER_HZ}, normally 100 per second), from the aggregate line of {@code /proc/stat}.
    *
    * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
-   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   * share of CPU time in this state over any window. {@code null} when unavailable.
    *
    * @return ticks since boot
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("ticks")
-  long getSystemCpuIdleTicks();
+  Long getSystemCpuIdleTicks();
 
   /**
    * Returns the cumulative CPU time spent servicing hardware interrupts, in clock ticks ({@code
    * USER_HZ}, normally 100 per second), from the aggregate line of {@code /proc/stat}.
    *
    * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
-   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   * share of CPU time in this state over any window. {@code null} when unavailable.
    *
    * @return ticks since boot
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("ticks")
-  long getSystemCpuIrqTicks();
+  Long getSystemCpuIrqTicks();
 
   /**
    * Returns the cumulative CPU time spent servicing software interrupts (network receive and
@@ -253,11 +253,11 @@ public interface CpuMetricsMBean {
    * the aggregate line of {@code /proc/stat}.
    *
    * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
-   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   * share of CPU time in this state over any window. {@code null} when unavailable.
    *
    * @return ticks since boot
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("ticks")
-  long getSystemCpuSoftIrqTicks();
+  Long getSystemCpuSoftIrqTicks();
 }
