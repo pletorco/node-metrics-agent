@@ -618,7 +618,7 @@ class CpuMetricsTest {
   void cumulativeCpuTicksAreExposedFromTheFirstSnapshot() throws Exception {
     CpuMetrics metrics = new CpuMetrics((OperatingSystemMXBean) null);
     bypassRefresh(metrics);
-    assertEquals(-1L, metrics.getSystemCpuTotalTicks(), "Unavailable before the first read");
+    assertNull(metrics.getSystemCpuTotalTicks(), "Unavailable before the first read");
 
     Class<?> cpuTimesClass = CpuMetrics.CpuTimes.class;
     Constructor<?> ctor =
@@ -667,7 +667,7 @@ class CpuMetricsTest {
 
     compute.invoke(metrics, ctor.newInstance(2_000_000L, -1L, 9L));
     assertEquals(2_000_000L, metrics.getCgroupCpuUsageNanosTotal());
-    assertEquals(-1L, metrics.getCgroupCpuThrottledTimeNanosTotal(), "Unsupported field stays -1");
+    assertNull(metrics.getCgroupCpuThrottledTimeNanosTotal(), "Unsupported field stays absent");
     assertEquals(9L, metrics.getCgroupCpuThrottledPeriodsTotal());
   }
 

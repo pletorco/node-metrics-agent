@@ -165,14 +165,14 @@ public class ProcessMetrics extends AbstractRefreshingMetric implements ProcessM
   }
 
   @Override
-  public long getIoReadBytesTotal() {
+  public Long getIoReadBytesTotal() {
     refreshOnRead();
-    return ioReadBytes;
+    return counterOrNull(ioReadBytes);
   }
 
   @Override
-  public long getIoWriteBytesTotal() {
+  public Long getIoWriteBytesTotal() {
     refreshOnRead();
-    return ioWriteBytes;
+    return counterOrNull(ioWriteBytes);
   }
 }

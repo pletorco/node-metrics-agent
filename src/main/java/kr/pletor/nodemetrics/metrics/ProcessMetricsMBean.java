@@ -4,8 +4,9 @@ package kr.pletor.nodemetrics.metrics;
  * JMX MBean interface for resource figures of the JVM process itself, from {@code /proc/self}.
  *
  * <p>The cgroup metrics describe the whole container and the {@code java.lang} MBeans describe what
- * the JVM tracks; the resident set shows what the process really holds. Every attribute is {@code
- * -1} when unavailable (non-Linux, or a kernel without the field).
+ * the JVM tracks; the resident set shows what the process really holds. A size or count is {@code
+ * -1} when unavailable (non-Linux, or a kernel without the field), and an I/O counter is {@code
+ * null} (absent).
  *
  * <p>Context switches are deliberately not exposed: {@code /proc/self/status} reports them for the
  * main thread only, which says little about a multi-threaded JVM.
@@ -86,19 +87,19 @@ public interface ProcessMetricsMBean {
    * {@code /proc/self/io}), excluding reads served from the page cache. Needs task I/O accounting
    * in the kernel.
    *
-   * @return the count, or {@code -1} when unavailable
+   * @return the count, or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("bytes")
-  long getIoReadBytesTotal();
+  Long getIoReadBytesTotal();
 
   /**
    * Returns the cumulative bytes this process caused to be sent to storage ({@code write_bytes} in
    * {@code /proc/self/io}).
    *
-   * @return the count, or {@code -1} when unavailable
+   * @return the count, or {@code null} when unavailable
    */
   @JmxMetricHint("counter")
   @JmxMetricUnit("bytes")
-  long getIoWriteBytesTotal();
+  Long getIoWriteBytesTotal();
 }

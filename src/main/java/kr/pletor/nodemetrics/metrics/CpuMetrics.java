@@ -914,9 +914,9 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   }
 
   @Override
-  public long getProcessCpuTimeNanos() {
+  public Long getProcessCpuTimeNanos() {
     refreshOnRead();
-    return processCpuTimeNanos;
+    return counterOrNull(processCpuTimeNanos);
   }
 
   @Override
@@ -968,39 +968,39 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   }
 
   @Override
-  public long getSystemCpuTotalTicks() {
+  public Long getSystemCpuTotalTicks() {
     refreshOnRead();
-    return cpuTotalTicks;
+    return counterOrNull(cpuTotalTicks);
   }
 
   @Override
-  public long getSystemCpuIoWaitTicks() {
+  public Long getSystemCpuIoWaitTicks() {
     refreshOnRead();
-    return cpuIoWaitTicks;
+    return counterOrNull(cpuIoWaitTicks);
   }
 
   @Override
-  public long getSystemCpuStealTicks() {
+  public Long getSystemCpuStealTicks() {
     refreshOnRead();
-    return cpuStealTicks;
+    return counterOrNull(cpuStealTicks);
   }
 
   @Override
-  public long getCgroupCpuThrottledPeriodsTotal() {
+  public Long getCgroupCpuThrottledPeriodsTotal() {
     refreshOnRead();
-    return cgroupThrottledPeriodsTotal;
+    return counterOrNull(cgroupThrottledPeriodsTotal);
   }
 
   @Override
-  public long getCgroupCpuThrottledTimeNanosTotal() {
+  public Long getCgroupCpuThrottledTimeNanosTotal() {
     refreshOnRead();
-    return cgroupThrottledTimeNanosTotal;
+    return counterOrNull(cgroupThrottledTimeNanosTotal);
   }
 
   @Override
-  public long getCgroupCpuUsageNanosTotal() {
+  public Long getCgroupCpuUsageNanosTotal() {
     refreshOnRead();
-    return cgroupUsageNanosTotal;
+    return counterOrNull(cgroupUsageNanosTotal);
   }
 
   @Override
@@ -1010,38 +1010,38 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   }
 
   @Override
-  public long getSystemCpuUserTicks() {
+  public Long getSystemCpuUserTicks() {
     refreshOnRead();
-    return cpuUserTicks;
+    return counterOrNull(cpuUserTicks);
   }
 
   @Override
-  public long getSystemCpuNiceTicks() {
+  public Long getSystemCpuNiceTicks() {
     refreshOnRead();
-    return cpuNiceTicks;
+    return counterOrNull(cpuNiceTicks);
   }
 
   @Override
-  public long getSystemCpuSystemTicks() {
+  public Long getSystemCpuSystemTicks() {
     refreshOnRead();
-    return cpuSystemTicks;
+    return counterOrNull(cpuSystemTicks);
   }
 
   @Override
-  public long getSystemCpuIdleTicks() {
+  public Long getSystemCpuIdleTicks() {
     refreshOnRead();
-    return cpuIdleTicks;
+    return counterOrNull(cpuIdleTicks);
   }
 
   @Override
-  public long getSystemCpuIrqTicks() {
+  public Long getSystemCpuIrqTicks() {
     refreshOnRead();
-    return cpuIrqTicks;
+    return counterOrNull(cpuIrqTicks);
   }
 
   @Override
-  public long getSystemCpuSoftIrqTicks() {
+  public Long getSystemCpuSoftIrqTicks() {
     refreshOnRead();
-    return cpuSoftIrqTicks;
+    return counterOrNull(cpuSoftIrqTicks);
   }
 }

@@ -99,8 +99,8 @@ class SwapMetricsTest {
     NodeMemMetrics m =
         polled(new FakeProc(MEMINFO_WITH_SWAP, null, new NoSuchFileException("/proc/vmstat")));
 
-    assertEquals(-1L, m.getSwapInPagesTotal());
-    assertEquals(-1L, m.getSwapOutPagesTotal());
+    assertNull(m.getSwapInPagesTotal());
+    assertNull(m.getSwapOutPagesTotal());
     assertEquals(2097152L * 1024L, m.getSwapTotalBytes(), "meminfo values are unaffected");
     assertNull(m.lastRefreshError());
   }
@@ -109,7 +109,7 @@ class SwapMetricsTest {
   void unreadableVmstatIsFailureAndKeepsMemoryFigures() {
     NodeMemMetrics m = polled(new FakeProc(MEMINFO_WITH_SWAP, null, new IOException("boom")));
 
-    assertEquals(-1L, m.getSwapInPagesTotal());
+    assertNull(m.getSwapInPagesTotal());
     assertNotNull(m.lastRefreshError());
     assertEquals(16000000L * 1024L, m.getTotalMemoryBytes());
     assertEquals(1048576L * 1024L, m.getSwapUsedBytes());

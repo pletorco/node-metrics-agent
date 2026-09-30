@@ -149,9 +149,9 @@ public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRunt
   // ----- Getters -----
 
   @Override
-  public long getUptimeSeconds() {
+  public Long getUptimeSeconds() {
     refreshOnRead();
-    return uptimeSeconds;
+    return counterOrNull(uptimeSeconds);
   }
 
   @Override

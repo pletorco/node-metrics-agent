@@ -137,11 +137,11 @@ class SystemHandlesAndOomTest {
   }
 
   @Test
-  void nodeOomKillIsMinusOneOnKernelsWithoutTheCounter() {
+  void nodeOomKillIsAbsentOnKernelsWithoutTheCounter() {
     NodeMemMetrics m = new FakeVmstat(List.of("pswpin 1", "pswpout 2"));
     m.poll();
 
-    assertEquals(-1L, m.getSystemOomKillTotal());
+    assertNull(m.getSystemOomKillTotal());
     assertEquals(2L, m.getSwapOutPagesTotal());
   }
 
@@ -189,15 +189,15 @@ class SystemHandlesAndOomTest {
   }
 
   @Test
-  void cgroupOomKillIsMinusOneWithoutTheFileOrTheLine() throws Exception {
+  void cgroupOomKillIsAbsentWithoutTheFileOrTheLine() throws Exception {
     CgroupMemMetrics none = cgroup("v2");
     none.poll();
-    assertEquals(-1L, none.getMemoryOomKillTotal());
+    assertNull(none.getMemoryOomKillTotal());
 
     CgroupMemMetrics old = cgroup("v1");
     Files.writeString(cgroupDir.resolve("memory.oom_control"), "oom_kill_disable 0\nunder_oom 0\n");
     old.poll();
-    assertEquals(-1L, old.getMemoryOomKillTotal(), "kernels before 4.13 have no oom_kill line");
+    assertNull(old.getMemoryOomKillTotal(), "kernels before 4.13 have no oom_kill line");
     assertNull(old.lastRefreshError());
   }
 
@@ -219,19 +219,19 @@ class SystemHandlesAndOomTest {
     m.poll();
 
     assertEquals(7L, m.getMemoryMaxEventsTotal());
-    assertEquals(-1L, m.getMemoryHighEventsTotal());
+    assertNull(m.getMemoryHighEventsTotal());
   }
 
   @Test
-  void cgroupEventsAreMinusOneWhenTheFilesAreMissing() throws Exception {
+  void cgroupEventsAreAbsentWhenTheFilesAreMissing() throws Exception {
     CgroupMemMetrics v2 = cgroup("v2");
     v2.poll();
-    assertEquals(-1L, v2.getMemoryMaxEventsTotal());
-    assertEquals(-1L, v2.getMemoryHighEventsTotal());
+    assertNull(v2.getMemoryMaxEventsTotal());
+    assertNull(v2.getMemoryHighEventsTotal());
 
     CgroupMemMetrics v1 = cgroup("v1");
     v1.poll();
-    assertEquals(-1L, v1.getMemoryMaxEventsTotal());
+    assertNull(v1.getMemoryMaxEventsTotal());
     assertNull(v1.lastRefreshError());
   }
 }

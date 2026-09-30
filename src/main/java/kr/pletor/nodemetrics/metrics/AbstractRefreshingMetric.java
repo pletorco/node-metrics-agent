@@ -48,6 +48,11 @@ abstract class AbstractRefreshingMetric implements RefreshManagedMetric {
   }
 
   @Override
+  public final boolean isReadRefreshEnabled() {
+    return readRefreshEnabled;
+  }
+
+  @Override
   public final Throwable lastRefreshError() {
     return lastRefreshError;
   }
@@ -65,6 +70,18 @@ abstract class AbstractRefreshingMetric implements RefreshManagedMetric {
     if (readRefreshEnabled && refreshCadence.tryAcquire()) {
       runRefresh();
     }
+  }
+
+  /**
+   * A cumulative counter as reported over JMX: the value, or {@code null} when it is unavailable
+   * (kept as a negative number internally). An absent value is skipped by the Prometheus JMX
+   * exporter, whereas a {@code -1} typed as a counter would fail the whole scrape.
+   *
+   * @param value the counter value, negative when unavailable
+   * @return the value, or {@code null} when unavailable
+   */
+  protected static Long counterOrNull(long value) {
+    return value < 0L ? null : value;
   }
 
   private void runRefresh() {

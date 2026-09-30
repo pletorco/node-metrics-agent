@@ -205,9 +205,9 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
   }
 
   @Override
-  public long getCpuSomeTotalMicros() {
+  public Long getCpuSomeTotalMicros() {
     refreshOnRead();
-    return snapshot.totals[CPU_SOME];
+    return counterOrNull(snapshot.totals[CPU_SOME]);
   }
 
   @Override
@@ -217,9 +217,9 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
   }
 
   @Override
-  public long getCpuFullTotalMicros() {
+  public Long getCpuFullTotalMicros() {
     refreshOnRead();
-    return snapshot.totals[CPU_FULL];
+    return counterOrNull(snapshot.totals[CPU_FULL]);
   }
 
   @Override
@@ -229,9 +229,9 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
   }
 
   @Override
-  public long getMemorySomeTotalMicros() {
+  public Long getMemorySomeTotalMicros() {
     refreshOnRead();
-    return snapshot.totals[MEMORY_SOME];
+    return counterOrNull(snapshot.totals[MEMORY_SOME]);
   }
 
   @Override
@@ -241,9 +241,9 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
   }
 
   @Override
-  public long getMemoryFullTotalMicros() {
+  public Long getMemoryFullTotalMicros() {
     refreshOnRead();
-    return snapshot.totals[MEMORY_FULL];
+    return counterOrNull(snapshot.totals[MEMORY_FULL]);
   }
 
   @Override
@@ -253,9 +253,9 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
   }
 
   @Override
-  public long getIoSomeTotalMicros() {
+  public Long getIoSomeTotalMicros() {
     refreshOnRead();
-    return snapshot.totals[IO_SOME];
+    return counterOrNull(snapshot.totals[IO_SOME]);
   }
 
   @Override
@@ -265,8 +265,8 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
   }
 
   @Override
-  public long getIoFullTotalMicros() {
+  public Long getIoFullTotalMicros() {
     refreshOnRead();
-    return snapshot.totals[IO_FULL];
+    return counterOrNull(snapshot.totals[IO_FULL]);
   }
 }

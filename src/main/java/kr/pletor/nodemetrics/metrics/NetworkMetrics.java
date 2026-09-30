@@ -135,57 +135,57 @@ public class NetworkMetrics extends AbstractRefreshingMetric implements NetworkM
   }
 
   @Override
-  public long getNetRxErrorsTotal() {
+  public Long getNetRxErrorsTotal() {
     refreshOnRead();
-    return rxErrors;
+    return counterOrNull(rxErrors);
   }
 
   @Override
-  public long getNetRxDroppedTotal() {
+  public Long getNetRxDroppedTotal() {
     refreshOnRead();
-    return rxDropped;
+    return counterOrNull(rxDropped);
   }
 
   @Override
-  public long getNetTxErrorsTotal() {
+  public Long getNetTxErrorsTotal() {
     refreshOnRead();
-    return txErrors;
+    return counterOrNull(txErrors);
   }
 
   @Override
-  public long getNetTxDroppedTotal() {
+  public Long getNetTxDroppedTotal() {
     refreshOnRead();
-    return txDropped;
+    return counterOrNull(txDropped);
   }
 
   @Override
-  public long getTcpOutSegsTotal() {
+  public Long getTcpOutSegsTotal() {
     refreshOnRead();
-    return tcpOutSegs;
+    return counterOrNull(tcpOutSegs);
   }
 
   @Override
-  public long getTcpRetransSegsTotal() {
+  public Long getTcpRetransSegsTotal() {
     refreshOnRead();
-    return tcpRetransSegs;
+    return counterOrNull(tcpRetransSegs);
   }
 
   @Override
-  public long getTcpInErrsTotal() {
+  public Long getTcpInErrsTotal() {
     refreshOnRead();
-    return tcpInErrs;
+    return counterOrNull(tcpInErrs);
   }
 
   @Override
-  public long getTcpAttemptFailsTotal() {
+  public Long getTcpAttemptFailsTotal() {
     refreshOnRead();
-    return tcpAttemptFails;
+    return counterOrNull(tcpAttemptFails);
   }
 
   @Override
-  public long getTcpEstabResetsTotal() {
+  public Long getTcpEstabResetsTotal() {
     refreshOnRead();
-    return tcpEstabResets;
+    return counterOrNull(tcpEstabResets);
   }
 
   @Override
@@ -195,20 +195,20 @@ public class NetworkMetrics extends AbstractRefreshingMetric implements NetworkM
   }
 
   @Override
-  public long getTcpListenOverflowsTotal() {
+  public Long getTcpListenOverflowsTotal() {
     refreshOnRead();
-    return listenOverflows;
+    return counterOrNull(listenOverflows);
   }
 
   @Override
-  public long getTcpListenDropsTotal() {
+  public Long getTcpListenDropsTotal() {
     refreshOnRead();
-    return listenDrops;
+    return counterOrNull(listenDrops);
   }
 
   @Override
-  public long getTcpTimeoutsTotal() {
+  public Long getTcpTimeoutsTotal() {
     refreshOnRead();
-    return tcpTimeouts;
+    return counterOrNull(tcpTimeouts);
   }
 }

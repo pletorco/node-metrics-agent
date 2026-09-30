@@ -37,6 +37,13 @@ scripts/smoke-test.sh build/libs/node-metrics-agent-*-all.jar
 JAVA_BIN=/path/to/jdk11/bin/java scripts/smoke-test.sh build/libs/node-metrics-agent-*-all.jar
 ```
 
+To scrape the agent through a real Prometheus JMX exporter (download the exporter jar from its
+[releases](https://github.com/prometheus/jmx_exporter/releases); CI runs 1.0.1 and 1.6.0):
+
+```bash
+scripts/exporter-scrape-test.sh build/libs/node-metrics-agent-*-all.jar /path/to/jmx_prometheus_javaagent.jar
+```
+
 `shadowJar` does not run the tests; run `./gradlew check` (tests and checkstyle) as well before
 releasing. The release workflow does both.
 

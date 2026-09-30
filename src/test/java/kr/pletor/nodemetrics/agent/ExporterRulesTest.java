@@ -48,10 +48,10 @@ import org.yaml.snakeyaml.Yaml;
  * Keeps the example exporter rules, the MBean attributes and the example alerts consistent.
  *
  * <p>Every numeric attribute needs a {@link JmxMetricHint} and a rule that types it accordingly.
- * Cumulative counters must not be exported as {@code COUNTER}: they report {@code -1} when their
- * source is unavailable, and the Prometheus JMX exporter 1.x fails the entire scrape (HTTP 500) on
- * a negative counter. Only the agent's own counters, which are never negative, may be {@code
- * COUNTER}.
+ * The Prometheus JMX exporter 1.x fails the entire scrape (HTTP 500) on a negative {@code COUNTER},
+ * so a counter must never report {@code -1} for "unavailable": its getter returns a boxed {@link
+ * Long}, {@code null} when the value is unavailable, and the exporter skips it. The agent's own
+ * counters, which are never negative, may return a primitive.
  */
 class ExporterRulesTest {
 
@@ -187,7 +187,9 @@ class ExporterRulesTest {
     for (int group = m.groupCount(); group >= 1; group--) {
       name = name.replace("$" + group, m.group(group) == null ? "" : m.group(group));
     }
-    return name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_]", "_");
+    name = name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_]", "_");
+    // The exporter appends "_total" to every counter that does not already end with it.
+    return "COUNTER".equals(rule.type()) && !name.endsWith("_total") ? name + "_total" : name;
   }
 
   @Test
@@ -212,7 +214,13 @@ class ExporterRulesTest {
         if ("gauge".equals(hint.value())) {
           expected = "GAUGE";
         } else if ("counter".equals(hint.value())) {
-          expected = AGENT_DOMAIN.equals(bean.domain()) ? "COUNTER" : "UNTYPED";
+          expected = "COUNTER";
+          if (!AGENT_DOMAIN.equals(bean.domain()) && getter.getReturnType() != Long.class) {
+            problems.add(
+                where
+                    + " is a counter and must return a boxed Long (null when unavailable), not "
+                    + getter.getReturnType().getSimpleName());
+          }
         } else {
           problems.add(where + " has unknown hint " + hint.value());
           continue;
@@ -235,13 +243,11 @@ class ExporterRulesTest {
   }
 
   @Test
-  void noCounterRuleOutsideTheAgentDomain() throws IOException {
+  void noRuleExportsCountersAsUntyped() throws IOException {
     for (Rule rule : loadRules()) {
-      if ("COUNTER".equals(rule.type())) {
-        assertTrue(
-            rule.pattern().pattern().startsWith(AGENT_DOMAIN),
-            "A COUNTER rule fails the whole scrape when the value is -1: " + rule.pattern());
-      }
+      assertTrue(
+          !"UNTYPED".equals(rule.type()),
+          "Counters are typed COUNTER (an unavailable one is absent, never -1): " + rule.pattern());
     }
   }
 
