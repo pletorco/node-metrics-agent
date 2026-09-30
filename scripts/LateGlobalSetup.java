@@ -47,7 +47,7 @@ public class LateGlobalSetup {
     }
 
     // The agent must have used the application's server rather than given up.
-    ObjectName cpu = new ObjectName("co.pletor.node:type=CpuMetrics");
+    ObjectName cpu = new ObjectName("kr.pletor.node:type=CpuMetrics");
     long deadline = System.nanoTime() + 20_000_000_000L;
     while (!server.isRegistered(cpu)) {
       if (System.nanoTime() > deadline) {

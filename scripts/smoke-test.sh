@@ -18,7 +18,7 @@ trap 'rm -rf "$WORK"' EXIT
 echo "== using $("$JAVA_BIN" -version 2>&1 | head -1)"
 
 echo "== manifest: the entry point must be the tiny launcher, not the class with static state"
-unzip -p "$JAR" META-INF/MANIFEST.MF | tr -d '\r' | grep -q '^Premain-Class: co.pletor.nodemetrics.agent.AgentLauncher$'
+unzip -p "$JAR" META-INF/MANIFEST.MF | tr -d '\r' | grep -q '^Premain-Class: kr.pletor.nodemetrics.agent.AgentLauncher$'
 
 echo "== CLI: help"
 "$JAVA_BIN" -jar "$JAR" help > /dev/null
@@ -49,7 +49,7 @@ import sys, zipfile
 src = zipfile.ZipFile(sys.argv[1])
 dst = zipfile.ZipFile(sys.argv[2], "w", zipfile.ZIP_DEFLATED)
 for item in src.infolist():
-    if item.filename != "co/pletor/nodemetrics/agent/ThrottledLogger.class":
+    if item.filename != "kr/pletor/nodemetrics/agent/ThrottledLogger.class":
         dst.writestr(item, src.read(item.filename))
 dst.close()
 PY

@@ -10,49 +10,49 @@ All notable changes to this project will be documented in this file.
   - `SystemCpuUserTicks`, `SystemCpuNiceTicks`, `SystemCpuSystemTicks`, `SystemCpuIdleTicks`,
     `SystemCpuIrqTicks`, `SystemCpuSoftIrqTicks` on `CpuMetrics`: the remaining cumulative modes of
     the aggregate `/proc/stat` line, read at no extra cost.
-  - `SystemOomKillTotal` on `co.pletor.node:type=MemMetrics` (`/proc/vmstat`, host-wide) and
-    `MemoryOomKillTotal` on `co.pletor.cgroup:type=MemMetrics` (`memory.events` / `memory.oom_control`).
+  - `SystemOomKillTotal` on `kr.pletor.node:type=MemMetrics` (`/proc/vmstat`, host-wide) and
+    `MemoryOomKillTotal` on `kr.pletor.cgroup:type=MemMetrics` (`memory.events` / `memory.oom_control`).
     A kill of the JVM itself is not reliably visible on Kubernetes; see `RUNBOOK.md`.
   - `SystemOpenFileHandles` and `SystemMaxFileHandles` on `FdMetrics` (`/proc/sys/fs/file-nr`).
-  - `co.pletor.proc:type=MemoryMapMetrics`: `MemoryMapCount` (lines of `/proc/self/maps`, counted as
+  - `kr.pletor.proc:type=MemoryMapMetrics`: `MemoryMapCount` (lines of `/proc/self/maps`, counted as
     raw bytes: about 32 ms at 60,000 mappings) and `MaxMemoryMapCount` (`vm.max_map_count`),
     refreshed once a minute in the low-priority lane.
-- Disk operation and I/O time counters, `co.pletor.node:type=DiskIoMetrics`, from
+- Disk operation and I/O time counters, `kr.pletor.node:type=DiskIoMetrics`, from
   `/proc/diskstats` and summed over the same leaf devices as the disk byte counters: completed
   reads and writes, time spent reading and writing, busy time (`io_ticks`), weighted busy time, I/O
   in flight and the number of devices. Rates give IOPS, latency, utilization and queue length.
-- Network error and TCP health counters, `co.pletor.node:type=NetworkMetrics`: receive/transmit
+- Network error and TCP health counters, `kr.pletor.node:type=NetworkMetrics`: receive/transmit
   errors and drops (same interfaces as the byte counters) and, from `/proc/net/snmp` and
   `/proc/net/netstat`, TCP segments sent, retransmitted and in error, failed connection attempts,
   established-connection resets, current connections, listen overflows and drops, and
   retransmission timeouts. Each source is read independently.
-- JVM process figures, `co.pletor.proc:type=ProcessMetrics`, from `/proc/self`: resident set size
+- JVM process figures, `kr.pletor.proc:type=ProcessMetrics`, from `/proc/self`: resident set size
   and its peak, anonymous, file and shared parts, swap, native thread count, and the bytes read
   from and written to storage. Context switches are not exposed because `/proc/self/status`
   reports them for the main thread only.
-- `CgroupCpuLimitCores` on `co.pletor.node:type=CpuMetrics`: the effective CPU limit of the
+- `CgroupCpuLimitCores` on `kr.pletor.node:type=CpuMetrics`: the effective CPU limit of the
   container in cores (CFS quota over period; the tightest finite limit of the cgroup and its
   ancestors, like `MemoryLimitBytes`; `-1` when unlimited or unavailable). With
   `CgroupCpuUsageNanosTotal` it gives CPU use as a share of the limit. Read from `cpu.max` (v2) or
   `cpu.cfs_quota_us` / `cpu.cfs_period_us` (v1).
-- Swap metrics. `co.pletor.node:type=MemMetrics`: `SwapTotalBytes` (`0` without swap), `SwapUsedBytes`
+- Swap metrics. `kr.pletor.node:type=MemMetrics`: `SwapTotalBytes` (`0` without swap), `SwapUsedBytes`
   and the cumulative counters `SwapInPagesTotal` / `SwapOutPagesTotal` (from `/proc/vmstat`
   `pswpin` / `pswpout`; a missing `/proc/vmstat` is `-1`, not a failure).
-  `co.pletor.cgroup:type=MemMetrics`: `SwapUsageBytes` and `SwapLimitBytes` for the container's own
+  `kr.pletor.cgroup:type=MemMetrics`: `SwapUsageBytes` and `SwapLimitBytes` for the container's own
   cgroup (v2 `memory.swap.current` / `memory.swap.max`; v1 derived from `memsw`; `-1` when swap is
   not accounted). Exporter rules updated for the page counters.
-- Pressure stall information (PSI) metrics: `co.pletor.node:type=PressureMetrics` (from
-  `/proc/pressure`, host-wide) and `co.pletor.cgroup:type=PressureMetrics` (the container's own
+- Pressure stall information (PSI) metrics: `kr.pletor.node:type=PressureMetrics` (from
+  `/proc/pressure`, host-wide) and `kr.pletor.cgroup:type=PressureMetrics` (the container's own
   `cpu.pressure`, `memory.pressure` and `io.pressure`, cgroup v2). For CPU, memory and I/O, each
   with `some` and `full`: the kernel's 10-second average in percent (`*Avg10`) and the cumulative
   stalled time in microseconds (`*TotalMicros`, a counter for `rate()`). `-1` when PSI is
   unavailable. Exporter rules updated for the totals.
-- `co.pletor.cgroup:type=PidsMetrics`: `PidsCurrent` and `PidsLimit` from the `pids` controller
+- `kr.pletor.cgroup:type=PidsMetrics`: `PidsCurrent` and `PidsLimit` from the `pids` controller
   (the tightest finite `pids.max` of the cgroup and its ancestors, with the count of that level;
   cgroup v1 reads the `pids` hierarchy next to `memory`). At the limit the JVM fails with "unable to
   create native thread".
 - `MemoryMaxEventsTotal` (`max` in `memory.events`, `memory.failcnt` on v1) and
-  `MemoryHighEventsTotal` (`high`, v2 only) on `co.pletor.cgroup:type=MemMetrics`: the container
+  `MemoryHighEventsTotal` (`high`, v2 only) on `kr.pletor.cgroup:type=MemMetrics`: the container
   hitting its memory limit, which precedes an OOM kill. Read from the file already used for
   `MemoryOomKillTotal`, so no extra read.
 - `src/main/resources/prometheus_alerts_example.yml`: example Prometheus alerting rules for the
@@ -62,6 +62,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Breaking:** the JMX domains are now `kr.pletor.node`, `kr.pletor.cgroup`, `kr.pletor.proc` and
+  `kr.pletor.agent` (were `co.pletor.*`), and the Java package and Maven group are `kr.pletor`
+  (`kr.pletor.nodemetrics.agent.AgentLauncher` is the `Premain-Class`). The `-javaagent` jar path
+  and the Prometheus series names (`pletor_*`) do not change, but an exporter configuration copied
+  from an earlier version matches nothing and exports no agent metrics until its `co.pletor.`
+  patterns become `kr.pletor.`: `sed -i 's/co\.pletor\./kr.pletor./g' pletor-node-metrics.yml`.
+  Update any JMX client, dashboard or script that reads the MBeans directly in the same way.
 - The regular metrics now refresh on 3 worker threads (was 1), and, like the filesystem lane, a
   task is never queued again while its previous run is still queued or running. Before, one hung
   `/proc` or cgroup read blocked every regular metric, and its queued copies then filled the queue
@@ -78,7 +85,7 @@ All notable changes to this project will be documented in this file.
   value and the name as documented, and `rate()`/`increase()` work on them unchanged. **Upgrade
   note:** with exporter 1.x, series that used to carry `_total` (for example
   `pletor_node_iorates_diskreadbytestotal_total`) are now exposed without it; exporter 0.x names do
-  not change. The agent's own `co.pletor.agent` counters stay `COUNTER`. See "Unavailable values and
+  not change. The agent's own `kr.pletor.agent` counters stay `COUNTER`. See "Unavailable values and
   the exporter" in `RUNBOOK.md`.
 
 ## [0.9.0] - 2026-09-29

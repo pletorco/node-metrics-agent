@@ -32,7 +32,7 @@ plugins {
 // -----------------------------------------------------------------------------
 // Project metadata
 // -----------------------------------------------------------------------------
-group = "co.pletor"
+group = "kr.pletor"
 version = "0.9.0"
 description = "JVM agent for exposing host and container node metrics through JMX"
 
@@ -245,9 +245,9 @@ tasks.jar {
     manifest {
         attributes(
             // CLI entrypoint
-            "Main-Class" to "co.pletor.nodemetrics.agent.ConfigCli",
+            "Main-Class" to "kr.pletor.nodemetrics.agent.ConfigCli",
             // Java agent premain entrypoint
-            "Premain-Class" to "co.pletor.nodemetrics.agent.AgentLauncher",
+            "Premain-Class" to "kr.pletor.nodemetrics.agent.AgentLauncher",
             "Can-Redefine-Classes" to "false",
             "Can-Retransform-Classes" to "false"
         )
@@ -268,15 +268,15 @@ tasks.shadowJar {
     configurations = listOf(deploymentRuntimeConfiguration.get())
 
     // Relocate snakeyaml to avoid conflicts with application's classpath
-    relocate("org.yaml.snakeyaml", "co.pletor.nodemetrics.shaded.snakeyaml")
+    relocate("org.yaml.snakeyaml", "kr.pletor.nodemetrics.shaded.snakeyaml")
 
     // Merge META-INF/service files from dependencies
     mergeServiceFiles()
 
     manifest {
         attributes(
-            "Main-Class" to "co.pletor.nodemetrics.agent.ConfigCli",
-            "Premain-Class" to "co.pletor.nodemetrics.agent.AgentLauncher",
+            "Main-Class" to "kr.pletor.nodemetrics.agent.ConfigCli",
+            "Premain-Class" to "kr.pletor.nodemetrics.agent.AgentLauncher",
             "Can-Redefine-Classes" to "false",
             "Can-Retransform-Classes" to "false"
         )

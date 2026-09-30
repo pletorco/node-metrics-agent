@@ -6,9 +6,9 @@ Target: `node-metrics-agent` `0.9.0`
 ## Module Classification
 
 - Class: Telemetry module
-- Company namespace: Pletor Co., Ltd. / `co.pletor.nodemetrics`
+- Company namespace: Pletor Co., Ltd. / `kr.pletor.nodemetrics`
 - Host entry points:
-  - `co.pletor.nodemetrics.agent.AgentLauncher.premain(...)`: no static state; starts one daemon
+  - `kr.pletor.nodemetrics.agent.AgentLauncher.premain(...)`: no static state; starts one daemon
     thread and returns. The actual initialization (`MetricsAgent.premain(...)`) runs on that thread.
   - JMX getter paths in metric MBeans (return cached values; no I/O when the refresh engine runs)
   - Agent daemon threads: initialization, refresh dispatcher and workers, filesystem probes, and the
@@ -26,8 +26,8 @@ Target: `node-metrics-agent` `0.9.0`
   (`refresh_interval_seconds`); a scrape only reads stored values.
 - `fsmetrics_max_partitions` has a hard upper limit (256).
 - The refresh pipeline uses a bounded queue and daemon worker threads.
-- Runtime modes are exposed through `co.pletor.agent:type=TelemetryMode`.
-- Pipeline counters and staleness signals are exposed through `co.pletor.agent:type=Observability`.
+- Runtime modes are exposed through `kr.pletor.agent:type=TelemetryMode`.
+- Pipeline counters and staleness signals are exposed through `kr.pletor.agent:type=Observability`.
 - Prometheus JMX exporter example rules use the `pletor_*` metric prefix.
 - Config reload keeps the previous working configuration on failure.
 - Repeated internal logs use throttling with a bounded key space.
