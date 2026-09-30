@@ -48,6 +48,7 @@ Confirm these MBeans exist:
 - `co.pletor.cgroup:type=PressureMetrics`
 - `co.pletor.proc:type=FdMetrics`
 - `co.pletor.proc:type=ProcessMetrics`
+- `co.pletor.proc:type=MemoryMapMetrics`
 - `co.pletor.node:type=DiskIoMetrics`
 - `co.pletor.node:type=NetworkMetrics`
 - `co.pletor.node:type=IoRates`
@@ -202,6 +203,50 @@ JVM process (`ProcessMetrics`):
   (`/proc/self/io`, excluding page-cache hits); they are `-1` when the kernel has no task I/O
   accounting or access is denied.
 - Context switches are not exposed: `/proc/self/status` reports them for the main thread only.
+
+CPU time per mode:
+
+- `CpuMetrics` exposes the cumulative ticks of every state of the aggregate `/proc/stat` line:
+  `SystemCpuUserTicks`, `SystemCpuNiceTicks`, `SystemCpuSystemTicks`, `SystemCpuIdleTicks`,
+  `SystemCpuIrqTicks` and `SystemCpuSoftIrqTicks`, next to the existing total, I/O wait and steal
+  ticks. Ticks are in `USER_HZ` (normally 100 per second).
+- Share of CPU time in a state over any window: `rate(pletor_node_cpumetrics_systemcpusystemticks[5m])
+  / rate(pletor_node_cpumetrics_systemcputotalticks[5m])`. A high `system` or `softirq` share points
+  at system-call or network-processing load, a high `nice` share at background jobs.
+
+OOM kills:
+
+- `MemMetrics.SystemOomKillTotal` counts processes killed by the kernel's OOM killer on the whole
+  host (`/proc/vmstat`); inside a container it still counts kills of any process on the node, so a
+  rise means the node is short of memory even when this container was not the victim.
+- `co.pletor.cgroup:type=MemMetrics` `MemoryOomKillTotal` counts kills in the container's own cgroup
+  (`memory.events` on v2, `memory.oom_control` on v1).
+- **A kill of the JVM itself is not reliably visible.** The agent dies with the process and, on
+  Kubernetes, a restarted container gets a new cgroup that starts at 0. Use the orchestrator's
+  termination reason (`kube_pod_container_status_last_terminated_reason`, the restart count) for
+  that. The cgroup counter is reliable for other processes in the container and for services whose
+  cgroup outlives the JVM (a systemd service).
+- Both are `-1` on kernels older than 4.13.
+
+Memory mappings:
+
+- `MemoryMapMetrics` reports `MemoryMapCount` (lines of `/proc/self/maps`) and `MaxMemoryMapCount`
+  (`vm.max_map_count`). A process that maps many files, such as a Kafka broker with the index files
+  of every log segment, fails with "Map failed" or an `OutOfMemoryError` when it reaches the limit
+  although heap and RAM are fine. Alert on `memorymapcount / maxmemorymapcount` (for example above
+  `0.8`); the count grows with partitions and segments.
+- It is the most expensive read the agent does, so it is refreshed once a minute in the
+  low-priority lane (dropped first when the engine is overloaded). Measured with the agent's
+  streaming byte count: 0.7 ms at 1,000 mappings, 12.8 ms at 20,000 and 32 ms at 60,000 (79 ms when
+  reading line by line). While another thread read the file in a tight loop, `mmap` calls from a
+  second thread showed no measurable extra latency (median 3 us either way; p99 52 versus 62 us).
+  On a host with several very large processes the count is only for the JVM itself.
+
+System-wide file handles:
+
+- `FdMetrics.SystemOpenFileHandles` and `SystemMaxFileHandles` are the kernel-wide count and limit
+  (`/proc/sys/fs/file-nr`). A host running many processes can exhaust the kernel-wide table even
+  when each process is under its own limit; mostly relevant to VMs and bare metal.
 
 CPU limit:
 

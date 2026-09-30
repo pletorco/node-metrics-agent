@@ -179,4 +179,85 @@ public interface CpuMetricsMBean {
   @JmxMetricHint("gauge")
   @JmxMetricUnit("cores")
   double getCgroupCpuLimitCores();
+
+  /**
+   * Returns the cumulative CPU time spent running normal user-space processes, in clock ticks
+   * ({@code USER_HZ}, normally 100 per second), from the aggregate line of {@code /proc/stat}.
+   *
+   * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
+   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   *
+   * @return ticks since boot
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("ticks")
+  long getSystemCpuUserTicks();
+
+  /**
+   * Returns the cumulative CPU time spent running user-space processes with a positive nice value
+   * (lowered priority), in clock ticks ({@code USER_HZ}, normally 100 per second), from the
+   * aggregate line of {@code /proc/stat}.
+   *
+   * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
+   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   *
+   * @return ticks since boot
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("ticks")
+  long getSystemCpuNiceTicks();
+
+  /**
+   * Returns the cumulative CPU time spent running kernel code on behalf of processes (system
+   * calls), in clock ticks ({@code USER_HZ}, normally 100 per second), from the aggregate line of
+   * {@code /proc/stat}.
+   *
+   * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
+   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   *
+   * @return ticks since boot
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("ticks")
+  long getSystemCpuSystemTicks();
+
+  /**
+   * Returns the cumulative CPU time spent idle, with no I/O outstanding, in clock ticks ({@code
+   * USER_HZ}, normally 100 per second), from the aggregate line of {@code /proc/stat}.
+   *
+   * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
+   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   *
+   * @return ticks since boot
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("ticks")
+  long getSystemCpuIdleTicks();
+
+  /**
+   * Returns the cumulative CPU time spent servicing hardware interrupts, in clock ticks ({@code
+   * USER_HZ}, normally 100 per second), from the aggregate line of {@code /proc/stat}.
+   *
+   * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
+   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   *
+   * @return ticks since boot
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("ticks")
+  long getSystemCpuIrqTicks();
+
+  /**
+   * Returns the cumulative CPU time spent servicing software interrupts (network receive and
+   * transmit processing, timers), in clock ticks ({@code USER_HZ}, normally 100 per second), from
+   * the aggregate line of {@code /proc/stat}.
+   *
+   * <p>{@code rate()} of this over the {@code rate()} of {@link #getSystemCpuTotalTicks()} is the
+   * share of CPU time in this state over any window. {@code -1} when unavailable.
+   *
+   * @return ticks since boot
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("ticks")
+  long getSystemCpuSoftIrqTicks();
 }

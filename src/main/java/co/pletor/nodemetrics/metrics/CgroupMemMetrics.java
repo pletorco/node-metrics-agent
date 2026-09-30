@@ -62,6 +62,9 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   /** Last observed cgroup swap limit in bytes; -1 means "unlimited or unavailable". */
   private volatile long swapLimit = -1L;
 
+  /** Cumulative OOM kills in this cgroup; -1 means "unavailable". */
+  private volatile long oomKills = -1L;
+
   /**
    * Captured cgroup metadata (version, path, resolved base directory, etc.).
    *
@@ -83,7 +86,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   protected void doRefresh() {
     // Non-Linux environments: expose no values.
     if (!LinuxProcFs.isLinux()) {
-      limit = usage = workingSet = swapUsage = swapLimit = -1L;
+      limit = usage = workingSet = swapUsage = swapLimit = oomKills = -1L;
       return;
     }
 
@@ -105,6 +108,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
         workingSet = computeWorkingSet(base, cur, "inactive_file");
         swapUsage = readNumber(base.resolve("memory.swap.current"));
         swapLimit = readNumber(base.resolve("memory.swap.max"));
+        oomKills = readOomKills(base.resolve("memory.events"));
 
       } else if ("v1".equals(cg.version)) {
         // ----- cgroup v1 -----
@@ -122,15 +126,16 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
         // v1 exposes the hierarchical figure as total_inactive_file (what cAdvisor uses).
         workingSet = computeWorkingSet(base, cur, "total_inactive_file", "inactive_file");
         computeV1Swap(base, cur);
+        oomKills = readOomKills(base.resolve("memory.oom_control"));
 
       } else {
         // Unknown or unsupported cgroup version.
-        limit = usage = workingSet = swapUsage = swapLimit = -1L;
+        limit = usage = workingSet = swapUsage = swapLimit = oomKills = -1L;
       }
     } catch (Throwable t) {
       // On any read/parse error keep metrics safe and clearly unavailable.
       recordRefreshFailure(t);
-      limit = usage = workingSet = swapUsage = swapLimit = -1L;
+      limit = usage = workingSet = swapUsage = swapLimit = oomKills = -1L;
     }
   }
 
@@ -148,6 +153,18 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
         (memswLimit >= 0L && ownMemoryLimit >= 0L)
             ? Math.max(0L, memswLimit - ownMemoryLimit)
             : -1L;
+  }
+
+  /**
+   * Reads the {@code oom_kill} line of {@code memory.events} (v2) or {@code memory.oom_control}.
+   */
+  private static long readOomKills(Path file) {
+    try {
+      Long value = MemStatsUtil.readKeyValues(file).get("oom_kill");
+      return value == null || value < 0L ? -1L : value;
+    } catch (IOException | RuntimeException e) {
+      return -1L;
+    }
   }
 
   private static long unlessUnlimited(long v1Value) {
@@ -315,5 +332,16 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   public long getSwapLimitBytes() {
     refreshOnRead();
     return swapLimit;
+  }
+
+  /**
+   * Returns the cumulative OOM kills in this cgroup.
+   *
+   * @return the count, or -1 when unavailable
+   */
+  @Override
+  public long getMemoryOomKillTotal() {
+    refreshOnRead();
+    return oomKills;
   }
 }

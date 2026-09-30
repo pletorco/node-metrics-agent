@@ -98,6 +98,12 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   private volatile long cpuTotalTicks = -1L;
   private volatile long cpuIoWaitTicks = -1L;
   private volatile long cpuStealTicks = -1L;
+  private volatile long cpuUserTicks = -1L;
+  private volatile long cpuNiceTicks = -1L;
+  private volatile long cpuSystemTicks = -1L;
+  private volatile long cpuIdleTicks = -1L;
+  private volatile long cpuIrqTicks = -1L;
+  private volatile long cpuSoftIrqTicks = -1L;
   private volatile long cgroupThrottledPeriodsTotal = -1L;
   private volatile long cgroupThrottledTimeNanosTotal = -1L;
   private volatile long cgroupUsageNanosTotal = -1L;
@@ -355,6 +361,12 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     cpuTotalTicks = totalCurrent;
     cpuIoWaitTicks = current.iowait;
     cpuStealTicks = current.steal;
+    cpuUserTicks = current.user;
+    cpuNiceTicks = current.nice;
+    cpuSystemTicks = current.system;
+    cpuIdleTicks = current.idle;
+    cpuIrqTicks = current.irq;
+    cpuSoftIrqTicks = current.softirq;
 
     if (!cpuTimesInitialized) {
       // First snapshot: just initialize and return without computing ratios.
@@ -995,5 +1007,41 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   public double getCgroupCpuLimitCores() {
     refreshOnRead();
     return cgroupCpuLimitCores;
+  }
+
+  @Override
+  public long getSystemCpuUserTicks() {
+    refreshOnRead();
+    return cpuUserTicks;
+  }
+
+  @Override
+  public long getSystemCpuNiceTicks() {
+    refreshOnRead();
+    return cpuNiceTicks;
+  }
+
+  @Override
+  public long getSystemCpuSystemTicks() {
+    refreshOnRead();
+    return cpuSystemTicks;
+  }
+
+  @Override
+  public long getSystemCpuIdleTicks() {
+    refreshOnRead();
+    return cpuIdleTicks;
+  }
+
+  @Override
+  public long getSystemCpuIrqTicks() {
+    refreshOnRead();
+    return cpuIrqTicks;
+  }
+
+  @Override
+  public long getSystemCpuSoftIrqTicks() {
+    refreshOnRead();
+    return cpuSoftIrqTicks;
   }
 }

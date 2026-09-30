@@ -42,7 +42,7 @@ rules:
   # Exports cgroup counters/gauges.
   # Note: CgroupVersion/CgroupPath labels are appended by metricCustomizers.
   # ============================================================================
-  - pattern: 'co.pletor.cgroup<type=(.+?)(?:,(.+))?><>(CgroupCpuThrottledCount|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
+  - pattern: 'co.pletor.cgroup<type=(.+?)(?:,(.+))?><>(CgroupCpuThrottledCount|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_cgroup_$1_$3
     type: COUNTER
     cache: true
@@ -58,7 +58,7 @@ rules:
   # Exports node counters/gauges.
   # Note: OsInfoMetrics labels are appended by metricCustomizers.
   # ============================================================================
-  - pattern: 'co.pletor.node<type=(.+?)(?:,(.+))?><>(ProcessCpuTimeNanos|UptimeSeconds|SystemCpuTotalTicks|SystemCpuIoWaitTicks|SystemCpuStealTicks|CgroupCpuThrottledPeriodsTotal|CgroupCpuThrottledTimeNanosTotal|CgroupCpuUsageNanosTotal|DiskReadBytesTotal|DiskWriteBytesTotal|NetRxBytesTotal|NetTxBytesTotal|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
+  - pattern: 'co.pletor.node<type=(.+?)(?:,(.+))?><>(ProcessCpuTimeNanos|UptimeSeconds|SystemCpu[A-Za-z]+Ticks|CgroupCpuThrottledPeriodsTotal|CgroupCpuThrottledTimeNanosTotal|CgroupCpuUsageNanosTotal|DiskReadBytesTotal|DiskWriteBytesTotal|NetRxBytesTotal|NetTxBytesTotal|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_node_$1_$3
     type: COUNTER
     cache: true
