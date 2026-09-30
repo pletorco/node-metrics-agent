@@ -6,12 +6,16 @@ import co.pletor.nodemetrics.metrics.CgroupMemMetrics;
 import co.pletor.nodemetrics.metrics.CgroupMemMetricsMBean;
 import co.pletor.nodemetrics.metrics.CpuMetrics;
 import co.pletor.nodemetrics.metrics.CpuMetricsMBean;
+import co.pletor.nodemetrics.metrics.DiskIoMetrics;
+import co.pletor.nodemetrics.metrics.DiskIoMetricsMBean;
 import co.pletor.nodemetrics.metrics.FdMetrics;
 import co.pletor.nodemetrics.metrics.FdMetricsMBean;
 import co.pletor.nodemetrics.metrics.FsMetrics;
 import co.pletor.nodemetrics.metrics.FsMetricsMBean;
 import co.pletor.nodemetrics.metrics.IoRates;
 import co.pletor.nodemetrics.metrics.IoRatesMBean;
+import co.pletor.nodemetrics.metrics.NetworkMetrics;
+import co.pletor.nodemetrics.metrics.NetworkMetricsMBean;
 import co.pletor.nodemetrics.metrics.NodeMemMetrics;
 import co.pletor.nodemetrics.metrics.NodeMemMetricsMBean;
 import co.pletor.nodemetrics.metrics.OsInfoMetrics;
@@ -20,6 +24,8 @@ import co.pletor.nodemetrics.metrics.OsRuntimeMetrics;
 import co.pletor.nodemetrics.metrics.OsRuntimeMetricsMBean;
 import co.pletor.nodemetrics.metrics.PressureMetrics;
 import co.pletor.nodemetrics.metrics.PressureMetricsMBean;
+import co.pletor.nodemetrics.metrics.ProcessMetrics;
+import co.pletor.nodemetrics.metrics.ProcessMetricsMBean;
 import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
@@ -136,6 +142,9 @@ public class MetricsAgent {
   private static OsRuntimeMetrics osRuntimeBean;
   private static PressureMetrics nodePressureBean;
   private static PressureMetrics cgroupPressureBean;
+  private static DiskIoMetrics diskIoBean;
+  private static NetworkMetrics networkBean;
+  private static ProcessMetrics processBean;
 
   private static final String LOG_KEY_AGENT_STARTUP_FAILURE = "agent-startup-failure";
   private static final String LOG_KEY_BLANK_FSMETRICS_PATH = "blank-fsmetrics-path";
@@ -312,6 +321,24 @@ public class MetricsAgent {
             PressureMetrics::forCgroup,
             PressureMetricsMBean.class,
             "co.pletor.cgroup:type=PressureMetrics");
+    diskIoBean =
+        createAndRegister(
+            "disk I/O metrics",
+            DiskIoMetrics::new,
+            DiskIoMetricsMBean.class,
+            "co.pletor.node:type=DiskIoMetrics");
+    networkBean =
+        createAndRegister(
+            "network metrics",
+            NetworkMetrics::new,
+            NetworkMetricsMBean.class,
+            "co.pletor.node:type=NetworkMetrics");
+    processBean =
+        createAndRegister(
+            "process metrics",
+            ProcessMetrics::new,
+            ProcessMetricsMBean.class,
+            "co.pletor.proc:type=ProcessMetrics");
     createAndRegister(
         "telemetry mode metrics",
         () -> TELEMETRY_MODE_METRICS,
@@ -787,6 +814,9 @@ public class MetricsAgent {
     addHighPriorityTask(tasks, "os-runtime", osRuntimeBean, OS_RUNTIME_REFRESH_INTERVAL_MS);
     addHighPriorityTask(tasks, "pressure-node", nodePressureBean, fastMs);
     addHighPriorityTask(tasks, "pressure-cgroup", cgroupPressureBean, fastMs);
+    addHighPriorityTask(tasks, "disk-io", diskIoBean, fastMs);
+    addHighPriorityTask(tasks, "network", networkBean, fastMs);
+    addHighPriorityTask(tasks, "process", processBean, fastMs);
 
     for (Map.Entry<String, FsEntry> entry : fsMap.entrySet()) {
       FsMetrics fsBean = entry.getValue().getBean();

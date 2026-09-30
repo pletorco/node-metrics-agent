@@ -50,6 +50,16 @@ final class LinuxProcFs {
     // Utility class; no instances.
   }
 
+  /**
+   * Resolves a path below {@code /proc} (or the root substituted for tests).
+   *
+   * @param relative path below the proc root, e.g. {@code "self/status"}
+   * @return the resolved path
+   */
+  static Path procPath(String relative) {
+    return procRoot.resolve(relative);
+  }
+
   // Visible for testing
   static void setProcRoot(Path p) {
     procRoot = p;
@@ -111,6 +121,30 @@ final class LinuxProcFs {
 
     /** Sum of sectors written across all base/leaf block devices. */
     long writtenSectors = 0;
+
+    /** Sum of completed read operations. */
+    long readsCompleted = 0;
+
+    /** Sum of completed write operations. */
+    long writesCompleted = 0;
+
+    /** Sum of milliseconds spent reading (summed over operations, so it can exceed wall time). */
+    long readTimeMillis = 0;
+
+    /** Sum of milliseconds spent writing. */
+    long writeTimeMillis = 0;
+
+    /** Sum of milliseconds each device spent with at least one I/O in flight ({@code io_ticks}). */
+    long ioTimeMillis = 0;
+
+    /** Sum of the weighted I/O time in milliseconds (the queue-size-weighted busy time). */
+    long weightedIoTimeMillis = 0;
+
+    /** I/O operations currently in flight, summed over the counted devices. */
+    long ioInProgress = 0;
+
+    /** Number of block devices that were counted. */
+    int deviceCount = 0;
   }
 
   /**
@@ -249,6 +283,19 @@ final class LinuxProcFs {
 
       t.readSectors += sectorsRead;
       t.writtenSectors += sectorsWritten;
+
+      //  4th = reads completed (parts[3]),  7th = ms reading (parts[6])
+      //  8th = writes completed (parts[7]), 11th = ms writing (parts[10])
+      // 12th = I/Os in progress (parts[11]), 13th = ms doing I/O (parts[12]),
+      // 14th = weighted ms doing I/O (parts[13])
+      t.readsCompleted += parseLongSafe(parts[3]);
+      t.readTimeMillis += parseLongSafe(parts[6]);
+      t.writesCompleted += parseLongSafe(parts[7]);
+      t.writeTimeMillis += parseLongSafe(parts[10]);
+      t.ioInProgress += parseLongSafe(parts[11]);
+      t.ioTimeMillis += parseLongSafe(parts[12]);
+      t.weightedIoTimeMillis += parseLongSafe(parts[13]);
+      t.deviceCount++;
     }
     return t;
   }
@@ -279,6 +326,18 @@ final class LinuxProcFs {
 
     /** Sum of transmitted bytes over the counted interfaces (see {@link #readNetTotals()}). */
     long txBytes = 0;
+
+    /** Sum of receive errors over the counted interfaces. */
+    long rxErrors = 0;
+
+    /** Sum of packets dropped on receive over the counted interfaces. */
+    long rxDropped = 0;
+
+    /** Sum of transmit errors over the counted interfaces. */
+    long txErrors = 0;
+
+    /** Sum of packets dropped on transmit over the counted interfaces. */
+    long txDropped = 0;
   }
 
   /**
@@ -322,18 +381,31 @@ final class LinuxProcFs {
       }
 
       // Layout: rx bytes (0), rx packets (1), ..., tx bytes (8), ...
+      // rx errs (2), rx drop (3), tx errs (10), tx drop (11)
       long rx = parseLongSafe(nums[0]);
       long tx = parseLongSafe(nums[8]);
+      long rxErrs = parseLongSafe(nums[2]);
+      long rxDrop = parseLongSafe(nums[3]);
+      long txErrs = parseLongSafe(nums[10]);
+      long txDrop = parseLongSafe(nums[11]);
 
-      all.rxBytes += rx;
-      all.txBytes += tx;
+      add(all, rx, tx, rxErrs, rxDrop, txErrs, txDrop);
       if (isPhysicalInterface(iface)) {
         anyPhysical = true;
-        physical.rxBytes += rx;
-        physical.txBytes += tx;
+        add(physical, rx, tx, rxErrs, rxDrop, txErrs, txDrop);
       }
     }
     return anyPhysical ? physical : all;
+  }
+
+  private static void add(
+      NetTotals t, long rx, long tx, long rxErrs, long rxDrop, long txErrs, long txDrop) {
+    t.rxBytes += rx;
+    t.txBytes += tx;
+    t.rxErrors += rxErrs;
+    t.rxDropped += rxDrop;
+    t.txErrors += txErrs;
+    t.txDropped += txDrop;
   }
 
   /**
