@@ -1,15 +1,15 @@
 lowercaseOutputName: true
 
 includeObjectNames:
-  - co.pletor.cgroup:*
-  - co.pletor.node:*
-  - co.pletor.proc:*
-  - co.pletor.agent:*
+  - kr.pletor.cgroup:*
+  - kr.pletor.node:*
+  - kr.pletor.proc:*
+  - kr.pletor.agent:*
 
 metricCustomizers:
   # add static node metadata labels to OsInfoMetrics
   - mbeanFilter:
-      domain: co.pletor.node
+      domain: kr.pletor.node
       properties:
         type: OsInfoMetrics
     attributesAsLabels:
@@ -23,7 +23,7 @@ metricCustomizers:
 
   # add cgroup metadata labels to cgroup memory metrics
   - mbeanFilter:
-      domain: co.pletor.cgroup
+      domain: kr.pletor.cgroup
       properties:
         type: MemMetrics
     attributesAsLabels:
@@ -38,7 +38,7 @@ rules:
   # 500), so a single unavailable counter would hide every metric of the target. UNTYPED keeps the
   # value and the name (no "_total" suffix is appended), and rate()/increase() work on it as on a
   # counter. Alert and dashboard queries should ignore -1 (see prometheus_alerts_example.yml).
-  # The agent's own counters (co.pletor.agent) are never negative and stay COUNTER.
+  # The agent's own counters (kr.pletor.agent) are never negative and stay COUNTER.
   # ============================================================================
 
   # ============================================================================
@@ -48,68 +48,68 @@ rules:
   # ============================================================================
 
   # ----------------------------------------------------------------------------
-  # [cgroup] co.pletor.cgroup
+  # [cgroup] kr.pletor.cgroup
   # Exports cgroup counters/gauges.
   # Note: CgroupVersion/CgroupPath labels are appended by metricCustomizers.
   # ============================================================================
-  - pattern: 'co.pletor.cgroup<type=(.+?)(?:,(.+))?><>(CgroupCpuThrottledCount|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
+  - pattern: 'kr.pletor.cgroup<type=(.+?)(?:,(.+))?><>(CgroupCpuThrottledCount|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_cgroup_$1_$3
     type: UNTYPED
     cache: true
 
-  - pattern: 'co.pletor.cgroup<type=(.+?)(?:,(.+))?><>(.+):'
+  - pattern: 'kr.pletor.cgroup<type=(.+?)(?:,(.+))?><>(.+):'
     name: pletor_cgroup_$1_$3
     type: GAUGE
     cache: true
 
 
   # ----------------------------------------------------------------------------
-  # [node] co.pletor.node
+  # [node] kr.pletor.node
   # Exports node counters/gauges.
   # Note: OsInfoMetrics labels are appended by metricCustomizers.
   # ============================================================================
-  - pattern: 'co.pletor.node<type=(.+?)(?:,(.+))?><>(ProcessCpuTimeNanos|UptimeSeconds|SystemCpu[A-Za-z]+Ticks|CgroupCpuThrottledPeriodsTotal|CgroupCpuThrottledTimeNanosTotal|CgroupCpuUsageNanosTotal|DiskReadBytesTotal|DiskWriteBytesTotal|NetRxBytesTotal|NetTxBytesTotal|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
+  - pattern: 'kr.pletor.node<type=(.+?)(?:,(.+))?><>(ProcessCpuTimeNanos|UptimeSeconds|SystemCpu[A-Za-z]+Ticks|CgroupCpuThrottledPeriodsTotal|CgroupCpuThrottledTimeNanosTotal|CgroupCpuUsageNanosTotal|DiskReadBytesTotal|DiskWriteBytesTotal|NetRxBytesTotal|NetTxBytesTotal|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_node_$1_$3
     type: UNTYPED
     cache: true
 
-  - pattern: 'co.pletor.node<type=FsMetrics, path=(.+)><>(.+):'
+  - pattern: 'kr.pletor.node<type=FsMetrics, path=(.+)><>(.+):'
     name: pletor_node_fsmetrics_$2
     type: GAUGE
     labels:
       path: '$1'
     cache: true
 
-  - pattern: 'co.pletor.node<type=(.+?)(?:,(.+))?><>(.+):'
+  - pattern: 'kr.pletor.node<type=(.+?)(?:,(.+))?><>(.+):'
     name: pletor_node_$1_$3
     type: GAUGE
     cache: true
 
   # ----------------------------------------------------------------------------
-  # [proc] co.pletor.proc
+  # [proc] kr.pletor.proc
   # Exports process gauges.
   # ============================================================================
-  - pattern: 'co.pletor.proc<type=(.+?)(?:,(.+))?><>(IoReadBytesTotal|IoWriteBytesTotal):'
+  - pattern: 'kr.pletor.proc<type=(.+?)(?:,(.+))?><>(IoReadBytesTotal|IoWriteBytesTotal):'
     name: pletor_proc_$1_$3
     type: UNTYPED
     cache: true
 
-  - pattern: 'co.pletor.proc<type=(.+?)(?:,(.+))?><>(.+):'
+  - pattern: 'kr.pletor.proc<type=(.+?)(?:,(.+))?><>(.+):'
     name: pletor_proc_$1_$3
     type: GAUGE
     cache: true
 
   # ----------------------------------------------------------------------------
-  # [agent] co.pletor.agent
+  # [agent] kr.pletor.agent
   # Exports internal telemetry pipeline counters/gauges.
   # Note: string attributes (for example, Mode, FailingTasks, StuckTasks) are intentionally excluded here.
   # ============================================================================
-  - pattern: 'co.pletor.agent<type=(.+?)(?:,(.+))?><>(ProcessedCount|EnqueueCount|DequeueCount|DroppedCount|ErrorCount|SinkSuccessCount|SinkFailureCount|SinkRetryCount|ModeTransitionCount|ThrottledLoggerOverflowCount):'
+  - pattern: 'kr.pletor.agent<type=(.+?)(?:,(.+))?><>(ProcessedCount|EnqueueCount|DequeueCount|DroppedCount|ErrorCount|SinkSuccessCount|SinkFailureCount|SinkRetryCount|ModeTransitionCount|ThrottledLoggerOverflowCount):'
     name: pletor_agent_$1_$3
     type: COUNTER
     cache: true
 
-  - pattern: 'co.pletor.agent<type=(.+?)(?:,(.+))?><>(QueueDepth|QueueFillRatio|EndToEndLatencyMillis|MaxTaskStalenessMs|FailingTaskCount|StuckTaskCount):'
+  - pattern: 'kr.pletor.agent<type=(.+?)(?:,(.+))?><>(QueueDepth|QueueFillRatio|EndToEndLatencyMillis|MaxTaskStalenessMs|FailingTaskCount|StuckTaskCount):'
     name: pletor_agent_$1_$3
     type: GAUGE
     cache: true

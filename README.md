@@ -21,23 +21,23 @@ Current version: `0.9.0`
 
 The agent registers these MBeans:
 
-- `co.pletor.node:type=CpuMetrics`
-- `co.pletor.node:type=MemMetrics`
-- `co.pletor.cgroup:type=MemMetrics`
-- `co.pletor.cgroup:type=PidsMetrics` (process limit of the JVM's cgroup)
-- `co.pletor.node:type=PressureMetrics` and `co.pletor.cgroup:type=PressureMetrics` (pressure stall
+- `kr.pletor.node:type=CpuMetrics`
+- `kr.pletor.node:type=MemMetrics`
+- `kr.pletor.cgroup:type=MemMetrics`
+- `kr.pletor.cgroup:type=PidsMetrics` (process limit of the JVM's cgroup)
+- `kr.pletor.node:type=PressureMetrics` and `kr.pletor.cgroup:type=PressureMetrics` (pressure stall
   information, see `RUNBOOK.md`)
-- `co.pletor.proc:type=FdMetrics`
-- `co.pletor.proc:type=ProcessMetrics` (resident set, threads and I/O of the JVM process)
-- `co.pletor.proc:type=MemoryMapMetrics` (memory mappings versus `vm.max_map_count`)
-- `co.pletor.node:type=DiskIoMetrics` (disk operations, latency and utilization counters)
-- `co.pletor.node:type=NetworkMetrics` (network errors and drops, TCP retransmits)
-- `co.pletor.node:type=IoRates`
-- `co.pletor.node:type=OsInfoMetrics`
-- `co.pletor.node:type=OsRuntimeMetrics`
-- `co.pletor.node:type=FsMetrics,path=<configured path>`
-- `co.pletor.agent:type=TelemetryMode`
-- `co.pletor.agent:type=Observability`
+- `kr.pletor.proc:type=FdMetrics`
+- `kr.pletor.proc:type=ProcessMetrics` (resident set, threads and I/O of the JVM process)
+- `kr.pletor.proc:type=MemoryMapMetrics` (memory mappings versus `vm.max_map_count`)
+- `kr.pletor.node:type=DiskIoMetrics` (disk operations, latency and utilization counters)
+- `kr.pletor.node:type=NetworkMetrics` (network errors and drops, TCP retransmits)
+- `kr.pletor.node:type=IoRates`
+- `kr.pletor.node:type=OsInfoMetrics`
+- `kr.pletor.node:type=OsRuntimeMetrics`
+- `kr.pletor.node:type=FsMetrics,path=<configured path>`
+- `kr.pletor.agent:type=TelemetryMode`
+- `kr.pletor.agent:type=Observability`
 
 ## Quick Start
 

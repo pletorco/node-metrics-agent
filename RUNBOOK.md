@@ -37,26 +37,39 @@ It maps JMX attributes to `pletor_*` Prometheus metrics.
 Agent startup is fail-open. If initialization fails, the host application continues without agent
 metrics.
 
+## Upgrading From 0.9.0 Or Earlier
+
+The JMX domains changed from `co.pletor.*` to `kr.pletor.*` (`node`, `cgroup`, `proc`, `agent`).
+Prometheus series names (`pletor_*`) and the `-javaagent` argument are unchanged, but an exporter
+configuration copied from an earlier version matches no MBean, so the agent's metrics silently
+disappear from the scrape. Update the copy:
+
+```bash
+sed -i 's/co\.pletor\./kr.pletor./g' /opt/jmx-exporter/pletor-node-metrics.yml
+```
+
+Do the same for any JMX client, dashboard or script that names the MBeans directly.
+
 ## Validation
 
 Confirm these MBeans exist:
 
-- `co.pletor.node:type=CpuMetrics`
-- `co.pletor.node:type=MemMetrics`
-- `co.pletor.cgroup:type=MemMetrics`
-- `co.pletor.node:type=PressureMetrics`
-- `co.pletor.cgroup:type=PressureMetrics`
-- `co.pletor.proc:type=FdMetrics`
-- `co.pletor.proc:type=ProcessMetrics`
-- `co.pletor.proc:type=MemoryMapMetrics`
-- `co.pletor.node:type=DiskIoMetrics`
-- `co.pletor.node:type=NetworkMetrics`
-- `co.pletor.node:type=IoRates`
-- `co.pletor.node:type=OsInfoMetrics`
-- `co.pletor.node:type=OsRuntimeMetrics`
-- `co.pletor.agent:type=TelemetryMode`
-- `co.pletor.agent:type=Observability`
-- `co.pletor.node:type=FsMetrics,path=<configured path>`
+- `kr.pletor.node:type=CpuMetrics`
+- `kr.pletor.node:type=MemMetrics`
+- `kr.pletor.cgroup:type=MemMetrics`
+- `kr.pletor.node:type=PressureMetrics`
+- `kr.pletor.cgroup:type=PressureMetrics`
+- `kr.pletor.proc:type=FdMetrics`
+- `kr.pletor.proc:type=ProcessMetrics`
+- `kr.pletor.proc:type=MemoryMapMetrics`
+- `kr.pletor.node:type=DiskIoMetrics`
+- `kr.pletor.node:type=NetworkMetrics`
+- `kr.pletor.node:type=IoRates`
+- `kr.pletor.node:type=OsInfoMetrics`
+- `kr.pletor.node:type=OsRuntimeMetrics`
+- `kr.pletor.agent:type=TelemetryMode`
+- `kr.pletor.agent:type=Observability`
+- `kr.pletor.node:type=FsMetrics,path=<configured path>`
 
 `TelemetryMode.Mode` should normally be `NORMAL`.
 
@@ -153,7 +166,7 @@ Unavailable values and the exporter:
   metric of the target. The example rules therefore export the agent's cumulative counters as
   `UNTYPED`: the value and the name are kept (with `COUNTER` the exporter 1.x would also append
   `_total`), and `rate()` and `increase()` work on them as on counters. If you write your own rules,
-  do not type these attributes `COUNTER`. The agent's own `co.pletor.agent` counters are never
+  do not type these attributes `COUNTER`. The agent's own `kr.pletor.agent` counters are never
   negative and stay `COUNTER`.
 - Queries should ignore `-1`: `rate()`/`increase()` of a constant `-1` is `0`, and for gauges use a
   filter such as `x >= 0` or `limit > 0` before dividing. A counter that becomes available later
@@ -245,7 +258,7 @@ OOM kills:
 - `MemMetrics.SystemOomKillTotal` counts processes killed by the kernel's OOM killer on the whole
   host (`/proc/vmstat`); inside a container it still counts kills of any process on the node, so a
   rise means the node is short of memory even when this container was not the victim.
-- `co.pletor.cgroup:type=MemMetrics` `MemoryOomKillTotal` counts kills in the container's own cgroup
+- `kr.pletor.cgroup:type=MemMetrics` `MemoryOomKillTotal` counts kills in the container's own cgroup
   (`memory.events` on v2, `memory.oom_control` on v1).
 - **A kill of the JVM itself is not reliably visible.** The agent dies with the process and, on
   Kubernetes, a restarted container gets a new cgroup that starts at 0. Use the orchestrator's
@@ -261,7 +274,7 @@ OOM kills:
 
 Process limit (PIDs):
 
-- `co.pletor.cgroup:type=PidsMetrics` reports `PidsCurrent` and `PidsLimit` from the `pids`
+- `kr.pletor.cgroup:type=PidsMetrics` reports `PidsCurrent` and `PidsLimit` from the `pids`
   controller. Every thread counts, so a JVM with many threads can reach `pids.max` and then fails
   with `OutOfMemoryError: unable to create native thread` although heap and RAM are fine.
 - The limit is the tightest finite `pids.max` of the container's cgroup and its ancestors, and
@@ -293,7 +306,7 @@ System-wide file handles:
 
 CPU limit:
 
-- `co.pletor.node:type=CpuMetrics` `CgroupCpuLimitCores` is the effective CPU limit of the
+- `kr.pletor.node:type=CpuMetrics` `CgroupCpuLimitCores` is the effective CPU limit of the
   container in cores (for example `0.5` or `2.0`), or `-1` when unlimited or unavailable. Like
   `MemoryLimitBytes` it is the tightest finite CFS quota of the cgroup and its ancestors, so a
   container without a quota is still bounded by its pod.
@@ -314,7 +327,7 @@ Swap:
   activity, not usage: `rate(pletor_node_memmetrics_swapoutpagestotal[5m]) > 0` for a sustained
   period means the host is actively swapping, while a high `SwapUsedBytes` with a flat counter is
   idle swap.
-- cgroup (`co.pletor.cgroup:type=MemMetrics`): `SwapUsageBytes` and `SwapLimitBytes` of the
+- cgroup (`kr.pletor.cgroup:type=MemMetrics`): `SwapUsageBytes` and `SwapLimitBytes` of the
   container's own cgroup (ancestors are not considered). A limit of `0` means the container may not
   swap (the usual Kubernetes setting); `-1` means unlimited or unavailable. cgroup v1 reports swap
   as `memsw - memory` and needs swap accounting enabled (`swapaccount=1`), otherwise `-1`.
@@ -327,9 +340,9 @@ Pressure stall information (PSI):
   I/O. `some` means at least one task was stalled, `full` means all non-idle tasks were stalled at
   once (a stronger sign). It usually rises before latency or throughput visibly degrade, which
   load average and I/O wait do not.
-- Two MBeans with the same attributes: `co.pletor.node:type=PressureMetrics` reads
+- Two MBeans with the same attributes: `kr.pletor.node:type=PressureMetrics` reads
   `/proc/pressure` and describes the whole host (also inside a container), and
-  `co.pletor.cgroup:type=PressureMetrics` reads the container's own `*.pressure` files (cgroup v2).
+  `kr.pletor.cgroup:type=PressureMetrics` reads the container's own `*.pressure` files (cgroup v2).
 - `*Avg10` is the kernel's 10-second average in percent (0-100). `*TotalMicros` is a cumulative
   counter of stalled microseconds: `rate(x[5m]) / 1e6` is the stalled share of any window, e.g.
   `rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros[5m]) / 1e6`. The 60 s and 300 s

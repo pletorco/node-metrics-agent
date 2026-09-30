@@ -11,22 +11,22 @@ import javax.management.ObjectName;
  */
 public class SmokeProbe {
   private static final String[] REQUIRED = {
-      "co.pletor.node:type=CpuMetrics",
-      "co.pletor.node:type=MemMetrics",
-      "co.pletor.node:type=IoRates",
-      "co.pletor.node:type=OsInfoMetrics",
-      "co.pletor.node:type=OsRuntimeMetrics",
-      "co.pletor.cgroup:type=MemMetrics",
-      "co.pletor.cgroup:type=PressureMetrics",
-      "co.pletor.node:type=PressureMetrics",
-      "co.pletor.node:type=DiskIoMetrics",
-      "co.pletor.node:type=NetworkMetrics",
-      "co.pletor.proc:type=ProcessMetrics",
-      "co.pletor.proc:type=MemoryMapMetrics",
-      "co.pletor.cgroup:type=PidsMetrics",
-      "co.pletor.proc:type=FdMetrics",
-      "co.pletor.agent:type=TelemetryMode",
-      "co.pletor.agent:type=Observability",
+      "kr.pletor.node:type=CpuMetrics",
+      "kr.pletor.node:type=MemMetrics",
+      "kr.pletor.node:type=IoRates",
+      "kr.pletor.node:type=OsInfoMetrics",
+      "kr.pletor.node:type=OsRuntimeMetrics",
+      "kr.pletor.cgroup:type=MemMetrics",
+      "kr.pletor.cgroup:type=PressureMetrics",
+      "kr.pletor.node:type=PressureMetrics",
+      "kr.pletor.node:type=DiskIoMetrics",
+      "kr.pletor.node:type=NetworkMetrics",
+      "kr.pletor.proc:type=ProcessMetrics",
+      "kr.pletor.proc:type=MemoryMapMetrics",
+      "kr.pletor.cgroup:type=PidsMetrics",
+      "kr.pletor.proc:type=FdMetrics",
+      "kr.pletor.agent:type=TelemetryMode",
+      "kr.pletor.agent:type=Observability",
   };
 
   public static void main(String[] args) throws Exception {
@@ -43,7 +43,7 @@ public class SmokeProbe {
           problems.add("MBean not registered: " + name);
         }
       }
-      if (server.queryNames(new ObjectName("co.pletor.node:type=FsMetrics,*"), null).isEmpty()) {
+      if (server.queryNames(new ObjectName("kr.pletor.node:type=FsMetrics,*"), null).isEmpty()) {
         problems.add("No FsMetrics MBean registered");
       }
       if (problems.isEmpty()) {
@@ -55,7 +55,7 @@ public class SmokeProbe {
       Thread.sleep(50L);
     }
 
-    ObjectName obs = new ObjectName("co.pletor.agent:type=Observability");
+    ObjectName obs = new ObjectName("kr.pletor.agent:type=Observability");
     long deadline = System.nanoTime() + 20_000_000_000L;
     while (((Long) server.getAttribute(obs, "ProcessedCount")) < 1L) {
       if (System.nanoTime() > deadline) {
@@ -70,19 +70,19 @@ public class SmokeProbe {
       problems.add("Telemetry mode is " + mode + ", expected NORMAL");
     }
     String version = String.valueOf(
-        server.getAttribute(new ObjectName("co.pletor.node:type=OsInfoMetrics"), "AgentVersion"));
+        server.getAttribute(new ObjectName("kr.pletor.node:type=OsInfoMetrics"), "AgentVersion"));
     if ("unknown".equals(version)) {
       problems.add("AgentVersion is unknown: version.properties missing from the jar");
     }
     long cpus = ((Number) server.getAttribute(
-        new ObjectName("co.pletor.node:type=CpuMetrics"), "AvailableProcessors")).longValue();
+        new ObjectName("kr.pletor.node:type=CpuMetrics"), "AvailableProcessors")).longValue();
     if (cpus < 1L) {
       problems.add("CpuMetrics.AvailableProcessors = " + cpus);
     }
     if (System.getProperty("os.name", "").toLowerCase().contains("linux")) {
       // Values appear when the refresh engine has polled that metric, which may be a moment
       // after the first refresh of any metric completed.
-      ObjectName mem = new ObjectName("co.pletor.node:type=MemMetrics");
+      ObjectName mem = new ObjectName("kr.pletor.node:type=MemMetrics");
       long memDeadline = System.nanoTime() + 20_000_000_000L;
       long memTotal = ((Number) server.getAttribute(mem, "TotalMemoryBytes")).longValue();
       while (memTotal <= 0L && System.nanoTime() < memDeadline) {
