@@ -1,0 +1,181 @@
+# Example Prometheus alerting rules for the metrics exposed by node-metrics-agent through the
+# Prometheus JMX exporter, using jmx_exporter_rules_example.yml.
+#
+# Thresholds are starting points for a JVM service such as a Kafka broker: tune them to the
+# workload. Every expression tolerates the agent's -1 "unavailable" value: a comparison such as
+# "> 0" or ">= 0" drops the series, and rate()/increase() of a constant -1 is 0, so a host without
+# the source (no PSI, no cgroup, an old kernel) stays silent instead of alerting.
+#
+# Prefer the cumulative counters with rate()/increase() over the "ratio" and "per second" gauges:
+# those describe only the last refresh window, the counters give exact averages over any range.
+#
+# Check the file with:  promtool check rules prometheus_alerts_example.yml
+groups:
+  - name: node-metrics-agent-health
+    rules:
+      - alert: NodeMetricsAgentTaskStuck
+        expr: pletor_agent_observability_stucktaskcount > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "A metric refresh has been blocked for more than 30 s on {{ $labels.instance }}"
+          description: "Usually a dead NFS mount. The affected MBean keeps its last values; see StuckTasks."
+
+      - alert: NodeMetricsAgentTaskFailing
+        expr: pletor_agent_observability_failingtaskcount > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "A metric source keeps failing on {{ $labels.instance }}"
+          description: "See FailingTasks and the agent log (WARNING, once per minute)."
+
+      - alert: NodeMetricsAgentOverloaded
+        expr: pletor_agent_observability_queuefillratio >= 0.80
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The metric refresh queue is filling up on {{ $labels.instance }}"
+
+  - name: node-metrics-agent-memory
+    rules:
+      - alert: ContainerMemoryNearLimit
+        expr: (pletor_cgroup_memmetrics_memoryworkingsetbytes >= 0) / (pletor_cgroup_memmetrics_memorylimitbytes > 0) > 0.90
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Container working set is above 90% of its memory limit on {{ $labels.instance }}"
+
+      - alert: ContainerMemoryLimitHit
+        expr: rate(pletor_cgroup_memmetrics_memorymaxeventstotal[5m]) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "The container keeps hitting its memory limit on {{ $labels.instance }}"
+          description: "The kernel is reclaiming or killing at the limit; this precedes OOM kills."
+
+      - alert: OomKill
+        expr: increase(pletor_cgroup_memmetrics_memoryoomkilltotal[10m]) > 0 or increase(pletor_node_memmetrics_systemoomkilltotal[10m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "The kernel OOM killer fired on {{ $labels.instance }}"
+          description: "A kill of the JVM itself cannot be seen here (the agent dies with it); on Kubernetes use the container termination reason."
+
+      - alert: SwapInUse
+        expr: rate(pletor_node_memmetrics_swapoutpagestotal[5m]) > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "The host keeps swapping out on {{ $labels.instance }}"
+
+      - alert: MemoryPressure
+        expr: rate(pletor_cgroup_pressuremetrics_memoryfulltotalmicros[5m]) / 1e6 > 0.05 or rate(pletor_node_pressuremetrics_memoryfulltotalmicros[5m]) / 1e6 > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Tasks are stalled on memory more than 5% of the time on {{ $labels.instance }}"
+
+  - name: node-metrics-agent-cpu-and-io
+    rules:
+      - alert: CpuThrottled
+        expr: rate(pletor_node_cpumetrics_cgroupcputhrottledtimenanostotal[5m]) / (rate(pletor_node_cpumetrics_cgroupcputhrottledtimenanostotal[5m]) + rate(pletor_node_cpumetrics_cgroupcpuusagenanostotal[5m])) > 0.25
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "The container spends over 25% of its CPU time throttled on {{ $labels.instance }}"
+          description: "The CPU limit (CgroupCpuLimitCores) is too low for the load."
+
+      - alert: CpuPressure
+        expr: rate(pletor_cgroup_pressuremetrics_cpusometotalmicros[5m]) / 1e6 > 0.20 or rate(pletor_node_pressuremetrics_cpusometotalmicros[5m]) / 1e6 > 0.20
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Tasks wait for a CPU more than 20% of the time on {{ $labels.instance }}"
+
+      - alert: CpuIoWait
+        expr: rate(pletor_node_cpumetrics_systemcpuiowaitticks[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks[5m]) > 0.30
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "CPUs spend over 30% of their time waiting for I/O on {{ $labels.instance }}"
+
+      - alert: CpuSteal
+        expr: rate(pletor_node_cpumetrics_systemcpustealticks[5m]) / rate(pletor_node_cpumetrics_systemcputotalticks[5m]) > 0.10
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "The hypervisor takes over 10% of the CPU time on {{ $labels.instance }}"
+
+      - alert: DiskBusy
+        expr: rate(pletor_node_diskiometrics_diskiotimemillistotal[5m]) / 1000 / (pletor_node_diskiometrics_diskdevicecount > 0) > 0.90
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Disks are busy over 90% of the time (average over devices) on {{ $labels.instance }}"
+
+      - alert: IoPressure
+        expr: rate(pletor_cgroup_pressuremetrics_iofulltotalmicros[5m]) / 1e6 > 0.10 or rate(pletor_node_pressuremetrics_iofulltotalmicros[5m]) / 1e6 > 0.10
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Tasks are stalled on I/O more than 10% of the time on {{ $labels.instance }}"
+
+  - name: node-metrics-agent-network
+    rules:
+      - alert: TcpRetransmits
+        expr: rate(pletor_node_networkmetrics_tcpretranssegstotal[5m]) / (rate(pletor_node_networkmetrics_tcpoutsegstotal[5m]) > 100) > 0.02
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Over 2% of TCP segments are retransmitted on {{ $labels.instance }}"
+
+      - alert: TcpListenOverflow
+        expr: increase(pletor_node_networkmetrics_tcplistenoverflowstotal[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "The accept queue of a listening socket overflowed on {{ $labels.instance }}"
+
+      - alert: NetworkErrors
+        expr: rate(pletor_node_networkmetrics_netrxerrorstotal[5m]) + rate(pletor_node_networkmetrics_nettxerrorstotal[5m]) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Network interfaces report errors on {{ $labels.instance }}"
+
+  - name: node-metrics-agent-limits
+    rules:
+      - alert: FileDescriptorsNearLimit
+        expr: (pletor_proc_fdmetrics_openfiledescriptorcount >= 0) / (pletor_proc_fdmetrics_maxfiledescriptorcount > 0) > 0.85
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The JVM uses over 85% of its file descriptor limit on {{ $labels.instance }}"
+
+      - alert: SystemFileHandlesNearLimit
+        expr: (pletor_proc_fdmetrics_systemopenfilehandles >= 0) / (pletor_proc_fdmetrics_systemmaxfilehandles > 0) > 0.85
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The host uses over 85% of its file handles on {{ $labels.instance }}"
+
+      - alert: MemoryMapsNearLimit
+        expr: (pletor_proc_memorymapmetrics_memorymapcount >= 0) / (pletor_proc_memorymapmetrics_maxmemorymapcount > 0) > 0.80
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The JVM uses over 80% of vm.max_map_count on {{ $labels.instance }}"
+          description: "Further mappings fail with 'Map failed' or OutOfMemoryError although heap and RAM are fine. Raise vm.max_map_count."
+
+      - alert: PidsNearLimit
+        expr: (pletor_cgroup_pidsmetrics_pidscurrent >= 0) / (pletor_cgroup_pidsmetrics_pidslimit > 0) > 0.85
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The cgroup uses over 85% of its process limit on {{ $labels.instance }}"
+          description: "At the limit the JVM fails with 'unable to create native thread'. On Kubernetes see podPidsLimit."
+
+      - alert: FilesystemAlmostFull
+        expr: (pletor_node_fsmetrics_usablebytes >= 0) / (pletor_node_fsmetrics_totalbytes > 0) < 0.10
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.path }} has under 10% usable space on {{ $labels.instance }}"

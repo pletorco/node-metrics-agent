@@ -24,6 +24,7 @@ The agent registers these MBeans:
 - `co.pletor.node:type=CpuMetrics`
 - `co.pletor.node:type=MemMetrics`
 - `co.pletor.cgroup:type=MemMetrics`
+- `co.pletor.cgroup:type=PidsMetrics` (process limit of the JVM's cgroup)
 - `co.pletor.node:type=PressureMetrics` and `co.pletor.cgroup:type=PressureMetrics` (pressure stall
   information, see `RUNBOOK.md`)
 - `co.pletor.proc:type=FdMetrics`
@@ -107,7 +108,8 @@ java \
   -jar your-app.jar
 ```
 
-Use `src/main/resources/jmx_exporter_rules_example.yml` as the exporter config starting point.
+Use `src/main/resources/jmx_exporter_rules_example.yml` as the exporter config starting point and
+`src/main/resources/prometheus_alerts_example.yml` for example alerting rules.
 Exported Prometheus metric names use the `pletor_*` prefix, for example:
 
 - `pletor_node_cpumetrics_systemcpuload`

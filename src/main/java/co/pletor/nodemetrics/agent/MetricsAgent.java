@@ -24,6 +24,8 @@ import co.pletor.nodemetrics.metrics.OsInfoMetrics;
 import co.pletor.nodemetrics.metrics.OsInfoMetricsMBean;
 import co.pletor.nodemetrics.metrics.OsRuntimeMetrics;
 import co.pletor.nodemetrics.metrics.OsRuntimeMetricsMBean;
+import co.pletor.nodemetrics.metrics.PidsMetrics;
+import co.pletor.nodemetrics.metrics.PidsMetricsMBean;
 import co.pletor.nodemetrics.metrics.PressureMetrics;
 import co.pletor.nodemetrics.metrics.PressureMetricsMBean;
 import co.pletor.nodemetrics.metrics.ProcessMetrics;
@@ -149,6 +151,7 @@ public class MetricsAgent {
   private static NetworkMetrics networkBean;
   private static ProcessMetrics processBean;
   private static MemoryMapMetrics memoryMapBean;
+  private static PidsMetrics pidsBean;
 
   private static final String LOG_KEY_AGENT_STARTUP_FAILURE = "agent-startup-failure";
   private static final String LOG_KEY_BLANK_FSMETRICS_PATH = "blank-fsmetrics-path";
@@ -349,6 +352,12 @@ public class MetricsAgent {
             MemoryMapMetrics::new,
             MemoryMapMetricsMBean.class,
             "co.pletor.proc:type=MemoryMapMetrics");
+    pidsBean =
+        createAndRegister(
+            "pids metrics",
+            PidsMetrics::new,
+            PidsMetricsMBean.class,
+            "co.pletor.cgroup:type=PidsMetrics");
     createAndRegister(
         "telemetry mode metrics",
         () -> TELEMETRY_MODE_METRICS,
@@ -827,6 +836,7 @@ public class MetricsAgent {
     addHighPriorityTask(tasks, "disk-io", diskIoBean, fastMs);
     addHighPriorityTask(tasks, "network", networkBean, fastMs);
     addHighPriorityTask(tasks, "process", processBean, fastMs);
+    addHighPriorityTask(tasks, "pids", pidsBean, fastMs);
 
     if (memoryMapBean != null) {
       // Counting mappings is the most expensive read of all: slow schedule, low-priority lane

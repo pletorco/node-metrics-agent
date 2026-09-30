@@ -109,6 +109,9 @@ If reload fails, the previous working configuration remains active.
 
 ## Suggested Alerts
 
+`src/main/resources/prometheus_alerts_example.yml` implements the list below (and more) as
+Prometheus alerting rules; check it with `promtool check rules` and tune the thresholds.
+
 - telemetry mode is not `NORMAL` for a sustained period
 - `pletor_agent_observability_droppedcount` increases above baseline
 - `pletor_agent_observability_queuefillratio >= 0.80`
@@ -141,16 +144,39 @@ Failing metric refreshes:
 - `ErrorCount` / `SinkFailureCount` count every failed refresh. The first failure of each
   minute is also logged at WARNING with a stack trace.
 
-Stuck filesystem calls:
+Unavailable values and the exporter:
 
-- Filesystem metrics run on their own worker threads, separate from CPU, memory and I/O metrics. A
-  filesystem call that blocks (typically `statvfs` on an unresponsive NFS mount) therefore only
-  freezes that one filesystem's MBean, which keeps its last values.
+- An attribute whose source is unavailable on this host (no PSI, no cgroup, an old kernel) reports
+  `-1`, and a cumulative counter that has not been read yet does too.
+- The Prometheus JMX exporter 1.x rejects a negative `COUNTER` and then fails the **whole scrape**
+  (HTTP 500, "counters cannot have a negative value"), so one unavailable counter would hide every
+  metric of the target. The example rules therefore export the agent's cumulative counters as
+  `UNTYPED`: the value and the name are kept (with `COUNTER` the exporter 1.x would also append
+  `_total`), and `rate()` and `increase()` work on them as on counters. If you write your own rules,
+  do not type these attributes `COUNTER`. The agent's own `co.pletor.agent` counters are never
+  negative and stay `COUNTER`.
+- Queries should ignore `-1`: `rate()`/`increase()` of a constant `-1` is `0`, and for gauges use a
+  filter such as `x >= 0` or `limit > 0` before dividing. A counter that becomes available later
+  (or is unavailable at the first scrape) jumps from `-1` to its full value once, which
+  `increase()` counts as a single large increase; ignore the first window after a restart when
+  alerting on absolute increases.
+- `src/main/resources/prometheus_alerts_example.yml` has example alerts that follow these rules;
+  the build checks that every metric name in it is one the example exporter rules produce.
+
+Stuck reads:
+
+- Regular metrics (CPU, memory, I/O, network, process, ...) run on 3 worker threads and each
+  filesystem metric runs in a separate background lane of 3 more, so a read that blocks (a
+  `statvfs` on an unresponsive NFS mount, or a `/proc` or cgroup read stuck in the kernel) freezes
+  only that one MBean, which keeps its last values. A task is never queued again while its previous
+  run is still queued or running, so a hung task occupies one worker at most and the others keep
+  refreshing.
 - `StuckTaskCount > 0` / `StuckTasks` names the tasks whose current refresh has been running for
   more than 30 seconds. `MaxTaskStalenessMs` rises for the same task.
-- A blocked call cannot be interrupted from Java; it clears when the mount recovers. Each stuck
-  task holds one of 3 background threads, and while it is stuck it is skipped (counted in
-  `DroppedCount`, once per refresh interval) instead of being queued again.
+- A blocked call cannot be interrupted from Java; it clears when the mount or kernel path
+  recovers. Each stuck task holds one worker of its lane, and while it is stuck it is skipped
+  (counted in `DroppedCount`, once per refresh interval) instead of being queued again. It does not
+  change the overload mode: only a full queue does.
 
 Refresh intervals:
 
@@ -227,6 +253,23 @@ OOM kills:
   that. The cgroup counter is reliable for other processes in the container and for services whose
   cgroup outlives the JVM (a systemd service).
 - Both are `-1` on kernels older than 4.13.
+- `MemoryMaxEventsTotal` counts the times the container's memory use reached its limit and the
+  kernel had to reclaim or kill (`max` in `memory.events` on v2, `memory.failcnt` on v1). It rises
+  before the first OOM kill, so `rate(...memorymaxeventstotal[5m]) > 0` for several minutes is the
+  earlier warning. `MemoryHighEventsTotal` counts crossings of `memory.high` (v2 only, `-1` on v1);
+  it stays `0` unless `memory.high` is set, which Kubernetes does only with the memory QoS feature.
+
+Process limit (PIDs):
+
+- `co.pletor.cgroup:type=PidsMetrics` reports `PidsCurrent` and `PidsLimit` from the `pids`
+  controller. Every thread counts, so a JVM with many threads can reach `pids.max` and then fails
+  with `OutOfMemoryError: unable to create native thread` although heap and RAM are fine.
+- The limit is the tightest finite `pids.max` of the container's cgroup and its ancestors, and
+  `PidsCurrent` is the count of the level that holds it. On Kubernetes `podPidsLimit` applies to the
+  whole pod, so with sidecars the container's own count would understate how close the pod is.
+  Alert on `pidscurrent / pidslimit` (for example above `0.85`) where the limit is not `-1`.
+- cgroup v1 reads the `pids` hierarchy that sits next to the `memory` one; `-1` when it is not
+  mounted or the controller is not enabled.
 
 Memory mappings:
 
@@ -305,7 +348,8 @@ Rates and ratios (prefer counters):
   - cgroup throttled share: `rate(..._cgroupcputhrottledtimenanostotal[5m]) / (rate(..._cgroupcputhrottledtimenanostotal[5m]) + rate(..._cgroupcpuusagenanostotal[5m]))`
   - disk/network throughput: `rate(pletor_node_iorates_diskreadbytestotal[5m])`, and likewise for
     `diskwritebytestotal`, `netrxbytestotal`, `nettxbytestotal`
-- The exporter may append `_total` to counter names depending on its version.
+- The example rules export counters as `UNTYPED`, so the names above are used as written, with no
+  `_total` suffix (see "Unavailable values and the exporter" below).
 - Disk and network totals sum the counted devices/interfaces; if one disappears (for example a
   veth pair on a container host) the sum drops once, which Prometheus treats as a counter reset.
 - `CgroupCpuThrottledCount` is a per-window delta (a gauge), not a counter.

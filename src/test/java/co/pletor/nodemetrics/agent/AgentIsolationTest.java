@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -209,7 +210,12 @@ class AgentIsolationTest {
                 throw new NoClassDefFoundError("listener failed");
               }
             });
-    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("blocked", blocking, false)));
+    // Distinct tasks: only more of them than the workers plus queue slots can fill the queue.
+    List<MetricsRefreshEngine.RefreshTask> blocked = new ArrayList<>();
+    for (int i = 0; i < MetricsRefreshEngine.CRITICAL_WORKERS + 6; i++) {
+      blocked.add(new MetricsRefreshEngine.RefreshTask("blocked-" + i, blocking, false));
+    }
+    engine.setTasks(blocked);
     try {
       engine.start();
       waitUntil(() -> listenerCalls.get() > 0, 5_000L);

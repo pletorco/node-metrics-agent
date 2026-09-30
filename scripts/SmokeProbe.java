@@ -23,6 +23,7 @@ public class SmokeProbe {
       "co.pletor.node:type=NetworkMetrics",
       "co.pletor.proc:type=ProcessMetrics",
       "co.pletor.proc:type=MemoryMapMetrics",
+      "co.pletor.cgroup:type=PidsMetrics",
       "co.pletor.proc:type=FdMetrics",
       "co.pletor.agent:type=TelemetryMode",
       "co.pletor.agent:type=Observability",

@@ -13,6 +13,7 @@ public interface OsInfoMetricsMBean {
    *
    * @return always {@code 1}
    */
+  @JmxMetricHint("gauge")
   int getInfoFlag();
 
   /**
