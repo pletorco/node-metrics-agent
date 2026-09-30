@@ -28,6 +28,7 @@ The agent registers these MBeans:
   information, see `RUNBOOK.md`)
 - `co.pletor.proc:type=FdMetrics`
 - `co.pletor.proc:type=ProcessMetrics` (resident set, threads and I/O of the JVM process)
+- `co.pletor.proc:type=MemoryMapMetrics` (memory mappings versus `vm.max_map_count`)
 - `co.pletor.node:type=DiskIoMetrics` (disk operations, latency and utilization counters)
 - `co.pletor.node:type=NetworkMetrics` (network errors and drops, TCP retransmits)
 - `co.pletor.node:type=IoRates`

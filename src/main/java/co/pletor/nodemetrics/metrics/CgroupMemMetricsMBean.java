@@ -62,6 +62,22 @@ public interface CgroupMemMetricsMBean {
   long getSwapLimitBytes();
 
   /**
+   * Returns the cumulative number of processes killed by the OOM killer in this cgroup ({@code
+   * oom_kill} in {@code memory.events} on v2, {@code memory.oom_control} on v1, kernel 4.13+).
+   *
+   * <p>The counter lives and dies with the cgroup: when a container is restarted or its pod is
+   * replaced, a new cgroup starts at 0, and a kill of the JVM itself takes the agent down with it.
+   * So this reliably reports kills of other processes in the container, and of the JVM only where
+   * the cgroup outlives it (for example a systemd service). On Kubernetes use the termination
+   * reason for the JVM.
+   *
+   * @return the count, or {@code -1} when unavailable
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("kills")
+  long getMemoryOomKillTotal();
+
+  /**
    * Returns the cgroup version (e.g. v1 or v2).
    *
    * @return the cgroup version string

@@ -147,4 +147,19 @@ public interface NodeMemMetricsMBean {
   @JmxMetricHint("counter")
   @JmxMetricUnit("pages")
   long getSwapOutPagesTotal();
+
+  /**
+   * Returns the cumulative number of processes killed by the kernel's out-of-memory killer on this
+   * host since boot ({@code oom_kill} in {@code /proc/vmstat}, kernel 4.13+).
+   *
+   * <p>Host-wide: inside a container it counts kills of any process on the node, so a rise means
+   * the node is under memory pressure even when this container was not the victim. A kill of the
+   * JVM itself is not visible to the agent (it dies with the process); use the orchestrator's
+   * termination reason for that.
+   *
+   * @return the count, or {@code -1} when unavailable
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("kills")
+  long getSystemOomKillTotal();
 }

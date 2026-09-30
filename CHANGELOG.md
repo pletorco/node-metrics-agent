@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Priority 3 metrics of the metrics roadmap:
+  - `SystemCpuUserTicks`, `SystemCpuNiceTicks`, `SystemCpuSystemTicks`, `SystemCpuIdleTicks`,
+    `SystemCpuIrqTicks`, `SystemCpuSoftIrqTicks` on `CpuMetrics`: the remaining cumulative modes of
+    the aggregate `/proc/stat` line, read at no extra cost.
+  - `SystemOomKillTotal` on `co.pletor.node:type=MemMetrics` (`/proc/vmstat`, host-wide) and
+    `MemoryOomKillTotal` on `co.pletor.cgroup:type=MemMetrics` (`memory.events` / `memory.oom_control`).
+    A kill of the JVM itself is not reliably visible on Kubernetes; see `RUNBOOK.md`.
+  - `SystemOpenFileHandles` and `SystemMaxFileHandles` on `FdMetrics` (`/proc/sys/fs/file-nr`).
+  - `co.pletor.proc:type=MemoryMapMetrics`: `MemoryMapCount` (lines of `/proc/self/maps`, counted as
+    raw bytes: about 32 ms at 60,000 mappings) and `MaxMemoryMapCount` (`vm.max_map_count`),
+    refreshed once a minute in the low-priority lane.
 - Disk operation and I/O time counters, `co.pletor.node:type=DiskIoMetrics`, from
   `/proc/diskstats` and summed over the same leaf devices as the disk byte counters: completed
   reads and writes, time spent reading and writing, busy time (`io_ticks`), weighted busy time, I/O

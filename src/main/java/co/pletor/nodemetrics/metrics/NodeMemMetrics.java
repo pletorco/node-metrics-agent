@@ -42,6 +42,8 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   private volatile long swapInPagesTotal = -1L;
   private volatile long swapOutPagesTotal = -1L;
 
+  private volatile long oomKillTotal = -1L;
+
   /**
    * Creates a new {@code NodeMemMetrics} instance with all metrics initialized to {@code -1}.
    *
@@ -89,18 +91,22 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   }
 
   /**
-   * Reads the cumulative swap-in/out page counters from {@code /proc/vmstat}. Independent of the
-   * {@code /proc/meminfo} read: a problem here leaves the memory figures untouched.
+   * Reads the cumulative swap-in/out page and OOM kill counters from {@code /proc/vmstat}.
+   * Independent of the {@code /proc/meminfo} read: a problem here leaves the memory figures
+   * untouched.
    */
   private void pollSwapActivity() {
     long in = -1L;
     long out = -1L;
+    long oom = -1L;
     try {
       for (String line : readProcVmstatLines()) {
         if (line.startsWith("pswpin ")) {
           in = MemStatsUtil.parseCounterLine(line);
         } else if (line.startsWith("pswpout ")) {
           out = MemStatsUtil.parseCounterLine(line);
+        } else if (line.startsWith("oom_kill ")) {
+          oom = MemStatsUtil.parseCounterLine(line);
         }
       }
     } catch (NoSuchFileException e) {
@@ -110,6 +116,7 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
     }
     swapInPagesTotal = in;
     swapOutPagesTotal = out;
+    oomKillTotal = oom;
   }
 
   /** Small holder for parsed {@code /proc/meminfo} values (in kB). */
@@ -534,5 +541,11 @@ public class NodeMemMetrics extends AbstractRefreshingMetric implements NodeMemM
   public long getSwapOutPagesTotal() {
     refreshOnRead();
     return swapOutPagesTotal;
+  }
+
+  @Override
+  public long getSystemOomKillTotal() {
+    refreshOnRead();
+    return oomKillTotal;
   }
 }

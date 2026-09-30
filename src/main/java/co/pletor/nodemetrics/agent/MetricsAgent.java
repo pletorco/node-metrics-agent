@@ -14,6 +14,8 @@ import co.pletor.nodemetrics.metrics.FsMetrics;
 import co.pletor.nodemetrics.metrics.FsMetricsMBean;
 import co.pletor.nodemetrics.metrics.IoRates;
 import co.pletor.nodemetrics.metrics.IoRatesMBean;
+import co.pletor.nodemetrics.metrics.MemoryMapMetrics;
+import co.pletor.nodemetrics.metrics.MemoryMapMetricsMBean;
 import co.pletor.nodemetrics.metrics.NetworkMetrics;
 import co.pletor.nodemetrics.metrics.NetworkMetricsMBean;
 import co.pletor.nodemetrics.metrics.NodeMemMetrics;
@@ -122,6 +124,7 @@ public class MetricsAgent {
   private static final long FS_REFRESH_INTERVAL_MS = 10_000L;
   private static final long OS_RUNTIME_REFRESH_INTERVAL_MS = 10_000L;
   private static final long OS_INFO_REFRESH_INTERVAL_MS = 300_000L;
+  private static final long MEMORY_MAP_REFRESH_INTERVAL_MS = 60_000L;
 
   /** How long to wait for an existing MBeanServer before creating the platform one. */
   private static final long JMX_SERVER_WAIT_MS = 5_000L;
@@ -145,6 +148,7 @@ public class MetricsAgent {
   private static DiskIoMetrics diskIoBean;
   private static NetworkMetrics networkBean;
   private static ProcessMetrics processBean;
+  private static MemoryMapMetrics memoryMapBean;
 
   private static final String LOG_KEY_AGENT_STARTUP_FAILURE = "agent-startup-failure";
   private static final String LOG_KEY_BLANK_FSMETRICS_PATH = "blank-fsmetrics-path";
@@ -339,6 +343,12 @@ public class MetricsAgent {
             ProcessMetrics::new,
             ProcessMetricsMBean.class,
             "co.pletor.proc:type=ProcessMetrics");
+    memoryMapBean =
+        createAndRegister(
+            "memory map metrics",
+            MemoryMapMetrics::new,
+            MemoryMapMetricsMBean.class,
+            "co.pletor.proc:type=MemoryMapMetrics");
     createAndRegister(
         "telemetry mode metrics",
         () -> TELEMETRY_MODE_METRICS,
@@ -817,6 +827,15 @@ public class MetricsAgent {
     addHighPriorityTask(tasks, "disk-io", diskIoBean, fastMs);
     addHighPriorityTask(tasks, "network", networkBean, fastMs);
     addHighPriorityTask(tasks, "process", processBean, fastMs);
+
+    if (memoryMapBean != null) {
+      // Counting mappings is the most expensive read of all: slow schedule, low-priority lane
+      // (dropped first when the engine is overloaded).
+      memoryMapBean.setReadRefreshEnabled(false);
+      tasks.add(
+          new MetricsRefreshEngine.RefreshTask(
+              "memory-map", memoryMapBean, true, MEMORY_MAP_REFRESH_INTERVAL_MS));
+    }
 
     for (Map.Entry<String, FsEntry> entry : fsMap.entrySet()) {
       FsMetrics fsBean = entry.getValue().getBean();
