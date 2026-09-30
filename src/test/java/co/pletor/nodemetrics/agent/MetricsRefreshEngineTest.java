@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import co.pletor.nodemetrics.metrics.RefreshManagedMetric;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,15 +58,13 @@ class MetricsRefreshEngineTest {
 
   @Test
   void engine_shouldTransitionModeWhenQueueIsOverloaded() {
-    SlowMetric slow = new SlowMetric(120L);
     CountingMetric lowPriority = new CountingMetric();
     AtomicReference<TelemetryMode> lastMode = new AtomicReference<>(TelemetryMode.NORMAL);
 
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 2, lastMode::set);
-    engine.setTasks(
-        List.of(
-            new MetricsRefreshEngine.RefreshTask("slow-high", slow, false),
-            new MetricsRefreshEngine.RefreshTask("low", lowPriority, true)));
+    List<MetricsRefreshEngine.RefreshTask> tasks = slowTasks(120L);
+    tasks.add(new MetricsRefreshEngine.RefreshTask("low", lowPriority, true));
+    engine.setTasks(tasks);
 
     try {
       engine.start();
@@ -86,9 +85,8 @@ class MetricsRefreshEngineTest {
 
   @Test
   void engine_shouldKeepDispatchingAndDroppingWhenQueueIsSaturated() {
-    SlowMetric slow = new SlowMetric(180L);
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 1);
-    engine.setTasks(List.of(new MetricsRefreshEngine.RefreshTask("slow", slow, false)));
+    engine.setTasks(slowTasks(180L));
 
     try {
       engine.start();
@@ -106,6 +104,19 @@ class MetricsRefreshEngineTest {
     } finally {
       engine.stop();
     }
+  }
+
+  /**
+   * More slow tasks than the critical lane has workers plus queue slots: since a task never has two
+   * instances in flight, only distinct tasks can overload the lane.
+   */
+  private static List<MetricsRefreshEngine.RefreshTask> slowTasks(long pollMillis) {
+    List<MetricsRefreshEngine.RefreshTask> tasks = new ArrayList<>();
+    for (int i = 0; i < MetricsRefreshEngine.CRITICAL_WORKERS + 6; i++) {
+      tasks.add(
+          new MetricsRefreshEngine.RefreshTask("slow-" + i, new SlowMetric(pollMillis), false));
+    }
+    return tasks;
   }
 
   @Test
@@ -155,13 +166,11 @@ class MetricsRefreshEngineTest {
 
   @Test
   void engine_shouldRecoverBackToNormalAfterLoadDrops() {
-    SlowMetric slow = new SlowMetric(120L);
     CountingMetric fast = new CountingMetric();
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 2);
-    engine.setTasks(
-        List.of(
-            new MetricsRefreshEngine.RefreshTask("slow", slow, false),
-            new MetricsRefreshEngine.RefreshTask("low", fast, true)));
+    List<MetricsRefreshEngine.RefreshTask> tasks = slowTasks(120L);
+    tasks.add(new MetricsRefreshEngine.RefreshTask("low", fast, true));
+    engine.setTasks(tasks);
 
     try {
       engine.start();
@@ -262,12 +271,15 @@ class MetricsRefreshEngineTest {
         };
     CountingMetric fast = new CountingMetric();
     CountingMetric fs = new CountingMetric();
+    // Distinct blocked tasks: a single task can never fill the queue behind itself.
+    List<MetricsRefreshEngine.RefreshTask> tasks = new ArrayList<>();
+    for (int i = 0; i < MetricsRefreshEngine.CRITICAL_WORKERS + 8; i++) {
+      tasks.add(new MetricsRefreshEngine.RefreshTask("blocking-" + i, blocking, false));
+    }
+    tasks.add(new MetricsRefreshEngine.RefreshTask("fast", fast, false));
+    tasks.add(new MetricsRefreshEngine.RefreshTask("fs:/", fs, true));
     MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 4);
-    engine.setTasks(
-        List.of(
-            new MetricsRefreshEngine.RefreshTask("blocking", blocking, false),
-            new MetricsRefreshEngine.RefreshTask("fast", fast, false),
-            new MetricsRefreshEngine.RefreshTask("fs:/", fs, true)));
+    engine.setTasks(tasks);
 
     try {
       engine.start();
@@ -278,6 +290,11 @@ class MetricsRefreshEngineTest {
           "Engine should leave NORMAL under saturation");
 
       blocked.set(false);
+      // The blocked tasks are gone (as after a config reload); the low-priority task stays.
+      engine.setTasks(
+          List.of(
+              new MetricsRefreshEngine.RefreshTask("fast", fast, false),
+              new MetricsRefreshEngine.RefreshTask("fs:/", fs, true)));
 
       waitUntil(() -> engine.currentMode() == TelemetryMode.NORMAL, 3_000L);
       assertEquals(
@@ -521,6 +538,73 @@ class MetricsRefreshEngineTest {
       assertEquals(1, hung.pollCount.get());
     } finally {
       hung.release();
+      engine.stop();
+    }
+  }
+
+  @Test
+  void engine_hungCriticalTaskShouldNotBlockOtherCriticalTasks() {
+    HangingMetric hung = new HangingMetric();
+    CountingMetric cpu = new CountingMetric();
+    CountingMetric memory = new CountingMetric();
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setStuckThresholdMs(100L);
+    engine.setTasks(
+        List.of(
+            new MetricsRefreshEngine.RefreshTask("process", hung, false),
+            new MetricsRefreshEngine.RefreshTask("cpu", cpu, false),
+            new MetricsRefreshEngine.RefreshTask("node-mem", memory, false)));
+
+    try {
+      engine.start();
+      waitUntil(() -> hung.pollCount.get() >= 1, 2_000L);
+      int cpuBefore = cpu.pollCount.get();
+      int memoryBefore = memory.pollCount.get();
+
+      waitUntil(
+          () ->
+              cpu.pollCount.get() >= cpuBefore + 20 && memory.pollCount.get() >= memoryBefore + 20,
+          3_000L);
+      assertTrue(cpu.pollCount.get() >= cpuBefore + 20, "CPU must keep refreshing");
+      assertTrue(memory.pollCount.get() >= memoryBefore + 20, "Memory must keep refreshing");
+      assertEquals(1, hung.pollCount.get(), "A hung task must not be enqueued on top of itself");
+      assertEquals(
+          TelemetryMode.NORMAL,
+          engine.currentMode(),
+          "One hung task must not push the engine into an overload mode");
+      assertTrue(engine.droppedCount() > 0L, "Skipped runs of the hung task are counted");
+
+      waitUntil(() -> !engine.stuckTaskNames().isEmpty(), 2_000L);
+      assertEquals(List.of("process"), engine.stuckTaskNames());
+    } finally {
+      hung.release();
+      engine.stop();
+    }
+  }
+
+  @Test
+  void engine_hungCriticalTasksShouldOccupyAtMostOneWorkerEach() {
+    HangingMetric first = new HangingMetric();
+    HangingMetric second = new HangingMetric();
+    CountingMetric healthy = new CountingMetric();
+    MetricsRefreshEngine engine = new MetricsRefreshEngine(5L, 64);
+    engine.setTasks(
+        List.of(
+            new MetricsRefreshEngine.RefreshTask("network", first, false),
+            new MetricsRefreshEngine.RefreshTask("disk-io", second, false),
+            new MetricsRefreshEngine.RefreshTask("cpu", healthy, false)));
+
+    try {
+      engine.start();
+      waitUntil(() -> first.pollCount.get() >= 1 && second.pollCount.get() >= 1, 2_000L);
+      int before = healthy.pollCount.get();
+      waitUntil(() -> healthy.pollCount.get() >= before + 10, 3_000L);
+      assertTrue(
+          healthy.pollCount.get() >= before + 10,
+          "Two hung tasks leave a worker for the rest of the critical lane");
+    } finally {
+      first.release();
+      second.release();
       engine.stop();
     }
   }

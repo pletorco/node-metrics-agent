@@ -40,13 +40,46 @@ All notable changes to this project will be documented in this file.
   `pswpin` / `pswpout`; a missing `/proc/vmstat` is `-1`, not a failure).
   `co.pletor.cgroup:type=MemMetrics`: `SwapUsageBytes` and `SwapLimitBytes` for the container's own
   cgroup (v2 `memory.swap.current` / `memory.swap.max`; v1 derived from `memsw`; `-1` when swap is
-  not accounted). Exporter rules updated so the page counters are exported as counters.
+  not accounted). Exporter rules updated for the page counters.
 - Pressure stall information (PSI) metrics: `co.pletor.node:type=PressureMetrics` (from
   `/proc/pressure`, host-wide) and `co.pletor.cgroup:type=PressureMetrics` (the container's own
   `cpu.pressure`, `memory.pressure` and `io.pressure`, cgroup v2). For CPU, memory and I/O, each
   with `some` and `full`: the kernel's 10-second average in percent (`*Avg10`) and the cumulative
   stalled time in microseconds (`*TotalMicros`, a counter for `rate()`). `-1` when PSI is
-  unavailable. Exporter rules updated so the totals are exported as counters.
+  unavailable. Exporter rules updated for the totals.
+- `co.pletor.cgroup:type=PidsMetrics`: `PidsCurrent` and `PidsLimit` from the `pids` controller
+  (the tightest finite `pids.max` of the cgroup and its ancestors, with the count of that level;
+  cgroup v1 reads the `pids` hierarchy next to `memory`). At the limit the JVM fails with "unable to
+  create native thread".
+- `MemoryMaxEventsTotal` (`max` in `memory.events`, `memory.failcnt` on v1) and
+  `MemoryHighEventsTotal` (`high`, v2 only) on `co.pletor.cgroup:type=MemMetrics`: the container
+  hitting its memory limit, which precedes an OOM kill. Read from the file already used for
+  `MemoryOomKillTotal`, so no extra read.
+- `src/main/resources/prometheus_alerts_example.yml`: example Prometheus alerting rules for the
+  agent's health, memory, CPU and I/O, network and resource limits. A test checks that every metric
+  name in it is one the example exporter rules produce, and that every MBean attribute has a
+  `@JmxMetricHint` and an exporter rule of the matching type.
+
+### Changed
+
+- The regular metrics now refresh on 3 worker threads (was 1), and, like the filesystem lane, a
+  task is never queued again while its previous run is still queued or running. Before, one hung
+  `/proc` or cgroup read blocked every regular metric, and its queued copies then filled the queue
+  until the engine dropped everything (`BYPASS`). Now a hung task occupies one worker, is skipped
+  (`DroppedCount`) and shows in `StuckTasks`, and the overload mode is left to a genuinely full
+  queue.
+
+### Fixed
+
+- The example exporter rules exported cumulative counters as `COUNTER`. With the Prometheus JMX
+  exporter 1.x, a counter that reads `-1` (source unavailable: no PSI, no cgroup, an old kernel)
+  makes the **whole scrape fail** (HTTP 500, "counters cannot have a negative value"), and every
+  other counter was exposed with an extra `_total` suffix. They are now `UNTYPED`, which keeps the
+  value and the name as documented, and `rate()`/`increase()` work on them unchanged. **Upgrade
+  note:** with exporter 1.x, series that used to carry `_total` (for example
+  `pletor_node_iorates_diskreadbytestotal_total`) are now exposed without it; exporter 0.x names do
+  not change. The agent's own `co.pletor.agent` counters stay `COUNTER`. See "Unavailable values and
+  the exporter" in `RUNBOOK.md`.
 
 ## [0.9.0] - 2026-09-29
 

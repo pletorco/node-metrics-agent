@@ -78,6 +78,28 @@ public interface CgroupMemMetricsMBean {
   long getMemoryOomKillTotal();
 
   /**
+   * Returns the cumulative number of times the cgroup's memory use reached its limit and the kernel
+   * had to reclaim or kill ({@code max} in {@code memory.events} on v2, {@code memory.failcnt} on
+   * v1). It rises before the first OOM kill, so it is the earlier warning.
+   *
+   * @return the count, or {@code -1} when unavailable
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("events")
+  long getMemoryMaxEventsTotal();
+
+  /**
+   * Returns the cumulative number of times the cgroup went over {@code memory.high} and was
+   * throttled and reclaimed ({@code high} in {@code memory.events}). It stays {@code 0} unless
+   * {@code memory.high} is set, which Kubernetes does only with the memory QoS feature.
+   *
+   * @return the count, or {@code -1} when unavailable (cgroup v1 has no such counter)
+   */
+  @JmxMetricHint("counter")
+  @JmxMetricUnit("events")
+  long getMemoryHighEventsTotal();
+
+  /**
    * Returns the cgroup version (e.g. v1 or v2).
    *
    * @return the cgroup version string

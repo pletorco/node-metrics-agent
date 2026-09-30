@@ -23,8 +23,10 @@ import java.util.logging.Level;
  * the JMX read path. Work is split into two isolated lanes:
  *
  * <ul>
- *   <li><b>critical</b> lane (one worker): regular tasks. Overload modes are derived from this
- *       lane.
+ *   <li><b>critical</b> lane ({@value #CRITICAL_WORKERS} workers): regular tasks. Overload modes
+ *       are derived from this lane. A task never has more than one queued or running instance, so a
+ *       read that hangs (for example a {@code /proc} or cgroup file on a stalled kernel path)
+ *       occupies one worker at most; the other workers keep the remaining metrics fresh.
  *   <li><b>background</b> lane ({@value #BACKGROUND_WORKERS} workers): low-priority tasks, i.e.
  *       filesystem metrics. These touch mounted filesystems, where a dead NFS mount can block a
  *       {@code statvfs} call indefinitely; running them on their own threads keeps such a hang from
@@ -37,6 +39,7 @@ final class MetricsRefreshEngine implements AutoCloseable {
   private static final ThrottledLogger THROTTLED_LOGGER = new ThrottledLogger(LOGGER, 60_000L);
   private static final String LOG_KEY_REFRESH_FAILED = "metric-refresh-failed";
   private static final String LOG_KEY_LOOP_FAILED = "engine-loop-failed";
+  static final int CRITICAL_WORKERS = 3;
   static final int BACKGROUND_WORKERS = 3;
   static final long DEFAULT_STUCK_THRESHOLD_MS = 30_000L;
 
@@ -61,7 +64,7 @@ final class MetricsRefreshEngine implements AutoCloseable {
 
   private volatile long stuckThresholdMs = DEFAULT_STUCK_THRESHOLD_MS;
   private Thread dispatcherThread;
-  private Thread workerThread;
+  private final Thread[] criticalThreads = new Thread[CRITICAL_WORKERS];
   private final Thread[] backgroundThreads = new Thread[BACKGROUND_WORKERS];
 
   static final class RefreshTask {
@@ -79,8 +82,8 @@ final class MetricsRefreshEngine implements AutoCloseable {
     final AtomicLong lastSuccessEpochMs = new AtomicLong(0L);
 
     /**
-     * Background lane only: set while an instance of this task is queued or running, so a task that
-     * hangs is not enqueued again on top of itself.
+     * Set while an instance of this task is queued or running, so a task that hangs is not enqueued
+     * again on top of itself (which would let it take over every worker).
      */
     final AtomicBoolean pending = new AtomicBoolean(false);
 
@@ -297,9 +300,13 @@ final class MetricsRefreshEngine implements AutoCloseable {
       return;
     }
     dispatcherThread = AgentThreads.daemon("node-metrics-refresh-dispatcher", this::dispatchLoop);
-    workerThread = AgentThreads.daemon("node-metrics-refresh-worker", () -> workerLoop(queue));
     dispatcherThread.start();
-    workerThread.start();
+    for (int i = 0; i < criticalThreads.length; i++) {
+      Thread t =
+          AgentThreads.daemon("node-metrics-refresh-worker-" + (i + 1), () -> workerLoop(queue));
+      criticalThreads[i] = t;
+      t.start();
+    }
     for (int i = 0; i < backgroundThreads.length; i++) {
       Thread t =
           AgentThreads.daemon(
@@ -317,9 +324,10 @@ final class MetricsRefreshEngine implements AutoCloseable {
     if (dispatcher != null) {
       dispatcher.interrupt();
     }
-    Thread worker = workerThread;
-    if (worker != null) {
-      worker.interrupt();
+    for (Thread t : criticalThreads) {
+      if (t != null) {
+        t.interrupt();
+      }
     }
     for (Thread t : backgroundThreads) {
       if (t != null) {
@@ -388,9 +396,15 @@ final class MetricsRefreshEngine implements AutoCloseable {
         if (!dispatchToBackground(task, now)) {
           droppedThisCycle++;
         }
+      } else if (!task.pending.compareAndSet(false, true)) {
+        // The previous run is still queued or running (slow or hung): skip this one. This is not
+        // an overload signal; a single hung task must not push the whole engine into BYPASS.
+        task.scheduleNext(now);
+        droppedThisCycle++;
       } else if (enqueue(queue, task)) {
         task.scheduleNext(now);
       } else {
+        task.pending.set(false);
         droppedThisCycle++;
         enqueueFailures++;
       }

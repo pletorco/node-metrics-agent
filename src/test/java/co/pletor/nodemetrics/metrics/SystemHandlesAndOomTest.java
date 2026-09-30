@@ -200,4 +200,38 @@ class SystemHandlesAndOomTest {
     assertEquals(-1L, old.getMemoryOomKillTotal(), "kernels before 4.13 have no oom_kill line");
     assertNull(old.lastRefreshError());
   }
+
+  @Test
+  void cgroupV2LimitAndHighEventsFromMemoryEvents() throws Exception {
+    CgroupMemMetrics m = cgroup("v2");
+    Files.writeString(
+        cgroupDir.resolve("memory.events"), "low 0\nhigh 9\nmax 4\noom 3\noom_kill 2\n");
+    m.poll();
+
+    assertEquals(4L, m.getMemoryMaxEventsTotal());
+    assertEquals(9L, m.getMemoryHighEventsTotal());
+  }
+
+  @Test
+  void cgroupV1LimitHitsFromFailcntAndNoHighCounter() throws Exception {
+    CgroupMemMetrics m = cgroup("v1");
+    Files.writeString(cgroupDir.resolve("memory.failcnt"), "7\n");
+    m.poll();
+
+    assertEquals(7L, m.getMemoryMaxEventsTotal());
+    assertEquals(-1L, m.getMemoryHighEventsTotal());
+  }
+
+  @Test
+  void cgroupEventsAreMinusOneWhenTheFilesAreMissing() throws Exception {
+    CgroupMemMetrics v2 = cgroup("v2");
+    v2.poll();
+    assertEquals(-1L, v2.getMemoryMaxEventsTotal());
+    assertEquals(-1L, v2.getMemoryHighEventsTotal());
+
+    CgroupMemMetrics v1 = cgroup("v1");
+    v1.poll();
+    assertEquals(-1L, v1.getMemoryMaxEventsTotal());
+    assertNull(v1.lastRefreshError());
+  }
 }

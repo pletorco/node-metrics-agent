@@ -32,6 +32,16 @@ metricCustomizers:
 
 rules:
   # ============================================================================
+  # Cumulative counters are exported as UNTYPED, not COUNTER, on purpose.
+  # An attribute that its source cannot provide (no PSI, no cgroup, an old kernel) reports -1. The
+  # Prometheus JMX exporter 1.x rejects a negative COUNTER and then fails the WHOLE scrape (HTTP
+  # 500), so a single unavailable counter would hide every metric of the target. UNTYPED keeps the
+  # value and the name (no "_total" suffix is appended), and rate()/increase() work on it as on a
+  # counter. Alert and dashboard queries should ignore -1 (see prometheus_alerts_example.yml).
+  # The agent's own counters (co.pletor.agent) are never negative and stay COUNTER.
+  # ============================================================================
+
+  # ============================================================================
   # Node Metrics Agent
   # Consolidated rules for metrics exposed by node-metrics-agent.
   # Subsections: cgroup, node, proc.
@@ -44,7 +54,7 @@ rules:
   # ============================================================================
   - pattern: 'co.pletor.cgroup<type=(.+?)(?:,(.+))?><>(CgroupCpuThrottledCount|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_cgroup_$1_$3
-    type: COUNTER
+    type: UNTYPED
     cache: true
 
   - pattern: 'co.pletor.cgroup<type=(.+?)(?:,(.+))?><>(.+):'
@@ -60,7 +70,7 @@ rules:
   # ============================================================================
   - pattern: 'co.pletor.node<type=(.+?)(?:,(.+))?><>(ProcessCpuTimeNanos|UptimeSeconds|SystemCpu[A-Za-z]+Ticks|CgroupCpuThrottledPeriodsTotal|CgroupCpuThrottledTimeNanosTotal|CgroupCpuUsageNanosTotal|DiskReadBytesTotal|DiskWriteBytesTotal|NetRxBytesTotal|NetTxBytesTotal|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_node_$1_$3
-    type: COUNTER
+    type: UNTYPED
     cache: true
 
   - pattern: 'co.pletor.node<type=FsMetrics, path=(.+)><>(.+):'
@@ -81,7 +91,7 @@ rules:
   # ============================================================================
   - pattern: 'co.pletor.proc<type=(.+?)(?:,(.+))?><>(IoReadBytesTotal|IoWriteBytesTotal):'
     name: pletor_proc_$1_$3
-    type: COUNTER
+    type: UNTYPED
     cache: true
 
   - pattern: 'co.pletor.proc<type=(.+?)(?:,(.+))?><>(.+):'
