@@ -126,7 +126,8 @@ If reload fails, the previous working configuration remains active.
 Prometheus alerting rules; check it with `promtool check rules` and tune the thresholds.
 
 - telemetry mode is not `NORMAL` for a sustained period
-- `pletor_agent_observability_droppedcount` increases above baseline
+- `pletor_agent_observability_droppedcount_total` increases above baseline (the agent's own
+  counters stay `COUNTER`, so the exporter 1.x appends `_total`; exporter 0.x does not)
 - `pletor_agent_observability_queuefillratio >= 0.80`
 - `pletor_agent_observability_maxtaskstalenessms` rises for a sustained period
   (seconds behind schedule; healthy tasks stay near `0` whatever their refresh interval)
