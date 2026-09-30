@@ -18,7 +18,7 @@ class AgentMetadataTest {
     assertNotNull(version, "Version should not be null");
     assertNotNull(commitId, "Commit ID should not be null");
 
-    assertEquals("0.9.0", version, "Version should be loaded from generated properties");
+    assertEquals("0.10.0", version, "Version should be loaded from generated properties");
 
     // Basic pattern checks
     assertNotEquals("", version.trim(), "Version should not be empty");
