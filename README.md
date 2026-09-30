@@ -15,7 +15,7 @@ The agent is designed to run inside production JVMs with a fail-open posture:
 - self-observability MBeans for queue pressure, drops, latency, staleness, and failing metric refreshes
 - Prometheus JMX exporter example rules using the `pletor_*` metric prefix
 
-Current version: `0.9.0`
+Current version: `0.10.0`
 
 ## MBeans
 
@@ -51,7 +51,7 @@ Attach it to a JVM:
 
 ```bash
 java \
-  -javaagent:/path/to/node-metrics-agent-0.9.0-all.jar=/path/to/node-metrics.yml \
+  -javaagent:/path/to/node-metrics-agent-0.10.0-all.jar=/path/to/node-metrics.yml \
   -jar your-app.jar
 ```
 
@@ -87,8 +87,8 @@ fsmetrics_paths:
 The JAR can also generate config files:
 
 ```bash
-java -jar node-metrics-agent-0.9.0-all.jar init-config --fs-path /data,/var
-java -jar node-metrics-agent-0.9.0-all.jar init-kafka-config \
+java -jar node-metrics-agent-0.10.0-all.jar init-config --fs-path /data,/var
+java -jar node-metrics-agent-0.10.0-all.jar init-kafka-config \
   --server-properties /opt/kafka/config/server.properties
 ```
 
@@ -104,7 +104,7 @@ One common launch shape is:
 ```bash
 java \
   -javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=9404:/opt/jmx-exporter/pletor-node-metrics.yml \
-  -javaagent:/opt/pletor/node-metrics-agent-0.9.0-all.jar=/opt/pletor/node-metrics.yml \
+  -javaagent:/opt/pletor/node-metrics-agent-0.10.0-all.jar=/opt/pletor/node-metrics.yml \
   -jar your-app.jar
 ```
 

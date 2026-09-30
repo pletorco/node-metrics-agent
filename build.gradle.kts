@@ -33,7 +33,7 @@ plugins {
 // Project metadata
 // -----------------------------------------------------------------------------
 group = "kr.pletor"
-version = "0.9.0"
+version = "0.10.0"
 description = "JVM agent for exposing host and container node metrics through JMX"
 
 // -----------------------------------------------------------------------------
