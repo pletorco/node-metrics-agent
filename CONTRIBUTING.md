@@ -67,8 +67,14 @@ JMX Standard MBean convention requires it.
 
 ## Releasing
 
-Push a tag `vX.Y.Z` that matches the project version. The release workflow verifies the tag, runs
-`check`, builds the shaded jar, smoke-tests it and publishes the jar, `SHA256SUMS` and the SBOM.
+Before tagging, bump the version (`build.gradle.kts`, the version examples in the docs and
+`AgentMetadataTest`) and turn the `[Unreleased]` entries of `CHANGELOG.md` into a `## [X.Y.Z] - date`
+section: it is published as the GitHub release notes (`scripts/release-notes.sh X.Y.Z` prints it, and
+CI fails if the project version has no section).
+
+Push a tag `vX.Y.Z` that matches the project version. The release workflow verifies the tag, takes
+the release notes from `CHANGELOG.md`, runs `check`, builds the shaded jar, smoke-tests it and
+publishes the jar, `SHA256SUMS` and the SBOM.
 
 Optional signed build provenance: set the repository variable `ATTEST_RELEASE_ARTIFACTS` to `true`
 (requires repository support for attestations). Consumers can then verify a download with

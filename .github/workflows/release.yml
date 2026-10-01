@@ -29,6 +29,11 @@ jobs:
           VERSION="$(./gradlew -q --no-daemon printVersion | tr -d '\r')"
           test "v${VERSION}" = "${GITHUB_REF_NAME}"
 
+      # The CHANGELOG.md section of this version becomes the release notes. Also fail-fast: a
+      # release cannot go out without notes.
+      - name: Extract release notes from CHANGELOG.md
+        run: scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > "${RUNNER_TEMP}/release-notes.md"
+
       - name: Test, lint and build distribution
         run: ./gradlew --no-daemon clean check shadowJar cyclonedxBom
 
@@ -44,6 +49,7 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:
+          body_path: ${{ runner.temp }}/release-notes.md
           files: |
             build/libs/*-all.jar
             build/libs/SHA256SUMS

@@ -35,6 +35,11 @@ jobs:
       - name: Test and lint
         run: ./gradlew --no-daemon spotlessCheck test checkstyleMain checkstyleTest
 
+      # The release workflow publishes this CHANGELOG.md section as the release notes; catch a
+      # version bump without one here instead of when the tag is pushed.
+      - name: Check the release notes for the project version
+        run: scripts/release-notes.sh "$(./gradlew -q --no-daemon printVersion | tr -d '\r')" > /dev/null
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v7
