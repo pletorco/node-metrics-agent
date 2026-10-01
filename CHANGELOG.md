@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Build and CI
+
+- The release workflow publishes the `CHANGELOG.md` section of the released version as the GitHub
+  release notes (`scripts/release-notes.sh`); a release without a section fails before the build,
+  and CI fails a version bump that has no section.
+
 ## [0.10.0] - 2026-10-01
 
 Breaking changes to know before upgrading: the JMX domains are now `kr.pletor.*` (were
