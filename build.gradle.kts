@@ -26,7 +26,7 @@ plugins {
     checkstyle
 
     // Formatting (google-java-format): `spotlessCheck` verifies, `spotlessApply` fixes
-    id("com.diffplug.spotless") version "8.0.0"
+    id("com.diffplug.spotless") version "8.10.3"
 }
 
 // -----------------------------------------------------------------------------
