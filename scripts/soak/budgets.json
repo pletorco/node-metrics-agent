@@ -6,6 +6,7 @@
   "callerAllocationExtraBytes": 64,
   "processCpuExtraCores": 0.10,
   "extraThreads": 20,
+  "threadGrowth": 2,
   "heapGrowthBytes": 8388608,
   "heapSlopeBytesPerMinute": 524288,
   "maxControlP99Nanos": 1000000,

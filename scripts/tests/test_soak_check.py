@@ -12,7 +12,7 @@ import soak_check as soak
 
 def measurement():
     return {"callerP99Nanos": 1000, "callerCpuNanos": 500, "callerAllocatedBytes": 272,
-            "processCpuCores": .02, "medianThreads": 20, "http": {"p99Millis": 3},
+            "processCpuCores": .02, "medianThreads": 20, "threadGrowth": 0, "http": {"p99Millis": 3},
             "retention": {"growthBytes": 100_000, "slopeBytesPerMinute": 10_000}}
 
 
@@ -25,7 +25,7 @@ class SoakEvidenceTest(unittest.TestCase):
 
     def test_resource_growth_and_host_overhead_regressions_fail(self):
         cases = [("callerP99Nanos", 100_000), ("callerCpuNanos", 100_000),
-                 ("callerAllocatedBytes", 2048), ("processCpuCores", .5), ("medianThreads", 100)]
+                 ("callerAllocatedBytes", 2048), ("processCpuCores", .5), ("medianThreads", 100), ("threadGrowth", 10)]
         for key, value in cases:
             enabled = measurement()
             enabled[key] = value

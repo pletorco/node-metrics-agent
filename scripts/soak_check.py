@@ -80,11 +80,14 @@ def summarize_samples(path, expected_duration, enabled):
     points = [(row["seconds"], row["postGcHeapBytes"]) for row in rows if row["postGcHeapBytes"] >= 0]
     cpu = (rows[-1]["processCpuNanos"] - rows[0]["processCpuNanos"]) / (span * 1e9)
     require(cpu >= 0, "Process CPU counter reset")
+    quarter = max(1, len(rows) // 4)
     return {"windows": len(rows), "durationSeconds": span, "retention": retention(points),
             "callerP99Nanos": percentile([r["p99Nanos"] for r in rows], .95),
             "callerCpuNanos": statistics.median(r["callerCpuNanos"] for r in rows),
             "callerAllocatedBytes": statistics.median(r["callerAllocatedBytes"] for r in rows),
             "processCpuCores": cpu, "medianThreads": statistics.median(r["threads"] for r in rows),
+            "threadGrowth": statistics.median(r["threads"] for r in rows[-quarter:])
+                            - statistics.median(r["threads"] for r in rows[:quarter]),
             "maxRefreshThreads": max(r["refreshThreads"] for r in rows),
             "maxFixtureQueue": max(r["fixtureQueue"] for r in rows),
             "maxAgentQueue": max(r["agentQueue"] for r in rows),
@@ -95,7 +98,7 @@ def summarize_samples(path, expected_duration, enabled):
 def evaluate(baseline, enabled, budgets):
     required = {"callerP99Ratio", "callerP99NoiseNanos", "callerCpuRatio", "callerCpuNoiseNanos",
                 "callerAllocationExtraBytes", "processCpuExtraCores", "extraThreads", "heapGrowthBytes",
-                "heapSlopeBytesPerMinute", "maxControlP99Nanos", "httpP99Ratio", "httpP99NoiseMillis"}
+                "heapSlopeBytesPerMinute", "maxControlP99Nanos", "httpP99Ratio", "httpP99NoiseMillis", "threadGrowth"}
     require(isinstance(budgets, dict) and set(budgets) == required and all(
         isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
         for v in budgets.values()), "Missing/invalid soak budgets")
@@ -109,6 +112,7 @@ def evaluate(baseline, enabled, budgets):
                                  baseline["callerAllocatedBytes"] + budgets["callerAllocationExtraBytes"]),
         "processCpuExtraCores": (enabled["processCpuCores"] - baseline["processCpuCores"], budgets["processCpuExtraCores"]),
         "extraThreads": (enabled["medianThreads"] - baseline["medianThreads"], budgets["extraThreads"]),
+        "threadGrowth": (enabled["threadGrowth"], budgets["threadGrowth"]),
         "heapGrowthBytes": (enabled["retention"]["growthBytes"], budgets["heapGrowthBytes"]),
         "heapSlopeBytesPerMinute": (enabled["retention"]["slopeBytesPerMinute"], budgets["heapSlopeBytesPerMinute"]),
         "httpP99Millis": (enabled["http"]["p99Millis"],
@@ -119,6 +123,8 @@ def evaluate(baseline, enabled, budgets):
             baseline["retention"]["slopeBytesPerMinute"] > budgets["heapSlopeBytesPerMinute"] or \
             baseline["callerP99Nanos"] > budgets["maxControlP99Nanos"]:
         problems.append("Control is unstable; rerun on an idle runner")
+    if baseline["threadGrowth"] > budgets["threadGrowth"]:
+        problems.append("Control thread count is growing; rerun on an idle runner")
     for name, (observed, limit) in comparisons.items():
         if observed > limit:
             problems.append(f"{name}: {observed:.3f} exceeds {limit:.3f}")
@@ -259,6 +265,8 @@ def main():
                 "Measured durations must be 60..3600 seconds")
         require(30 <= args.warmup_seconds <= 300 and 1 <= args.gc_interval <= 10,
                 "Warmup must be 30..300 seconds and GC interval 1..10 seconds")
+        require(args.duration_seconds + args.baseline_seconds + 2 * args.warmup_seconds <= 4800,
+                "Combined measurement/warmup must fit the 80-minute process budget")
         require(min(args.duration_seconds, args.baseline_seconds) / args.gc_interval >= 6,
                 "Insufficient retention measurement duration")
         args.agent_jar = args.agent_jar.resolve(strict=True)

@@ -58,6 +58,7 @@ never silently learned from the candidate being checked.
 | Caller allocation per operation | control + 64 bytes |
 | Process CPU | control + 0.10 cores (CPU seconds / wall second) |
 | Median live threads | control + 20 |
+| Live thread growth | at most 2 between first/last quarters |
 | HTTP scrape p99 | 3 × control + 25 ms |
 | Retained heap growth | 8 MiB between first/last quarters |
 | Retained heap slope | 512 KiB per minute |
@@ -105,6 +106,8 @@ For a quick harness check, add `--baseline-seconds 60 --duration-seconds 60 --wa
 --gc-interval 5`. It does not replace the scheduled 30-minute enabled run. Offline analyzer
 regressions run with `python3 -m unittest discover -s scripts/tests -v` and cover growth signals,
 host-cost regressions, unstable controls and incomplete evidence.
+Combined control/enabled measurement and warmup are limited to 80 minutes, leaving time for
+build/diagnostics inside the workflow's 90-minute timeout.
 
 As a negative control, a sandbox JAR containing the pre-#59 engine makes this probe detect
 duplicate hung polls after a config reload and exit nonzero. No fault hook enters production.
