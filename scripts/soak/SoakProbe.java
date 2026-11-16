@@ -176,13 +176,15 @@ public final class SoakProbe {
     int actualReloads = 0;
     long modified = System.currentTimeMillis();
     long previousPolls = -1;
+    long previousActual = -1;
+    long actualProgressAt = System.nanoTime();
     String expectedActualChecksum = "";
     int actualChangedAt = -100;
     fixture.start();
     try (PrintWriter csv =
         new PrintWriter(Files.newBufferedWriter(output.resolve("samples.csv")))) {
       csv.println(
-          "seconds,measured,phase,p99Nanos,callerCpuNanos,callerAllocatedBytes,postGcHeapBytes,threads,refreshThreads,fixtureQueue,agentQueue,processed,errors,rejected,applied,recovered,actualReloads,processCpuNanos");
+          "seconds,measured,phase,p99Nanos,callerCpuNanos,callerAllocatedBytes,postGcHeapBytes,threads,refreshThreads,fixtureQueue,agentQueue,processed,errors,rejected,applied,recovered,actualReloads,processCpuNanos,agentProcessed");
       long start = System.nanoTime();
       int count = duration + warmup;
       for (int tick = 0; tick <= count; tick++) {
@@ -242,6 +244,18 @@ public final class SoakProbe {
         int realQueue =
             enabled ? ((Number) server.getAttribute(realHealth, "QueueDepth")).intValue() : 0;
         require(realQueue <= 2048, "Actual agent queue exceeded capacity");
+        long actualProcessed =
+            enabled ? ((Number) server.getAttribute(realHealth, "ProcessedCount")).longValue() : 0L;
+        if (enabled) {
+          if (actualProcessed > previousActual) {
+            actualProgressAt = System.nanoTime();
+          }
+          require(
+              actualProcessed >= previousActual
+                  && System.nanoTime() - actualProgressAt <= TimeUnit.SECONDS.toNanos(10),
+              "Actual agent refresh progress stalled/reset");
+          previousActual = actualProcessed;
+        }
 
         long cpuBefore = threads.getCurrentThreadCpuTime();
         long allocatedBefore = threads.getThreadAllocatedBytes(Thread.currentThread().getId());
@@ -277,7 +291,7 @@ public final class SoakProbe {
         double elapsed = (System.nanoTime() - start) / 1_000_000_000.0;
         csv.printf(
             java.util.Locale.ROOT,
-            "%.6f,%s,%d,%d,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d%n",
+            "%.6f,%s,%d,%d,%.3f,%.3f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d%n",
             elapsed,
             tick >= warmup,
             phase,
@@ -295,7 +309,8 @@ public final class SoakProbe {
             applied.get(),
             recovered,
             actualReloads,
-            os.getProcessCpuTime());
+            os.getProcessCpuTime(),
+            actualProcessed);
         csv.flush();
         long remaining = start + TimeUnit.SECONDS.toNanos(tick + 1L) - System.nanoTime();
         if (remaining > 0) {

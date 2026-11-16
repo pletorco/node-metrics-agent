@@ -62,17 +62,17 @@ class SoakEvidenceTest(unittest.TestCase):
             soak.retention(growing[:3])
 
     def test_missing_windows_accounting_scenarios_or_queue_bounds_fail(self):
-        fields = "seconds,measured,phase,p99Nanos,callerCpuNanos,callerAllocatedBytes,postGcHeapBytes,threads,refreshThreads,fixtureQueue,agentQueue,processed,errors,rejected,applied,recovered,actualReloads,processCpuNanos".split(",")
+        fields = "seconds,measured,phase,p99Nanos,callerCpuNanos,callerAllocatedBytes,postGcHeapBytes,threads,refreshThreads,fixtureQueue,agentQueue,processed,errors,rejected,applied,recovered,actualReloads,processCpuNanos,agentProcessed".split(",")
         rows = []
         for i in range(61):
             row = dict.fromkeys(fields, 1)
             row.update(seconds=i, measured="true", processCpuNanos=i * 1_000_000,
                        postGcHeapBytes=1_000_000, refreshThreads=14)
-            row.update({key: i for key in ("processed", "errors", "rejected", "applied", "recovered", "actualReloads")})
+            row.update({key: i for key in ("processed", "errors", "rejected", "applied", "recovered", "actualReloads", "agentProcessed")})
             rows.append(row)
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "samples.csv"
-            for kind in ("valid", "truncated", "queue", "nan", "noGC", "noRecovery", "missingAccounting"):
+            for kind in ("valid", "truncated", "queue", "nan", "noGC", "noRecovery", "missingAccounting", "actualStall"):
                 chosen = copy.deepcopy(rows)
                 if kind == "truncated":
                     chosen = chosen[:20]
@@ -88,6 +88,9 @@ class SoakEvidenceTest(unittest.TestCase):
                         row["recovered"] = 0
                 elif kind == "missingAccounting":
                     chosen[30]["callerAllocatedBytes"] = -1
+                elif kind == "actualStall":
+                    for row in chosen:
+                        row["agentProcessed"] = 0
                 with path.open("w") as file:
                     writer = csv.DictWriter(file, fields)
                     writer.writeheader()

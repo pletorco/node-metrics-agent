@@ -77,6 +77,7 @@ def summarize_samples(path, expected_duration, enabled):
         require(rows[-1][key] > rows[0][key], f"Post-warmup scenario did not exercise {key}")
     if enabled:
         require(rows[-1]["actualReloads"] > rows[0]["actualReloads"], "Actual config watcher was not exercised")
+        require(rows[-1]["agentProcessed"] > rows[0]["agentProcessed"], "Actual agent refresh did not progress")
     points = [(row["seconds"], row["postGcHeapBytes"]) for row in rows if row["postGcHeapBytes"] >= 0]
     cpu = (rows[-1]["processCpuNanos"] - rows[0]["processCpuNanos"]) / (span * 1e9)
     require(cpu >= 0, "Process CPU counter reset")
@@ -92,7 +93,7 @@ def summarize_samples(path, expected_duration, enabled):
             "maxFixtureQueue": max(r["fixtureQueue"] for r in rows),
             "maxAgentQueue": max(r["agentQueue"] for r in rows),
             "scenario": {key: rows[-1][key] - rows[0][key]
-                         for key in ("rejected", "recovered", "applied", "processed", "errors", "actualReloads")}}
+                         for key in ("rejected", "recovered", "applied", "processed", "errors", "actualReloads", "agentProcessed")}}
 
 
 def evaluate(baseline, enabled, budgets):

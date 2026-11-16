@@ -31,6 +31,8 @@ the production config loader/reloader and JMX adapter. Healthy collection must k
 a collector may have only one concurrent poll. Refresh threads are bounded at 7 control / 14
 enabled, fixture queues at 128 total entries, and actual agent queues at 2,048. Enabled mode also
 edits the actual agent file and verifies the real watcher's applied checksum.
+The actual agent's completed-refresh counter must keep advancing, with a ten-second stall guard;
+healthy fixture progress cannot hide a stalled production engine.
 
 ## Retention and measurement limits
 
