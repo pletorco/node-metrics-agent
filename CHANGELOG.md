@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Build and CI
 
+- Update Gradle to 9.9.0, CycloneDX to 3.5.1, Spotless to 8.11.0 and the Gradle Wrapper
+  validation action to v6. The Java 11 target and pinned google-java-format version are preserved.
 - The release workflow publishes the `CHANGELOG.md` section of the released version as the GitHub
   release notes (`scripts/release-notes.sh`); a release without a section fails before the build,
   and CI fails a version bump that has no section.
