@@ -57,8 +57,8 @@ as a conservative union. Unknown formats require review and fail the scan.
 
 ## Scanner update notifications
 
-The Security workflow pins Trivy with `TRIVY_VERSION` (currently `v0.76.2`, verified by the
-full scanner workflow). Each CVE workflow run also checks Trivy's official latest stable release
+PR CI, release checks and daily scans pin Trivy through `.github/trivy-version` (currently
+`v0.76.2`, verified by the full scanner workflow). Each CVE workflow run also checks its latest stable release
 in a separate job. A newer version creates a GitHub issue with the installed/configured version,
 new version and release notes. The check lists both open and closed issues and uses a version
 marker to notify only once per release. Notification jobs are serialized to avoid duplicate
@@ -70,7 +70,7 @@ does not prevent the independent CVE job from running. Findings and scanner upda
 cannot mask each other's failures. `security-tool-updates.json` records the version comparison
 and issue URL. GitHub issue subscriptions/watch settings determine email and app delivery.
 
-Review a new version in a PR that updates `TRIVY_VERSION`, run regression tests and the Security
+Review a new version in a PR that updates `.github/trivy-version`, run regression tests and the Security
 workflow, then close its notification issue. The vulnerability database continues to update on
 every scan; routine DB refreshes do not create tool-update issues. Prereleases are not notified.
 
@@ -90,7 +90,7 @@ python3 -m unittest discover -s scripts/tests -v
 The tests cover omitted inventory scopes and packages, formatter version mismatch, vulnerable
 fixtures, GHSA-only Gradle advisories, stale/missing DB data, scanner/source failures, malformed
 reports and repeated scans in one working directory. The normal PR CI runs these offline tests.
-It does not introduce the separate network-backed PR/release gate tracked in issue #58.
+CI also runs the separate network-backed dependency gate described below.
 
 ## Coverage boundaries
 
@@ -101,7 +101,80 @@ Gradle distribution vulnerabilities are covered by vendor advisories rather than
 the resolved Maven classpath contains Gradle itself. A clean report means no matching known
 advisories at the recorded time; it is not proof that code is unexploitable.
 
-Dependency PR/release blocking policy remains tracked in #58.
+## PR and release security gates
+
+The CI job **`dependency-security`** runs on every PR, including Dependabot/forks and docs-only
+changes, and on pushes to main. An unconditional, stable check name avoids skipped path-filter
+checks leaving a required status pending. On PRs it scans the candidate merge commit; it never
+substitutes the current main inventory for the candidate's dependencies.
+
+`python3 scripts/security_gate.py --context pr --expected-commit "$(git rev-parse HEAD)"`
+resolves the complete inventory and runtime SBOM, invokes the same scanner as daily monitoring,
+and applies `.github/security-monitoring.json`. `gate.json` records the commit, runtime/tooling
+results separately, DB/scanner metadata and policy/inventory/SBOM hashes. A dependency present in
+both deployment and tooling scopes is classified as runtime and deduplicated. Gradle vendor
+advisories are tooling findings. HIGH, CRITICAL and UNKNOWN severities block both categories;
+LOW/MEDIUM remain visible in reports and daily monitoring. The policy can add blocking levels
+but cannot remove this baseline. Unknown severity requires review, rather than silently passing.
+
+Reviewed exceptions use the existing exact advisory/package/installed-version policy and its
+30-day maximum duration. `target: main` applies to candidate PRs and main monitoring;
+`target: release` applies to release candidates and published release monitoring. Exceptions remain
+visible in `gate.json`; expiry and severity escalation reactivate blocking. Changing a threshold,
+exception, scanner, workflow or verification script requires maintainer review before merge.
+The gate cannot override an unavailable source/scanner, missing scope/package or stale DB.
+
+PR jobs use `pull_request`, never `pull_request_target`. Their only repository permission is
+`contents: read`; no repository secrets are passed. Checkout does not persist credentials, and
+the inventory subprocess receives no `GH_TOKEN` or `GITHUB_TOKEN`. The scanner uses the read-only
+token solely for public advisory API requests. Diagnostic artifacts explicitly include inventory,
+SBOMs, raw reports and decisions, not caches, environment dumps or credential files. They are
+uploaded on failure and retained 30 days. Fork workflows may still require the normal maintainer
+approval to execute.
+
+### Release publication boundary
+
+The Release workflow separates **prepare** (contents read) from **release** (contents write).
+Prepare verifies the version/release notes, runs tests/lint/build, scans that commit, runs the
+Java agent smoke test and stages a `release-candidate` artifact only after a passing gate.
+`release` has `needs: prepare`; failure or cancellation cannot reach publication. It downloads
+that same immutable run artifact and verifies:
+
+- a passing release-context decision for the exact tag commit;
+- a scan no older than two hours and a still-fresh DB;
+- the policy hash, candidate file allowlist and every SHA-256 checksum;
+- identical SBOM bytes inside the built JAR, the scanned runtime BOM and the published BOM.
+
+Only then can the publishing action upload JAR/checksums/SBOM. It does not rebuild the artifact.
+The publication job never executes Gradle and is the only normal job with release write access.
+Optional provenance uses the same checked candidate. An old artifact or a retried publication
+with stale evidence must rerun prepare to obtain a fresh scan.
+
+Manual Release dispatch accepts `candidate_tag` to exercise preparation and staging without
+creating a tag or release. Publication is restricted to actual tag push events, so a successful
+manual validation never publishes. Release tags must be created from commits containing this
+workflow; tagging historical commits uses their historical workflow and is outside this control.
+
+### Required merge check
+
+The active main-branch security ruleset requires GitHub Actions' `dependency-security` check and
+an up-to-date candidate. It has no bypass actors and is separate from the existing deletion and
+force-push protection. The deployment of that ruleset is recorded in the implementation PR.
+Keep the job name stable. If it changes, first run the new check, update the required context and
+then remove the old context. No path filters or `continue-on-error` belong on this gate.
+
+Maintainers can inspect enforcement with:
+
+```bash
+gh api repos/pletorco/node-metrics-agent/rules/branches/main
+```
+
+To reproduce after repository migration, add an active branch ruleset for `refs/heads/main`,
+choose required status `dependency-security` from the GitHub Actions app, enable strict/up-to-date
+checks and leave bypass actors empty. Keep any other protections. Rulesets constrain status
+results, not the meaning of repository code: maintainers must review changes to security policy,
+workflow and scanner scripts, and repository admins can change rulesets. For incident rollback,
+remove only the dedicated security ruleset before removing/renaming its required job.
 
 ## Daily monitoring and incident ownership
 

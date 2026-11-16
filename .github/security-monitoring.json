@@ -2,5 +2,9 @@
   "owner": "pletorco repository maintainers",
   "triageHours": {"CRITICAL": 24, "HIGH": 72, "MEDIUM": 168, "LOW": 336, "UNKNOWN": 72},
   "maxScanAgeHours": 36,
+  "gates": {
+    "runtime": ["UNKNOWN", "HIGH", "CRITICAL"],
+    "tooling": ["UNKNOWN", "HIGH", "CRITICAL"]
+  },
   "exceptions": []
 }

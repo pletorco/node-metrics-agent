@@ -1,0 +1,35 @@
+name: Dependency security gate
+description: Scan resolved runtime and tooling dependencies and apply the reviewed policy
+inputs:
+  context:
+    description: pr or release policy context
+    required: true
+  token:
+    description: Read-only repository token for public vendor advisories
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install reviewed scanner
+      uses: ./.github/actions/setup-trivy
+    - name: Scan and apply dependency security policy
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GATE_CONTEXT: ${{ inputs.context }}
+      run: python3 scripts/security_gate.py --context "$GATE_CONTEXT" --expected-commit "$GITHUB_SHA"
+    - name: Upload security gate diagnostics
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: dependency-security-${{ inputs.context }}
+        retention-days: 30
+        path: |
+          build/reports/security/gate.json
+          build/reports/security/summary.json
+          build/reports/security/inventory.json
+          build/reports/security/runtime-trivy.json
+          build/reports/security/tooling-trivy.json
+          build/reports/security/all-dependencies.cdx.json
+          build/reports/security/gradle-advisories.json
+          build/reports/bom.json

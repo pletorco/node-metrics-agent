@@ -5,16 +5,26 @@ on:
     tags:
       - "v*.*.*"
 
+  # Exercise the complete candidate pipeline without publishing or creating a tag.
+  workflow_dispatch:
+    inputs:
+      candidate_tag:
+        description: "Version tag to validate without publishing, for example v0.10.1"
+        type: string
+        required: true
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up JDK
         uses: actions/setup-java@v6
@@ -23,44 +33,83 @@ jobs:
           java-version: "21"
           cache: gradle
 
+      - name: Select candidate tag
+        env:
+          CANDIDATE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.candidate_tag }}
+        run: |
+          [[ "$CANDIDATE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "RELEASE_TAG=$CANDIDATE_TAG" >> "$GITHUB_ENV"
+
       # Fail fast, before spending time on the build.
       - name: Verify tag matches project version
         run: |
           VERSION="$(./gradlew -q --no-daemon printVersion | tr -d '\r')"
-          test "v${VERSION}" = "${GITHUB_REF_NAME}"
+          test "v${VERSION}" = "${RELEASE_TAG}"
 
       # The CHANGELOG.md section of this version becomes the release notes. Also fail-fast: a
       # release cannot go out without notes.
       - name: Extract release notes from CHANGELOG.md
-        run: scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > "${RUNNER_TEMP}/release-notes.md"
+        run: scripts/release-notes.sh "${RELEASE_TAG#v}" > "${RUNNER_TEMP}/release-notes.md"
 
       - name: Test, lint and build distribution
         run: ./gradlew --no-daemon clean check shadowJar cyclonedxBom
 
+      - name: Gate runtime and tooling dependencies
+        uses: ./.github/actions/security-gate
+        with:
+          context: release
+          token: ${{ github.token }}
+
       - name: Smoke test the release jar
         run: scripts/smoke-test.sh build/libs/*-all.jar
 
-      - name: Write checksums
-        run: |
-          cd build/libs
-          sha256sum -- *-all.jar > SHA256SUMS
-          cat SHA256SUMS
+      - name: Stage the exact checked candidate
+        run: >
+          python3 scripts/release_candidate.py stage
+          --tag "$RELEASE_TAG" --commit "$GITHUB_SHA"
+          --notes "$RUNNER_TEMP/release-notes.md"
+
+      - name: Retain checked candidate for publication
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate
+          path: build/release-candidate/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: prepare
+    # Manual validation can never publish, even when every check passes.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout verification scripts at the checked tag
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download checked candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: release-candidate
+          path: candidate
+
+      - name: Verify gate, commit, policy, SBOM and candidate checksums
+        run: >
+          python3 scripts/release_candidate.py verify --directory candidate
+          --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:
-          body_path: ${{ runner.temp }}/release-notes.md
+          body_path: candidate/release-notes.md
           files: |
-            build/libs/*-all.jar
-            build/libs/SHA256SUMS
-            build/reports/bom.json
-
-      - name: Keep the jar for the optional provenance job
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-jar
-          path: build/libs/*-all.jar
-          if-no-files-found: error
+            candidate/*-all.jar
+            candidate/SHA256SUMS
+            candidate/bom.json
 
   # Optional: signed build provenance for the released jar, in its own job so that the OIDC and
   # attestation permissions are granted only when it runs. Off by default because attestations
@@ -69,7 +118,7 @@ jobs:
   # ATTEST_RELEASE_ARTIFACTS = true.
   # Verify a download with: gh attestation verify <jar> --repo <owner>/<repo>
   attest:
-    needs: release
+    needs: [prepare, release]
     if: ${{ vars.ATTEST_RELEASE_ARTIFACTS == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -81,7 +130,7 @@ jobs:
       - name: Download jar
         uses: actions/download-artifact@v8
         with:
-          name: release-jar
+          name: release-candidate
           path: dist
 
       - name: Attest build provenance

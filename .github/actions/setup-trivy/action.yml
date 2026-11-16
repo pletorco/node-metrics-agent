@@ -1,0 +1,20 @@
+name: Set up pinned Trivy
+description: Install the reviewed scanner version shared by CI, releases and monitoring
+outputs:
+  version:
+    description: Configured stable Trivy version
+    value: ${{ steps.version.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - name: Read reviewed scanner version
+      id: version
+      shell: bash
+      run: |
+        version="$(cat .github/trivy-version)"
+        [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - name: Install Trivy
+      uses: aquasecurity/setup-trivy@v0.3.1
+      with:
+        version: ${{ steps.version.outputs.version }}

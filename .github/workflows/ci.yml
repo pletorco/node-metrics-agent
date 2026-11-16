@@ -14,6 +14,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Always emit this stable required check, including docs-only and fork PRs.
+  dependency-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout candidate merge commit
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Gate runtime and tooling dependencies
+        uses: ./.github/actions/security-gate
+        with:
+          context: pr
+          token: ${{ github.token }}
+
   # Build, unit tests and style checks on the build JDK.
   test:
     runs-on: ubuntu-latest
