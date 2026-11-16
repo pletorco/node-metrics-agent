@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Expand security scans to resolved runtime, test and build-tool dependencies, including the
+  formatter, and check Gradle vendor advisories even when they have no CVE number. Keep the
+  packaged SBOM scoped to runtime dependencies. Scans always run and reject incomplete reports,
+  missing packages, unavailable sources and stale vulnerability databases.
+
 ## [0.10.1] - 2026-11-16
 
 ### Security

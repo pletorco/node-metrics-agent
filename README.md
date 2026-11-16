@@ -144,8 +144,10 @@ Common commands:
 ./gradlew trivyScan
 ```
 
-`trivyScan` requires the `trivy` binary to be installed locally. It is not required for normal
-`test`, `build`, or `shadowJar` runs.
+`trivyScan` requires Python 3.9+ and Trivy. It checks runtime, test and build-tool dependencies
+and Gradle vendor advisories; `trivyScanAll` blocks all severities. See
+[Dependency security checks](docs/SECURITY-CHECKS.md) for reports, failure handling and coverage
+boundaries. Security scanning is not required for normal `test`, `build`, or `shadowJar` runs.
 
 ## License
 

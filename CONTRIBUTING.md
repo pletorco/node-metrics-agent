@@ -80,6 +80,13 @@ Optional signed build provenance: set the repository variable `ATTEST_RELEASE_AR
 (requires repository support for attestations). Consumers can then verify a download with
 `gh attestation verify <jar> --repo <owner>/<repo>`.
 
+## Dependency Security Checks
+
+Run `./gradlew trivyScanAll` before dependency changes are proposed. This resolves the full runtime,
+test and build-tool inventory and checks Gradle vendor advisories. Run the offline scanner regression
+tests with `python3 -m unittest discover -s scripts/tests -v`. See
+[Dependency security checks](docs/SECURITY-CHECKS.md) for requirements, output and limitations.
+
 ## Pull Requests
 
 Please include:

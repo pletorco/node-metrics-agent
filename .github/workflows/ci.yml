@@ -35,6 +35,9 @@ jobs:
       - name: Test and lint
         run: ./gradlew --no-daemon spotlessCheck test checkstyleMain checkstyleTest
 
+      - name: Test security scanner failure handling
+        run: python3 -m unittest discover -s scripts/tests -v
+
       # The release workflow publishes this CHANGELOG.md section as the release notes; catch a
       # version bump without one here instead of when the tag is pushed.
       - name: Check the release notes for the project version

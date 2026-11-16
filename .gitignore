@@ -35,3 +35,6 @@ hs_err_pid*
 # Security scan temp files
 .trivycache/
 trivy-report.json
+
+# Python security-check helpers
+__pycache__/

@@ -26,7 +26,9 @@ jobs:
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@v0.3.1
 
-      - name: Generate SBOM and scan
+      - name: Generate runtime and tooling inventories and scan
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./gradlew --no-daemon trivyScanAll
 
       - name: Upload security reports
@@ -35,5 +37,5 @@ jobs:
         with:
           name: security-reports
           path: |
-            trivy-report.json
+            build/reports/security/
             build/reports/bom.json
