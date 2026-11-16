@@ -6,6 +6,16 @@ import java.io.File
 import org.cyclonedx.Version
 import org.cyclonedx.gradle.CyclonedxDirectTask
 
+buildscript {
+    dependencies {
+        // Patch the plugins' shared classpath: CycloneDX brings Jackson and Maven's Guava.
+        classpath(platform("com.fasterxml.jackson:jackson-bom:2.22.3"))
+        classpath("com.google.guava:guava:33.7.2-jre") {
+            because("CVE-2026-102554: unbounded allocation during deserialization")
+        }
+    }
+}
+
 plugins {
     // Core Java support
     java
@@ -33,7 +43,7 @@ plugins {
 // Project metadata
 // -----------------------------------------------------------------------------
 group = "kr.pletor"
-version = "0.10.0"
+version = "0.10.1"
 description = "JVM agent for exposing host and container node metrics through JMX"
 
 // -----------------------------------------------------------------------------
@@ -134,6 +144,16 @@ tasks.named("sourcesJar") {
 // Dependencies
 // -----------------------------------------------------------------------------
 dependencies {
+    // Spotless resolves the formatter in a detached configuration. A component metadata rule
+    // also applies there, unlike a resolution strategy on the project's named configurations.
+    components.withModule("com.google.googlejavaformat:google-java-format") {
+        allVariants {
+            withDependencies {
+                add("com.google.guava:guava:33.7.2-jre")
+            }
+        }
+    }
+
     // YAML parser used by the agent
     implementation("org.yaml:snakeyaml:2.7")
 
@@ -535,7 +555,7 @@ tasks.register<DefaultTask>("printVersion") {
 // Checkstyle Configuration
 // -----------------------------------------------------------------------------
 checkstyle {
-    toolVersion = "10.12.5"
+    toolVersion = "14.4.0"
     // Use Google Checks by default
     // Gradle's default config location is config/checkstyle/checkstyle.xml
     // if not found, it falls back to built-in sun_checks.xml or google_checks.xml if explicitly configured

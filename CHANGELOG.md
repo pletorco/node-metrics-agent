@@ -4,9 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-16
+
+### Security
+
+- Update Gradle to 9.9.1 to address GHSA-3cfg-jpcr-gfp3, GHSA-gqrr-4j89-5267 and
+  GHSA-pcp8-98xm-c6pr in the build environment.
+- Align build plugin dependencies to Jackson 2.22.3 (CVE-2026-89407, CVE-2026-89425,
+  CVE-2026-91776 and CVE-2026-91777) and Guava 33.7.2-jre (CVE-2026-102554).
+- Patch the pinned google-java-format formatter's Guava dependency to 33.7.2-jre without
+  changing formatter behavior.
+- Update Checkstyle to 14.4.0 to replace vulnerable transitive dependencies affected by
+  CVE-2025-48734, CVE-2025-48924, CVE-2026-64607, CVE-2026-54399, CVE-2026-54428,
+  CVE-2025-67030 and CVE-2026-102554.
+
+These changes secure build tooling. The packaged runtime dependency remains SnakeYAML 2.7,
+and the agent continues to support Java 11 and later.
+
 ### Build and CI
 
-- Update Gradle to 9.9.0, CycloneDX to 3.5.1, Spotless to 8.11.0 and the Gradle Wrapper
+- Update Gradle to 9.9.1, CycloneDX to 3.5.1, Spotless to 8.11.0 and the Gradle Wrapper
   validation action to v6. The Java 11 target and pinned google-java-format version are preserved.
 - The release workflow publishes the `CHANGELOG.md` section of the released version as the GitHub
   release notes (`scripts/release-notes.sh`); a release without a section fails before the build,
