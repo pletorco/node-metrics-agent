@@ -1,0 +1,14 @@
+{
+  "callerP99Ratio": 2.0,
+  "callerP99NoiseNanos": 5000,
+  "callerCpuRatio": 1.5,
+  "callerCpuNoiseNanos": 1000,
+  "callerAllocationExtraBytes": 64,
+  "processCpuExtraCores": 0.10,
+  "extraThreads": 20,
+  "heapGrowthBytes": 8388608,
+  "heapSlopeBytesPerMinute": 524288,
+  "maxControlP99Nanos": 1000000,
+  "httpP99Ratio": 3.0,
+  "httpP99NoiseMillis": 25
+}

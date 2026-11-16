@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Soak validation
+
+- Add weekly/opt-in Java 11 and 21 soak checks comparing control and enabled packaged agents,
+  with real HTTP scrapes, recurring config/collector failures, resource/overhead budgets and
+  retained time-series/environment/diagnostic artifacts. Keep expensive checks outside normal CI.
+
 ### Reliability and tests
 
 - Cap config reads at 64 KiB before allocation/parsing, limit YAML nesting and reject collection
