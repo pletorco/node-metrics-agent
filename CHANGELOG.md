@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Reliability and tests
+
+- Cap config reads at 64 KiB before allocation/parsing, limit YAML nesting and reject collection
+  aliases. Verify last-good config preservation after hostile input and later recovery.
+- Preserve in-flight collector state across interval reloads; a blocked collector can no longer
+  occupy additional workers after cadence changes. Add combined config/collector/JMX failure
+  and recovery coverage, failing async readiness assertions and per-class coverage floors.
+
 ### Security
 
 - Gate PRs and release publication on complete runtime/tooling scans, with reviewed expiring

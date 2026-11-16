@@ -5,9 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.management.ManagementFactory;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import kr.pletor.nodemetrics.metrics.RefreshManagedMetric;
 import org.junit.jupiter.api.Test;
@@ -134,13 +132,7 @@ class RefreshPathPerformanceTest {
   }
 
   private static void waitUntil(Check check, long timeoutMs) {
-    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
-    while (System.nanoTime() < deadline) {
-      if (check.ok()) {
-        return;
-      }
-      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(20L));
-    }
+    AsyncTestSupport.await(check::ok, timeoutMs, "RefreshPathPerformanceTest readiness");
   }
 
   @FunctionalInterface

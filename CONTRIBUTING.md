@@ -44,8 +44,44 @@ To scrape the agent through a real Prometheus JMX exporter (download the exporte
 scripts/exporter-scrape-test.sh build/libs/node-metrics-agent-*-all.jar /path/to/jmx_prometheus_javaagent.jar
 ```
 
-`shadowJar` does not run the tests; run `./gradlew check` (tests and checkstyle) as well before
+`shadowJar` does not run the tests; run `./gradlew check` (tests, style and critical coverage) before
 releasing. The release workflow does both.
+
+### Failure and coverage regressions
+
+Use latches or observable conditions to establish async readiness. `AsyncTestSupport.await` fails
+on timeout/interruption; timing out must never allow a benchmark or assertion to proceed. Timeout
+limits are deadlock guards, not host-performance budgets. The combined failure test exercises real
+config parsing/reload and concurrent single/bulk JMX reads with blocked critical/background
+collectors, bounded worker/queue counts, host progress, later recovery and joined worker cleanup.
+Bulk requests use the same JMX API as an exporter; CI separately exercises real exporter versions.
+
+`jacocoTestCoverageVerification` runs in `check`, PR CI and release preparation. It checks per-class
+line/branch floors for critical code:
+
+| Class | Lines | Branches |
+| --- | --- | --- |
+| ConfigLoader | 95% | 90% |
+| ConfigReloader | 80% | 75% |
+| MetricsRefreshEngine | 90% | 80% |
+| CpuMetrics | 85% | 75% |
+| LinuxProcFs | 85% | 75% |
+| CgroupCpuLimit | 90% | 90% |
+
+These floors protect the observed Linux/JDK 21 baseline with margin for platform branches. They
+complement behavioral tests; they are not a target to reach by invoking private constructors or
+mirroring implementation. Review changes to the floors alongside evidence for the affected
+behavior. CI uploads XML/HTML coverage reports even on failure. The required `test` status on main
+enforces this check alongside `dependency-security`; the older JDK jobs run the complete suite
+on Java 11 and 17.
+
+For a focused local run (full coverage verification requires the complete suite):
+
+```bash
+./gradlew test --tests '*ConfigBoundaryTest' --tests '*CombinedFailureRecoveryTest' \
+  --tests '*CpuProcRecoveryTest' --tests '*AsyncTestSupportTest'
+./gradlew check
+```
 
 ### Formatting
 
