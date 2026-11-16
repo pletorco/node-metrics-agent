@@ -1,8 +1,11 @@
 import copy
+import io
+import json
 from pathlib import Path
 import sys
 import unittest
 from unittest import mock
+import urllib.error
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import security_tool_updates as updates
@@ -88,6 +91,26 @@ class ToolUpdateTest(unittest.TestCase):
         for value in ["latest", "0.77.0-rc1", "0.76", None]:
             with self.assertRaises(updates.UpdateCheckError):
                 updates.stable_version(value)
+
+    def test_public_release_read_can_fall_back_without_repository_token(self):
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "fixture-token"}):
+            client = updates.GitHub()
+        response = mock.MagicMock()
+        response.__enter__.return_value = io.StringIO(json.dumps(self.release))
+        forbidden = urllib.error.HTTPError("https://api.github.com", 403, "Forbidden", {}, None)
+        with mock.patch.object(updates.urllib.request, "urlopen", side_effect=[forbidden, response]) as request:
+            self.assertEqual(self.release, client.request("GET", "/repos/aquasecurity/trivy/releases/latest"))
+        self.assertEqual("Bearer fixture-token", request.call_args_list[0].args[0].get_header("Authorization"))
+        self.assertIsNone(request.call_args_list[1].args[0].get_header("Authorization"))
+
+    def test_issue_permission_failures_are_not_retried_or_hidden(self):
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "fixture-token"}):
+            client = updates.GitHub()
+        forbidden = urllib.error.HTTPError("https://api.github.com", 403, "Forbidden", {}, None)
+        with mock.patch.object(updates.urllib.request, "urlopen", side_effect=forbidden) as request:
+            with self.assertRaisesRegex(updates.UpdateCheckError, "HTTP 403"):
+                client.request("POST", "/repos/owner/repo/issues", {"title": "Update"})
+        self.assertEqual(1, request.call_count)
 
 
 if __name__ == "__main__":

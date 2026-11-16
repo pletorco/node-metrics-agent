@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import urllib.error
 import urllib.request
 
 
@@ -41,13 +42,24 @@ class GitHub:
         payload = None if body is None else json.dumps(body).encode()
         if payload is not None:
             headers["Content-Type"] = "application/json"
-        request = urllib.request.Request("https://api.github.com" + path, data=payload,
-                                         headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                return json.load(response)
-        except (OSError, ValueError) as exc:
-            raise UpdateCheckError(f"GitHub update check failed: {method} {path}") from exc
+        candidates = [headers]
+        # An Actions token can be scoped to this repository. The upstream release is public;
+        # retry that read anonymously if the repository-scoped token is rejected. Never retry
+        # issue writes, which could otherwise create duplicates after an ambiguous response.
+        public_release = method == "GET" and path == f"/repos/{UPSTREAM}/releases/latest"
+        if public_release and self.token:
+            candidates.append({key: value for key, value in headers.items() if key != "Authorization"})
+        for attempt, request_headers in enumerate(candidates):
+            request = urllib.request.Request("https://api.github.com" + path, data=payload,
+                                             headers=request_headers, method=method)
+            try:
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    return json.load(response)
+            except (OSError, ValueError) as exc:
+                if isinstance(exc, urllib.error.HTTPError) and exc.code in (401, 403) and attempt + 1 < len(candidates):
+                    continue
+                reason = f"HTTP {exc.code}" if isinstance(exc, urllib.error.HTTPError) else type(exc).__name__
+                raise UpdateCheckError(f"GitHub update check failed: {method} {path} ({reason})") from exc
 
 
 def find_notification(api, repository, marker):
