@@ -872,7 +872,7 @@ public class MetricsAgent {
   }
 
   /**
-   * Apply a new configuration to the running agent:
+   * Apply a new configuration to the running agent.
    *
    * <ul>
    *   <li>Reconcile filesystem MBeans (add / remove)
