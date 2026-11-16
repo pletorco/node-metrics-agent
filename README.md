@@ -158,6 +158,10 @@ and a separate freshness watchdog. See the same guide for ownership and scheduli
 PR CI also gates runtime/tooling HIGH, CRITICAL and UNKNOWN findings, and releases publish only
 the checked build. Scanner/advisory/DB failures block these gates.
 
+Weekly and opt-in [soak checks](docs/SOAK-CHECKS.md) measure resource stability and host overhead
+with real HTTP scrapes, config reloads and controlled collector failures. They run separately
+from ordinary PR tests.
+
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).

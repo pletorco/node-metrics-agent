@@ -1,0 +1,79 @@
+name: Soak and overhead
+
+on:
+  schedule:
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: Measured enabled duration (60..3600 seconds; scheduled default 1800)
+        type: string
+        default: "1800"
+      baseline_seconds:
+        description: Measured control duration (60..3600 seconds; scheduled default 300)
+        type: string
+        default: "300"
+  # Explicit opt-in only; ordinary PR test runs never pay for a soak.
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soak-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  soak:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-soak'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ["11", "21"]
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up runtime and build JDKs
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            ${{ matrix.java }}
+            21
+          cache: gradle
+
+      - name: Build packaged candidate and verify probe formatting
+        run: ./gradlew --no-daemon spotlessCheck shadowJar
+
+      - name: Download checked exporter
+        run: |
+          curl -fsSL --retry 3 -o exporter.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/1.0.1/jmx_prometheus_javaagent-1.0.1.jar
+          echo "7d61f737fd661610ccc14aea79764faa1ea94a340cbc8f0029b3d2edea3d80c1  exporter.jar" | sha256sum -c -
+
+      - name: Compare control and enabled JVMs with recurring faults and HTTP scrapes
+        env:
+          RUNTIME_JAVA: ${{ matrix.java }}
+          DURATION_SECONDS: ${{ inputs.duration_seconds || '1800' }}
+          BASELINE_SECONDS: ${{ inputs.baseline_seconds || '300' }}
+        run: |
+          runtime_var="JAVA_HOME_${RUNTIME_JAVA}_X64"
+          python3 scripts/soak_check.py \
+            --agent-jar build/libs/node-metrics-agent-*-all.jar \
+            --exporter-jar exporter.jar \
+            --java "${!runtime_var}/bin/java" --javac "$JAVA_HOME/bin/javac" \
+            --duration-seconds "$DURATION_SECONDS" --baseline-seconds "$BASELINE_SECONDS"
+
+      - name: Retain time series, environment and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: soak-java-${{ matrix.java }}
+          path: build/reports/soak/
+          if-no-files-found: warn
+          retention-days: 30

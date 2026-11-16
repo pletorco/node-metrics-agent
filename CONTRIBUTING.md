@@ -83,6 +83,12 @@ For a focused local run (full coverage verification requires the complete suite)
 ./gradlew check
 ```
 
+### Long-running checks
+
+Long-running resource and overhead regressions use the separate weekly/opt-in
+[soak checks](docs/SOAK-CHECKS.md). They compare control/enabled JVMs, real HTTP scrapes and
+recurring config/collector failures on Java 11 and 21, retaining time series and diagnostics.
+
 ### Formatting
 
 Java sources are formatted with google-java-format through Spotless. `./gradlew check` and CI run
