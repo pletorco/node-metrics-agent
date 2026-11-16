@@ -3,6 +3,9 @@
 ## Supported Versions
 
 Security fixes are handled on the latest released minor line.
+Daily monitoring scans main and the latest stable release's published runtime SBOM. See
+[dependency security checks](docs/SECURITY-CHECKS.md#daily-monitoring-and-incident-ownership)
+for maintainer ownership, triage targets, temporary exceptions and missed-scan detection.
 
 ## Reporting A Vulnerability
 

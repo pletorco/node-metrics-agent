@@ -2,25 +2,46 @@ name: Security
 
 on:
   workflow_dispatch:
+    inputs:
+      notify:
+        description: "Persist monitoring state and notify issues (false validates without writes)"
+        type: boolean
+        default: true
   schedule:
-    - cron: "0 2 * * 1"
+    - cron: "23 2 * * *"
 
 permissions:
   contents: read
+
+concurrency:
+  group: daily-security-monitor
+  cancel-in-progress: false
 
 env:
   # Review scanner upgrades explicitly; new stable releases create a deduplicated issue.
   TRIVY_VERSION: "v0.76.2"
 
 jobs:
-  trivy:
+  scan:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [main, release]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Checkout main dependency source
+        if: matrix.target == 'main'
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: scan-source
+
       - name: Set up JDK
+        if: matrix.target == 'main'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -32,19 +53,24 @@ jobs:
         with:
           version: ${{ env.TRIVY_VERSION }}
 
-      - name: Generate runtime and tooling inventories and scan
+      - name: Collect complete main or published release scan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./gradlew --no-daemon trivyScanAll
+        run: >
+          python3 scripts/security_release_scan.py
+          --target "${{ matrix.target }}"
+          --repository "$GITHUB_REPOSITORY"
+          --run-id "$GITHUB_RUN_ID"
+          --output-dir "monitor-reports/${{ matrix.target }}"
 
       - name: Upload security reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: security-reports
-          path: |
-            build/reports/security/
-            build/reports/bom.json
+          name: security-monitor-${{ matrix.target }}
+          path: monitor-reports/
+          if-no-files-found: error
+          retention-days: 30
 
   scanner-updates:
     runs-on: ubuntu-latest
@@ -62,11 +88,14 @@ jobs:
       - name: Check stable Trivy releases and notify once per version
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          python3 scripts/security_tool_updates.py
-          --repository "$GITHUB_REPOSITORY"
-          --current-version "$TRIVY_VERSION"
-          --output build/reports/security-tool-updates.json
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && !inputs.notify }}
+        run: |
+          args=()
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          python3 scripts/security_tool_updates.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --current-version "$TRIVY_VERSION" \
+            --output build/reports/security-tool-updates.json "${args[@]}"
 
       - name: Upload scanner update check
         if: always()
@@ -74,3 +103,40 @@ jobs:
         with:
           name: security-tool-updates
           path: build/reports/security-tool-updates.json
+
+  report:
+    needs: [scan, scanner-updates]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: security-monitor-state
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download available scan evidence
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: security-monitor-*
+          merge-multiple: true
+          path: monitor-reports
+
+      - name: Update monitoring state and notify transitions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL_UPDATE_RESULT: ${{ needs.scanner-updates.result }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && !inputs.notify }}
+        run: |
+          args=()
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          python3 scripts/security_monitor.py report \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --tool-update-result "$TOOL_UPDATE_RESULT" "${args[@]}"
