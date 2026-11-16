@@ -58,7 +58,7 @@ jobs:
           cache: gradle
 
       - name: Test and lint
-        run: ./gradlew --no-daemon spotlessCheck test checkstyleMain checkstyleTest
+        run: ./gradlew --no-daemon spotlessCheck test checkstyleMain checkstyleTest jacocoTestCoverageVerification
 
       - name: Test security scanner failure handling
         run: python3 -m unittest discover -s scripts/tests -v
@@ -76,6 +76,8 @@ jobs:
           path: |
             build/reports/tests/test
             build/reports/checkstyle
+            build/reports/jacoco/test
+            build/reports/jacocoHtml
 
   # The agent targets Java 11+ (Kafka brokers), so run the tests on the older runtimes too.
   test-jdk:

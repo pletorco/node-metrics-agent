@@ -31,6 +31,9 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  */
 final class ConfigLoader {
 
+  static final int MAX_CONFIG_BYTES = 65_536;
+  static final int MAX_YAML_DEPTH = 20;
+
   /** Prevent instantiation of this utility class. */
   private static final AgentLog LOGGER = AgentLog.getLogger(ConfigLoader.class.getName());
 
@@ -80,9 +83,17 @@ final class ConfigLoader {
   static Config load(Path path) throws IOException {
     // Read the file exactly once so the parsed content and the checksum always describe the
     // same bytes, even if the file is rewritten while we are loading it.
-    byte[] bytes = Files.readAllBytes(path);
+    byte[] bytes;
+    try (InputStream file = Files.newInputStream(path)) {
+      bytes = readBounded(file);
+    }
     try (InputStream in = new ByteArrayInputStream(bytes)) {
-      Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
+      LoaderOptions options = new LoaderOptions();
+      options.setCodePointLimit(MAX_CONFIG_BYTES);
+      options.setNestingDepthLimit(MAX_YAML_DEPTH);
+      // Config fields contain scalar values, not shared or recursive collection graphs.
+      options.setMaxAliasesForCollections(0);
+      Yaml yaml = new Yaml(new SafeConstructor(options));
       Object loaded = yaml.load(in);
 
       // Top-level YAML must be a mapping
@@ -143,6 +154,15 @@ final class ConfigLoader {
 
       return c;
     }
+  }
+
+  /** Bound the read itself: file size checks alone race with a writer growing the file. */
+  static byte[] readBounded(InputStream input) throws IOException {
+    byte[] bytes = input.readNBytes(MAX_CONFIG_BYTES + 1);
+    if (bytes.length > MAX_CONFIG_BYTES) {
+      throw new IOException("Configuration exceeds " + MAX_CONFIG_BYTES + " bytes");
+    }
+    return bytes;
   }
 
   private static final Set<String> KNOWN_KEYS =

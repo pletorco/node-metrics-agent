@@ -50,15 +50,7 @@ class AgentIsolationTest {
   }
 
   private static void waitUntil(java.util.function.BooleanSupplier condition, long timeoutMs) {
-    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
-    while (System.nanoTime() < deadline && !condition.getAsBoolean()) {
-      try {
-        Thread.sleep(10L);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        return;
-      }
-    }
+    AsyncTestSupport.await(condition, timeoutMs, "agent isolation readiness");
   }
 
   // ---------------------------------------------------------------- launcher

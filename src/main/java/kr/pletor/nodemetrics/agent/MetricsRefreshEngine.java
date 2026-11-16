@@ -73,9 +73,9 @@ final class MetricsRefreshEngine implements AutoCloseable {
     final boolean lowPriority;
 
     /** Minimum time between two refreshes of this task; {@code 0} means every dispatch cycle. */
-    final long intervalMs;
+    volatile long intervalMs;
 
-    final long intervalNanos;
+    volatile long intervalNanos;
     final long registeredAtEpochMs = System.currentTimeMillis();
 
     /** Epoch-millisecond timestamp of the last successful poll; 0 if never polled. */
@@ -130,10 +130,16 @@ final class MetricsRefreshEngine implements AutoCloseable {
       nextDueNanos = nowNanos + intervalNanos;
     }
 
-    boolean isSameSchedule(RefreshTask other) {
-      return metric == other.metric
-          && lowPriority == other.lowPriority
-          && intervalMs == other.intervalMs;
+    boolean isSameCollector(RefreshTask other) {
+      return metric == other.metric && lowPriority == other.lowPriority;
+    }
+
+    void updateInterval(long nextIntervalMs) {
+      if (intervalMs != nextIntervalMs) {
+        intervalMs = nextIntervalMs;
+        intervalNanos = TimeUnit.MILLISECONDS.toNanos(nextIntervalMs);
+        nextDueNanos = System.nanoTime();
+      }
     }
   }
 
@@ -160,8 +166,8 @@ final class MetricsRefreshEngine implements AutoCloseable {
   }
 
   /**
-   * Replace the task set. A task that is unchanged (same name, metric, priority and interval) keeps
-   * its existing instance, so success/failure history and staleness survive config reloads.
+   * Replace the task set. A task with the same name, metric and lane keeps its in-flight state,
+   * success/failure history and staleness even when a config reload changes its interval.
    */
   void setTasks(List<RefreshTask> tasks) {
     Map<String, RefreshTask> existing = new HashMap<>();
@@ -171,7 +177,12 @@ final class MetricsRefreshEngine implements AutoCloseable {
     List<RefreshTask> merged = new ArrayList<>(tasks.size());
     for (RefreshTask task : tasks) {
       RefreshTask old = existing.get(task.name);
-      merged.add(old != null && old.isSameSchedule(task) ? old : task);
+      if (old != null && old.isSameCollector(task)) {
+        old.updateInterval(task.intervalMs);
+        merged.add(old);
+      } else {
+        merged.add(task);
+      }
     }
     tasksRef.set(List.copyOf(merged));
   }

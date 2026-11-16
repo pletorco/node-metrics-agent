@@ -224,6 +224,40 @@ tasks.jacocoTestReport {
     }
 }
 
+// Protect host-isolation and input-handling code with per-class floors. Do not use a blanket
+// target: proc/cgroup fallbacks and platform-only branches have different reachable baselines.
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.jacocoTestReport)
+    violationRules {
+        val minimums = listOf(
+            Triple("kr.pletor.nodemetrics.agent.ConfigLoader", "0.95", "0.90"),
+            Triple("kr.pletor.nodemetrics.agent.ConfigReloader", "0.80", "0.75"),
+            Triple("kr.pletor.nodemetrics.agent.MetricsRefreshEngine", "0.90", "0.80"),
+            Triple("kr.pletor.nodemetrics.metrics.CpuMetrics", "0.85", "0.75"),
+            Triple("kr.pletor.nodemetrics.metrics.LinuxProcFs", "0.85", "0.75"),
+            Triple("kr.pletor.nodemetrics.metrics.CgroupCpuLimit", "0.90", "0.90")
+        )
+        minimums.forEach { (className, lines, branches) ->
+            rule {
+                element = "CLASS"
+                includes = listOf(className)
+                limit {
+                    counter = "LINE"
+                    minimum = lines.toBigDecimal()
+                }
+                limit {
+                    counter = "BRANCH"
+                    minimum = branches.toBigDecimal()
+                }
+            }
+        }
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification)
+}
+
 // -----------------------------------------------------------------------------
 // Java compiler options
 //   - UTF-8 encoding

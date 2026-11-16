@@ -82,6 +82,11 @@ fsmetrics_paths:
   - /boot
 ```
 
+Configuration reads are capped at **64 KiB of bytes**, including comments, before YAML parsing.
+YAML nesting is limited to 20 levels; collection aliases (including recursive aliases) and custom
+object tags are rejected. Invalid startup input uses defaults. A rejected reload keeps the last
+working configuration and can recover after the file is corrected.
+
 ## CLI
 
 The JAR can also generate config files:

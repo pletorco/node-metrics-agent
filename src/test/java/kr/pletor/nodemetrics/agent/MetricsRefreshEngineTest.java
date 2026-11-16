@@ -192,14 +192,8 @@ class MetricsRefreshEngineTest {
     }
   }
 
-  private static void waitUntil(Check condition, long timeoutMs) {
-    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
-    while (System.nanoTime() < deadline) {
-      if (condition.ok()) {
-        return;
-      }
-      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(20L));
-    }
+  private static void waitUntil(Check check, long timeoutMs) {
+    AsyncTestSupport.await(check::ok, timeoutMs, "MetricsRefreshEngineTest readiness");
   }
 
   @FunctionalInterface

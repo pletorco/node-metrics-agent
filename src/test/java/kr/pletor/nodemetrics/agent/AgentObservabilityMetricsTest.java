@@ -85,13 +85,7 @@ class AgentObservabilityMetricsTest {
   }
 
   private static void waitUntil(Check check, long timeoutMs) {
-    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
-    while (System.nanoTime() < deadline) {
-      if (check.ok()) {
-        return;
-      }
-      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(20L));
-    }
+    AsyncTestSupport.await(check::ok, timeoutMs, "AgentObservabilityMetricsTest readiness");
   }
 
   @FunctionalInterface
