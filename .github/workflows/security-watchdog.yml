@@ -1,0 +1,37 @@
+name: Security watchdog
+
+on:
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      notify:
+        description: "Persist freshness alerts (false validates without writes)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: security-monitor-state
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check last successful complete scans and workflow enablement
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && !inputs.notify }}
+        run: |
+          args=()
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          python3 scripts/security_monitor.py watchdog \
+            --repository "$GITHUB_REPOSITORY" "${args[@]}"

@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 
+- Monitor main's full dependency inventory and the published release SBOM daily, retaining separate
+  identities and deduplicating finding/failure/recovery alerts. Add scan freshness monitoring,
+  maintainer triage policy and expiring, exact-match security exceptions.
 - Pin the Trivy scanner and check its official stable releases during CVE workflow runs. Notify
   once per newer version using a GitHub issue, including versions whose notification was closed.
 - Expand security scans to resolved runtime, test and build-tool dependencies, including the

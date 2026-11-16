@@ -38,3 +38,5 @@ trivy-report.json
 
 # Python security-check helpers
 __pycache__/
+monitor-reports/
+scan-source/
