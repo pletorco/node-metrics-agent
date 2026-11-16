@@ -150,6 +150,8 @@ and Gradle vendor advisories; `trivyScanAll` blocks all severities. See
 boundaries. Security scanning is not required for normal `test`, `build`, or `shadowJar` runs.
 Daily monitoring scans main and the latest published release SBOM, with deduplicated issue alerts
 and a separate freshness watchdog. See the same guide for ownership and scheduling limitations.
+PR CI also gates runtime/tooling HIGH, CRITICAL and UNKNOWN findings, and releases publish only
+the checked build. Scanner/advisory/DB failures block these gates.
 
 ## License
 

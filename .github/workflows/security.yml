@@ -17,10 +17,6 @@ concurrency:
   group: daily-security-monitor
   cancel-in-progress: false
 
-env:
-  # Review scanner upgrades explicitly; new stable releases create a deduplicated issue.
-  TRIVY_VERSION: "v0.76.2"
-
 jobs:
   scan:
     strategy:
@@ -49,9 +45,7 @@ jobs:
           cache: gradle
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.3.1
-        with:
-          version: ${{ env.TRIVY_VERSION }}
+        uses: ./.github/actions/setup-trivy
 
       - name: Collect complete main or published release scan
         env:
@@ -94,7 +88,7 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
           python3 scripts/security_tool_updates.py \
             --repository "$GITHUB_REPOSITORY" \
-            --current-version "$TRIVY_VERSION" \
+            --current-version "$(cat .github/trivy-version)" \
             --output build/reports/security-tool-updates.json "${args[@]}"
 
       - name: Upload scanner update check

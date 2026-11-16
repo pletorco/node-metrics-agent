@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 
+- Gate PRs and release publication on complete runtime/tooling scans, with reviewed expiring
+  exceptions. Verify release candidate commit, policy, checksums and identical packaged/scanned
+  SBOMs before publishing. Share the reviewed Trivy version across all security workflows.
 - Monitor main's full dependency inventory and the published release SBOM daily, retaining separate
   identities and deduplicating finding/failure/recovery alerts. Add scan freshness monitoring,
   maintainer triage policy and expiring, exact-match security exceptions.

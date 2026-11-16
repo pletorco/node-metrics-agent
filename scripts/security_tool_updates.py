@@ -113,7 +113,7 @@ def check_updates(api, repository, current, dry_run=False):
                     f"(published {result['publishedAt']}).\n\n"
                     f"[Official release notes]({result['releaseUrl']})\n\n"
                     "- [ ] Review compatibility and security changes in the release notes.\n"
-                    "- [ ] Update `TRIVY_VERSION` in `.github/workflows/security.yml`.\n"
+                    "- [ ] Update `.github/trivy-version` (shared by PR, release and daily scans).\n"
                     "- [ ] Run scanner regression tests and the full Security workflow.\n\n"
                     "This notification does not change the scanner or vulnerability DB update policy. "
                     "The same release is notified only once, even if this issue is closed.\n"

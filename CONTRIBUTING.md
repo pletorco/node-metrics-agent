@@ -87,6 +87,13 @@ test and build-tool inventory and checks Gradle vendor advisories. Run the offli
 tests with `python3 -m unittest discover -s scripts/tests -v`. See
 [Dependency security checks](docs/SECURITY-CHECKS.md) for requirements, output and limitations.
 
+Every PR runs the required `dependency-security` check against its candidate merge commit.
+Dependency, wrapper, plugin and tooling changes must pass it before merging; source-only changes
+receive the same stable check. Runtime/tooling HIGH, CRITICAL and UNKNOWN findings block, as do
+incomplete checks. Request a reviewed, exact, expiring exception in `.github/security-monitoring.json`
+only with an owner, mitigation and tracking issue. Review security policy/workflow/scanner changes
+explicitly; passing CI does not replace that review. Trivy's shared pin is `.github/trivy-version`.
+
 ## Pull Requests
 
 Please include:
