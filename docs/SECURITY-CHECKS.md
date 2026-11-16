@@ -55,6 +55,32 @@ intersections, inclusive bracket ranges, `to`/`through` ranges and the legacy al
 formats published by Gradle. Multiple upper bounds for legacy maintenance lines are interpreted
 as a conservative union. Unknown formats require review and fail the scan.
 
+## Scanner update notifications
+
+The Security workflow pins Trivy with `TRIVY_VERSION` (currently `v0.76.2`, verified by the
+full scanner workflow). Each CVE workflow run also checks Trivy's official latest stable release
+in a separate job. A newer version creates a GitHub issue with the installed/configured version,
+new version and release notes. The check lists both open and closed issues and uses a version
+marker to notify only once per release. Notification jobs are serialized to avoid duplicate
+check/create races; an unchanged or already acknowledged version produces no new notification.
+
+Only the notification job has `issues: write`; the CVE scanner keeps read-only permissions.
+An update-check failure is visible as a failed job and an incomplete update-check artifact; it
+does not prevent the independent CVE job from running. Findings and scanner updates therefore
+cannot mask each other's failures. `security-tool-updates.json` records the version comparison
+and issue URL. GitHub issue subscriptions/watch settings determine email and app delivery.
+
+Review a new version in a PR that updates `TRIVY_VERSION`, run regression tests and the Security
+workflow, then close its notification issue. The vulnerability database continues to update on
+every scan; routine DB refreshes do not create tool-update issues. Prereleases are not notified.
+
+To inspect a version comparison locally without creating an issue:
+
+```bash
+python3 scripts/security_tool_updates.py --repository pletorco/node-metrics-agent \
+  --current-version 0.72.0 --output /tmp/trivy-update-check.json --dry-run
+```
+
 ## Regression checks
 
 ```bash
