@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Pin the Trivy scanner and check its official stable releases during CVE workflow runs. Notify
+  once per newer version using a GitHub issue, including versions whose notification was closed.
+- Expand security scans to resolved runtime, test and build-tool dependencies, including the
+  formatter, and check Gradle vendor advisories even when they have no CVE number. Keep the
+  packaged SBOM scoped to runtime dependencies. Scans always run and reject incomplete reports,
+  missing packages, unavailable sources and stale vulnerability databases.
+
 ## [0.10.1] - 2026-11-16
 
 ### Security

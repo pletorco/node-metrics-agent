@@ -1,8 +1,8 @@
-import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
-import org.gradle.api.tasks.TaskProvider
 import java.io.File
+import java.time.Instant
 import org.cyclonedx.Version
 import org.cyclonedx.gradle.CyclonedxDirectTask
 
@@ -51,6 +51,7 @@ description = "JVM agent for exposing host and container node metrics through JM
 // -----------------------------------------------------------------------------
 val junitJupiterVersion = "5.10.2"
 val mockitoVersion = "5.24.0"
+val googleJavaFormatVersion = "1.25.2"
 
 // -----------------------------------------------------------------------------
 // Java / toolchain configuration
@@ -378,165 +379,91 @@ tasks.cyclonedxBom {
 }
 
 // -----------------------------------------------------------------------------
-// Trivy Security Scan
+// Security inventory and scans (separate from the deployment SBOM)
 // -----------------------------------------------------------------------------
-data class TrivyVulnerability(
-    val severity: String,
-    val cve: String,
-    val pkg: String,
-    val version: String
-)
-
-fun severityPriority(severity: String): Int = when (severity.uppercase()) {
-    "CRITICAL" -> 5
-    "HIGH" -> 4
-    "MEDIUM" -> 3
-    "LOW" -> 2
-    "UNKNOWN" -> 1
-    else -> 0
+val securityFormatter = configurations.create("securityFormatter") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    description = "Resolve the same formatter and metadata rules as Spotless for security auditing"
+}
+dependencies {
+    add(securityFormatter.name, "com.google.googlejavaformat:google-java-format:$googleJavaFormatVersion")
 }
 
-fun collectTrivyVulnerabilities(reportFile: File): List<TrivyVulnerability> {
-    val report = JsonSlurper().parse(reportFile) as? Map<*, *> ?: return emptyList()
-    val results = report["Results"] as? List<*> ?: return emptyList()
-
-    return results.flatMap { result ->
-        val resultMap = result as? Map<*, *> ?: return@flatMap emptyList()
-        val vulnerabilities = resultMap["Vulnerabilities"] as? List<*> ?: return@flatMap emptyList()
-        vulnerabilities.mapNotNull { vulnerability ->
-            val vulnerabilityMap = vulnerability as? Map<*, *> ?: return@mapNotNull null
-            val severity = (vulnerabilityMap["Severity"] as? String)?.uppercase() ?: "UNKNOWN"
-            val cve = (vulnerabilityMap["VulnerabilityID"] as? String).orEmpty().ifBlank { "N/A" }
-            val pkg = (vulnerabilityMap["PkgName"] as? String).orEmpty().ifBlank { "unknown" }
-            val version = (vulnerabilityMap["InstalledVersion"] as? String).orEmpty().ifBlank { "unknown" }
-
-            TrivyVulnerability(severity, cve, pkg, version)
-        }
-    }
-}
-
-fun summarizeTrivy(vulnerabilities: List<TrivyVulnerability>): Map<String, Int> {
-    val summary = linkedMapOf(
-        "TOTAL" to vulnerabilities.size,
-        "CRITICAL" to 0,
-        "HIGH" to 0,
-        "MEDIUM" to 0,
-        "LOW" to 0,
-        "UNKNOWN" to 0
-    )
-
-    vulnerabilities.forEach { vulnerability ->
-        val key = when (vulnerability.severity) {
-            "CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN" -> vulnerability.severity
-            else -> "UNKNOWN"
-        }
-        summary[key] = summary.getValue(key) + 1
-    }
-
-    return summary
-}
-
-fun registerTrivyTask(
-    taskName: String,
-    severityGate: String,
-    taskDescription: String
-): TaskProvider<DefaultTask> = tasks.register<DefaultTask>(taskName) {
+val securityInventory = tasks.register("securityInventory") {
     group = "verification"
-    description = taskDescription
-    dependsOn(tasks.cyclonedxBom)
-
-    val bomFile = layout.buildDirectory.file("reports/bom.json")
-    val reportFile = layout.projectDirectory.file("trivy-report.json")
-
-    inputs.file(bomFile)
-    outputs.file(reportFile)
-
+    description = "Exports resolved runtime, test and build-tool components with their scopes"
+    // Resolution and the commit identity can change without a source-file change.
+    doNotTrackState("Security inventories must describe the current resolved dependencies")
     doLast {
-        val bom = bomFile.get().asFile
-        val report = reportFile.asFile
-        val cacheDir = System.getenv("TRIVY_CACHE_DIR")
-            ?.takeIf { it.isNotBlank() }
-            ?: layout.projectDirectory.dir(".trivycache").asFile.absolutePath
-
-        report.parentFile?.mkdirs()
-
-        val command = listOf(
-            "trivy",
-            "sbom",
-            "--exit-code", "1",
-            "--severity", severityGate,
-            "--format", "json",
-            "--output", report.absolutePath,
-            "--cache-dir", cacheDir,
-            "--db-repository", "ghcr.io/aquasecurity/trivy-db:2",
-            "--java-db-repository", "ghcr.io/aquasecurity/trivy-java-db:1",
-            bom.absolutePath
+        val reportDir = layout.buildDirectory.dir("reports/security").get().asFile
+        reportDir.mkdirs()
+        // Dependency resolution can fail before the Python scanner starts. Invalidate old success
+        // here too, so a reused workspace cannot upload a previous clean summary for a failed run.
+        File(reportDir, "summary.json").writeText(JsonOutput.toJson(mapOf(
+            "scanStatus" to "incomplete", "phase" to "inventory",
+            "startedAt" to Instant.now().toString()
+        )))
+        val scopes = linkedMapOf(
+            "runtimeClasspath" to configurations.getByName("runtimeClasspath"),
+            "testRuntimeClasspath" to configurations.getByName("testRuntimeClasspath"),
+            "checkstyle" to configurations.getByName("checkstyle"),
+            "jacocoAgent" to configurations.getByName("jacocoAgent"),
+            "jacocoAnt" to configurations.getByName("jacocoAnt"),
+            "formatter" to securityFormatter,
+            "buildscript" to buildscript.configurations.getByName("classpath")
         )
-
-        val process = try {
-            ProcessBuilder(command)
-                .directory(project.rootDir)
-                .redirectErrorStream(true)
-                .inheritIO()
-                .start()
-        } catch (ex: Exception) {
-            throw GradleException("Failed to execute Trivy. Install `trivy` and retry.", ex)
-        }
-        val exitCode = process.waitFor()
-
-        if (!report.exists()) {
-            throw GradleException("Trivy report was not generated: ${report.absolutePath}")
-        }
-
-        val vulnerabilities = collectTrivyVulnerabilities(report)
-        val summary = summarizeTrivy(vulnerabilities)
-
-        logger.lifecycle(
-            "TOTAL=${summary["TOTAL"]}, CRITICAL=${summary["CRITICAL"]}, HIGH=${summary["HIGH"]}, " +
-                "MEDIUM=${summary["MEDIUM"]}, LOW=${summary["LOW"]}, UNKNOWN=${summary["UNKNOWN"]}"
-        )
-        logger.lifecycle("Top 10 vulnerabilities (severity, cve, package@version):")
-
-        val top10 = vulnerabilities
-            .sortedWith(
-                compareByDescending<TrivyVulnerability> { severityPriority(it.severity) }
-                    .thenBy { it.cve }
-                    .thenBy { it.pkg }
-                    .thenBy { it.version }
-            )
-            .take(10)
-
-        if (top10.isEmpty()) {
-            logger.lifecycle("  none")
-        } else {
-            top10.forEachIndexed { index, vulnerability ->
-                logger.lifecycle(
-                    "  ${index + 1}. ${vulnerability.severity}, ${vulnerability.cve}, " +
-                        "${vulnerability.pkg}@${vulnerability.version}"
-                )
+        val components = sortedMapOf<String, MutableMap<String, Any>>()
+        scopes.forEach { (scope, configuration) ->
+            val artifacts = configuration.resolvedConfiguration.resolvedArtifacts
+            check(artifacts.isNotEmpty()) { "No security inventory artifacts for $scope" }
+            artifacts.forEach { artifact ->
+                val id = artifact.moduleVersion.id
+                val key = "${id.group}:${id.name}:${id.version}"
+                val component = components.getOrPut(key) {
+                    mutableMapOf(
+                        "group" to id.group, "name" to id.name, "version" to id.version,
+                        "scopes" to sortedSetOf<String>()
+                    )
+                }
+                @Suppress("UNCHECKED_CAST")
+                (component.getValue("scopes") as MutableSet<String>).add(scope)
             }
         }
-
-        if (exitCode != 0) {
-            throw GradleException(
-                "Trivy scan policy failed in `${name}` (severity gate: $severityGate). " +
-                    "See ${report.absolutePath}"
-            )
+        val git = ProcessBuilder("git", "rev-parse", "HEAD").directory(rootDir).start()
+        val commit = git.inputStream.bufferedReader().readText().trim()
+        check(git.waitFor() == 0 && commit.matches(Regex("[0-9a-f]{40}"))) {
+            "Cannot determine the security inventory's commit"
         }
+        val inventory = mapOf(
+            "schemaVersion" to 1,
+            "commit" to commit,
+            "gradleVersion" to gradle.gradleVersion,
+            "formatterVersion" to googleJavaFormatVersion,
+            "components" to components.values.toList()
+        )
+        val output = File(reportDir, "inventory.json")
+        output.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(inventory)))
+        logger.lifecycle("Security inventory: ${components.size} components across ${scopes.size} scopes")
     }
 }
 
-val trivyScan = registerTrivyTask(
-    taskName = "trivyScan",
-    severityGate = "HIGH,CRITICAL",
-    taskDescription = "Scans SBOM and fails on HIGH/CRITICAL vulnerabilities"
-)
+fun registerSecurityScan(name: String, severity: String) = tasks.register<Exec>(name) {
+    group = "verification"
+    description = "Scans runtime and tooling dependencies plus Gradle vendor advisories ($severity)"
+    dependsOn(securityInventory, tasks.cyclonedxBom)
+    doNotTrackState("Vulnerability intelligence and DB freshness change independently of the SBOM")
+    commandLine(
+        "python3", "scripts/security_scan.py",
+        "--inventory", "build/reports/security/inventory.json",
+        "--runtime-bom", "build/reports/bom.json",
+        "--output-dir", "build/reports/security",
+        "--severity", severity
+    )
+}
 
-registerTrivyTask(
-    taskName = "trivyScanAll",
-    severityGate = "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
-    taskDescription = "Scans SBOM and fails on any detected vulnerability"
-)
+registerSecurityScan("trivyScan", "HIGH,CRITICAL")
+registerSecurityScan("trivyScanAll", "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL")
 
 // -----------------------------------------------------------------------------
 // Utility task: print project version (useful for scripts/CI)
@@ -580,6 +507,6 @@ tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 0 }
 spotless {
     java {
         target("src/**/*.java")
-        googleJavaFormat("1.25.2")
+        googleJavaFormat(googleJavaFormatVersion)
     }
 }

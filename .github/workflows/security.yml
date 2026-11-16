@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Review scanner upgrades explicitly; new stable releases create a deduplicated issue.
+  TRIVY_VERSION: "v0.76.2"
+
 jobs:
   trivy:
     runs-on: ubuntu-latest
@@ -25,8 +29,12 @@ jobs:
 
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@v0.3.1
+        with:
+          version: ${{ env.TRIVY_VERSION }}
 
-      - name: Generate SBOM and scan
+      - name: Generate runtime and tooling inventories and scan
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./gradlew --no-daemon trivyScanAll
 
       - name: Upload security reports
@@ -35,5 +43,34 @@ jobs:
         with:
           name: security-reports
           path: |
-            trivy-report.json
+            build/reports/security/
             build/reports/bom.json
+
+  scanner-updates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: security-scanner-update-notifications
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check stable Trivy releases and notify once per version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          python3 scripts/security_tool_updates.py
+          --repository "$GITHUB_REPOSITORY"
+          --current-version "$TRIVY_VERSION"
+          --output build/reports/security-tool-updates.json
+
+      - name: Upload scanner update check
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: security-tool-updates
+          path: build/reports/security-tool-updates.json
