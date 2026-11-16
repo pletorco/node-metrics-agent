@@ -46,6 +46,8 @@ scanner version, DB update timestamps, scopes, findings and completion status. T
 workflow uploads this directory even on failure. Old success reports are removed before a new
 scan; exit 0 means completed below the configured threshold, 1 means completed with blocking
 findings, and 2 means incomplete. Gradle converts any nonzero scanner exit into task failure.
+Inventory generation first invalidates a previous clean summary as well, so dependency resolution
+failure before the scanner starts is recorded as incomplete.
 
 Gradle is checked separately against its repository security advisories, including GHSA records
 without CVE IDs. The range parser supports stable numeric versions, comma-separated comparator

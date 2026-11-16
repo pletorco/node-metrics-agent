@@ -2,6 +2,7 @@ import groovy.json.JsonOutput
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import java.io.File
+import java.time.Instant
 import org.cyclonedx.Version
 import org.cyclonedx.gradle.CyclonedxDirectTask
 
@@ -395,6 +396,14 @@ val securityInventory = tasks.register("securityInventory") {
     // Resolution and the commit identity can change without a source-file change.
     doNotTrackState("Security inventories must describe the current resolved dependencies")
     doLast {
+        val reportDir = layout.buildDirectory.dir("reports/security").get().asFile
+        reportDir.mkdirs()
+        // Dependency resolution can fail before the Python scanner starts. Invalidate old success
+        // here too, so a reused workspace cannot upload a previous clean summary for a failed run.
+        File(reportDir, "summary.json").writeText(JsonOutput.toJson(mapOf(
+            "scanStatus" to "incomplete", "phase" to "inventory",
+            "startedAt" to Instant.now().toString()
+        )))
         val scopes = linkedMapOf(
             "runtimeClasspath" to configurations.getByName("runtimeClasspath"),
             "testRuntimeClasspath" to configurations.getByName("testRuntimeClasspath"),
@@ -433,8 +442,7 @@ val securityInventory = tasks.register("securityInventory") {
             "formatterVersion" to googleJavaFormatVersion,
             "components" to components.values.toList()
         )
-        val output = layout.buildDirectory.file("reports/security/inventory.json").get().asFile
-        output.parentFile.mkdirs()
+        val output = File(reportDir, "inventory.json")
         output.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(inventory)))
         logger.lifecycle("Security inventory: ${components.size} components across ${scopes.size} scopes")
     }
