@@ -728,4 +728,36 @@ class CpuMetricsTest {
     assertEquals(
         11L, metrics.getCgroupCpuThrottledPeriodsTotal(), "A moved cpu.stat is found again");
   }
+
+  @Test
+  void changedCgroupPathStartsFreshThrottlingWindow() throws Exception {
+    org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
+    CpuMetrics.procRoot = tempDir.resolve("proc");
+    CpuMetrics.sysRoot = tempDir.resolve("sys");
+    Path membership = CpuMetrics.procRoot.resolve("self/cgroup");
+    Files.createDirectories(membership.getParent());
+    Path base = Files.createDirectories(CpuMetrics.sysRoot.resolve("fs/cgroup"));
+    Files.writeString(base.resolve("cgroup.controllers"), "cpu\n");
+    for (String name : java.util.List.of("a", "b")) {
+      Path group = Files.createDirectories(base.resolve(name));
+      Files.writeString(
+          group.resolve("cpu.stat"),
+          name.equals("a")
+              ? "usage_usec 1000\nnr_throttled 2\nthrottled_usec 100\n"
+              : "usage_usec 9000\nnr_throttled 90\nthrottled_usec 8000\n");
+    }
+    Files.writeString(membership, "0::/a\n");
+    CpuMetrics cpu = new CpuMetrics((OperatingSystemMXBean) null);
+    cpu.setReadRefreshEnabled(false);
+    cpu.poll();
+    Files.writeString(membership, "0::/b\n");
+    Field checkedAt = CpuMetrics.class.getDeclaredField("cachedCgroupStatPathAtNanos");
+    checkedAt.setAccessible(true);
+    checkedAt.setLong(cpu, System.nanoTime() - CgroupBinding.TTL_NANOS);
+    cpu.poll();
+    assertEquals(90L, cpu.getCgroupCpuThrottledPeriodsTotal());
+    assertEquals(
+        0L, cpu.getCgroupCpuThrottledCount(), "Do not subtract counters from different groups");
+    assertEquals(-1.0, cpu.getCgroupCpuThrottledRatio(), "A fresh group needs a second sample");
+  }
 }

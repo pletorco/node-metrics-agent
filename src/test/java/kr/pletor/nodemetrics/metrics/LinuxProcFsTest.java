@@ -189,10 +189,11 @@ class LinuxProcFsTest {
 
     // Access private static findMemoryControllerPath(Path) via reflection
     Method method =
-        LinuxProcFs.class.getDeclaredMethod("findMemoryControllerPath", java.nio.file.Path.class);
+        LinuxProcFs.class.getDeclaredMethod(
+            "findControllerPath", java.nio.file.Path.class, String.class);
     method.setAccessible(true);
 
-    Object ret = method.invoke(null, cgroupFile);
+    Object ret = method.invoke(null, cgroupFile, "memory");
     assertTrue(ret instanceof String, "Return type should be String");
     String path = (String) ret;
     assertEquals(
@@ -212,10 +213,11 @@ class LinuxProcFsTest {
     }
 
     Method method =
-        LinuxProcFs.class.getDeclaredMethod("findMemoryControllerPath", java.nio.file.Path.class);
+        LinuxProcFs.class.getDeclaredMethod(
+            "findControllerPath", java.nio.file.Path.class, String.class);
     method.setAccessible(true);
 
-    Object ret = method.invoke(null, cgroupFile);
+    Object ret = method.invoke(null, cgroupFile, "memory");
     assertNull(ret, "When no memory controller is present, the method should return null");
   }
 
@@ -307,11 +309,11 @@ class LinuxProcFsTest {
     }
 
     // tryDetectCgroupV1()
-    Method v1Method = LinuxProcFs.class.getDeclaredMethod("tryDetectCgroupV1");
+    Method v1Method = LinuxProcFs.class.getDeclaredMethod("tryDetectCgroupV1", String.class);
     v1Method.setAccessible(true);
     Object v1 = null;
     try {
-      v1 = v1Method.invoke(null);
+      v1 = v1Method.invoke(null, "memory");
     } catch (InvocationTargetException e) {
       fail("tryDetectCgroupV1 should not throw: " + e.getTargetException());
     }
@@ -475,9 +477,9 @@ class LinuxProcFsTest {
     Files.writeString(selfCgroup, "4:memory:/kubepods/besteffort/pod123\n");
 
     // Invoke private method via reflection
-    Method v1Method = LinuxProcFs.class.getDeclaredMethod("tryDetectCgroupV1");
+    Method v1Method = LinuxProcFs.class.getDeclaredMethod("tryDetectCgroupV1", String.class);
     v1Method.setAccessible(true);
-    Object result = v1Method.invoke(null);
+    Object result = v1Method.invoke(null, "memory");
 
     assertNotNull(result);
     // Use reflection or pattern matching to check fields, or just cast if class was public (it's

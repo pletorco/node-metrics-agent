@@ -115,7 +115,7 @@ class CpuProcRecoveryTest {
   }
 
   @Test
-  void cgroupDiscoveryFallsBackOnMalformedMembershipAndRecoversAtNextLookup() throws Exception {
+  void cgroupDiscoveryRejectsMalformedMembershipAndRecoversAtNextLookup() throws Exception {
     Assumptions.assumeTrue(LinuxProcFs.isLinux());
     Path proc = Files.createDirectories(root.resolve("proc"));
     Path sys = Files.createDirectories(root.resolve("sys"));
@@ -126,7 +126,7 @@ class CpuProcRecoveryTest {
     Path membership = proc.resolve("self/cgroup");
     Files.writeString(base.resolve("cgroup.controllers"), "cpu memory\n");
     Files.writeString(membership, "malformed\n7:cpu:/irrelevant\n");
-    assertEquals(base, LinuxProcFs.detectCgroup().resolved);
+    assertNull(LinuxProcFs.detectCgroup().resolved, "Malformed membership cannot select the root");
     Files.writeString(membership, "malformed\n0::/pod/restored\n");
     assertEquals(base.resolve("pod/restored"), LinuxProcFs.detectCgroup().resolved);
     Files.delete(base.resolve("cgroup.controllers"));

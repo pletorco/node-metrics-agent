@@ -35,52 +35,41 @@ import java.util.Map;
  */
 public class CgroupMemMetrics extends AbstractRefreshingMetric implements CgroupMemMetricsMBean {
 
-  /**
-   * Last observed memory limit in bytes.
-   *
-   * <p>-1 means “unlimited or unavailable”.
-   */
-  private volatile long limit = -1L;
+  private static final int LIMIT = 0;
+  private static final int USAGE = 1;
+  private static final int WORKING_SET = 2;
+  private static final int SWAP_USAGE = 3;
+  private static final int SWAP_LIMIT = 4;
+  private static final int OOM_KILLS = 5;
+  private static final int MAX_EVENTS = 6;
+  private static final int HIGH_EVENTS = 7;
 
-  /**
-   * Last observed memory usage in bytes.
-   *
-   * <p>-1 means “unavailable”.
-   */
-  private volatile long usage = -1L;
+  private static final class Snapshot {
+    static final Snapshot UNAVAILABLE =
+        new Snapshot(new LinuxProcFs.CgroupInfo(), new long[] {-1, -1, -1, -1, -1, -1, -1, -1});
+    final String version;
+    final String path;
+    final long[] values;
 
-  /**
-   * Last observed working set in bytes: usage minus inactive file cache.
-   *
-   * <p>-1 means “unavailable”.
-   */
-  private volatile long workingSet = -1L;
+    Snapshot(LinuxProcFs.CgroupInfo info, long[] values) {
+      this.version = info.version;
+      this.path = info.path == null ? "" : info.path;
+      this.values = values;
+    }
+  }
 
-  /** Last observed cgroup swap usage in bytes; -1 means "unavailable". */
-  private volatile long swapUsage = -1L;
+  private final CgroupBinding binding;
 
-  /** Last observed cgroup swap limit in bytes; -1 means "unlimited or unavailable". */
-  private volatile long swapLimit = -1L;
+  @SuppressWarnings("java:S3077")
+  private volatile Snapshot snapshot = Snapshot.UNAVAILABLE;
 
-  /** Cumulative OOM kills in this cgroup; -1 means "unavailable". */
-  private volatile long oomKills = -1L;
-
-  /** Cumulative times the cgroup hit its memory limit; -1 means "unavailable". */
-  private volatile long maxEvents = -1L;
-
-  /** Cumulative times the cgroup went over {@code memory.high}; -1 means "unavailable". */
-  private volatile long highEvents = -1L;
-
-  /**
-   * Captured cgroup metadata (version, path, resolved base directory, etc.).
-   *
-   * <p>This is detected once in the constructor and reused on each poll.
-   */
-  private final LinuxProcFs.CgroupInfo cg;
-
-  /** Construct a new metrics instance and detect cgroup information. */
+  /** Construct a collector; membership I/O occurs only when it is polled. */
   public CgroupMemMetrics() {
-    this.cg = LinuxProcFs.detectCgroup();
+    this(new CgroupBinding(LinuxProcFs::detectCgroup));
+  }
+
+  CgroupMemMetrics(CgroupBinding binding) {
+    this.binding = binding;
   }
 
   // ------------------------------------------------------------------------
@@ -90,65 +79,44 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   /** Refresh the metric values. */
   @Override
   protected void doRefresh() {
-    // Non-Linux environments: expose no values.
     if (!LinuxProcFs.isLinux()) {
-      limit = usage = workingSet = swapUsage = swapLimit = oomKills = maxEvents = highEvents = -1L;
+      snapshot = Snapshot.UNAVAILABLE;
       return;
     }
-
     try {
-      if ("v2".equals(cg.version)) {
-        // ----- cgroup v2 -----
-        // Prefer the detected/resolved cgroup directory, fall back to the default.
-        Path base =
-            (cg.resolved != null && Files.isDirectory(cg.resolved))
-                ? cg.resolved
-                : Path.of("/sys/fs/cgroup");
-
-        // Helper handles "max" -> -1 internally.
-        long lim = effectiveLimit(base, "memory.max", false);
-        long cur = LinuxProcFs.readFirstNumber(base.resolve("memory.current"));
-
-        limit = lim;
-        usage = cur;
-        workingSet = computeWorkingSet(base, cur, "inactive_file");
-        swapUsage = readNumber(base.resolve("memory.swap.current"));
-        swapLimit = readNumber(base.resolve("memory.swap.max"));
-        Map<String, Long> events = readKeyValuesOrEmpty(base.resolve("memory.events"));
-        oomKills = counter(events, "oom_kill");
-        maxEvents = counter(events, "max");
-        highEvents = counter(events, "high");
-
-      } else if ("v1".equals(cg.version)) {
-        // ----- cgroup v1 -----
-        // memory controller mount (or resolved path when available)
-        Path base =
-            (cg.resolved != null && Files.isDirectory(cg.resolved))
-                ? cg.resolved
-                : Path.of("/sys/fs/cgroup/memory");
-
-        long lim = effectiveLimit(base, "memory.limit_in_bytes", true);
-        long cur = LinuxProcFs.readFirstNumber(base.resolve("memory.usage_in_bytes"));
-
-        limit = lim;
-        usage = cur;
-        // v1 exposes the hierarchical figure as total_inactive_file (what cAdvisor uses).
-        workingSet = computeWorkingSet(base, cur, "total_inactive_file", "inactive_file");
-        computeV1Swap(base, cur);
-        oomKills = counter(readKeyValuesOrEmpty(base.resolve("memory.oom_control")), "oom_kill");
-        // v1 counts the times the limit was hit in memory.failcnt and has no equivalent of high.
-        maxEvents = readNumber(base.resolve("memory.failcnt"));
-        highEvents = -1L;
-
-      } else {
-        // Unknown or unsupported cgroup version.
-        limit =
-            usage = workingSet = swapUsage = swapLimit = oomKills = maxEvents = highEvents = -1L;
+      LinuxProcFs.CgroupInfo cg = binding.current();
+      Path base = cg.resolved;
+      if (base == null || !Files.isDirectory(base) || "none".equals(cg.version)) {
+        snapshot = Snapshot.UNAVAILABLE;
+        return;
       }
-    } catch (Throwable t) {
-      // On any read/parse error keep metrics safe and clearly unavailable.
-      recordRefreshFailure(t);
-      limit = usage = workingSet = swapUsage = swapLimit = oomKills = maxEvents = highEvents = -1L;
+      long[] values = {-1, -1, -1, -1, -1, -1, -1, -1};
+      if ("v2".equals(cg.version)) {
+        values[LIMIT] = effectiveLimit(base, cg.baseDir, "memory.max", false);
+        values[USAGE] = LinuxProcFs.readFirstNumber(base.resolve("memory.current"));
+        values[WORKING_SET] = computeWorkingSet(base, values[USAGE], "inactive_file");
+        values[SWAP_USAGE] = readNumber(base.resolve("memory.swap.current"));
+        values[SWAP_LIMIT] = readNumber(base.resolve("memory.swap.max"));
+        Map<String, Long> events = readKeyValuesOrEmpty(base.resolve("memory.events"));
+        values[OOM_KILLS] = counter(events, "oom_kill");
+        values[MAX_EVENTS] = counter(events, "max");
+        values[HIGH_EVENTS] = counter(events, "high");
+      } else if ("v1".equals(cg.version)) {
+        values[LIMIT] = effectiveLimit(base, cg.baseDir, "memory.limit_in_bytes", true);
+        values[USAGE] = LinuxProcFs.readFirstNumber(base.resolve("memory.usage_in_bytes"));
+        values[WORKING_SET] =
+            computeWorkingSet(base, values[USAGE], "total_inactive_file", "inactive_file");
+        long[] swap = computeV1Swap(base, values[USAGE]);
+        values[SWAP_USAGE] = swap[0];
+        values[SWAP_LIMIT] = swap[1];
+        values[OOM_KILLS] =
+            counter(readKeyValuesOrEmpty(base.resolve("memory.oom_control")), "oom_kill");
+        values[MAX_EVENTS] = readNumber(base.resolve("memory.failcnt"));
+      }
+      snapshot = new Snapshot(cg, values);
+    } catch (Throwable failure) { // NOSONAR - never retain another group's values after failure
+      recordRefreshFailure(failure);
+      snapshot = Snapshot.UNAVAILABLE;
     }
   }
 
@@ -156,16 +124,17 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    * cgroup v1 accounts memory and swap together ({@code memsw}), so swap alone is the difference.
    * The files exist only when swap accounting is enabled; otherwise both values stay -1.
    */
-  private void computeV1Swap(Path base, long memoryUsage) {
+  private static long[] computeV1Swap(Path base, long memoryUsage) {
     long memsw = readNumber(base.resolve("memory.memsw.usage_in_bytes"));
-    swapUsage = (memsw >= 0L && memoryUsage >= 0L) ? Math.max(0L, memsw - memoryUsage) : -1L;
+    long swapUsage = (memsw >= 0L && memoryUsage >= 0L) ? Math.max(0L, memsw - memoryUsage) : -1L;
 
     long memswLimit = unlessUnlimited(readNumber(base.resolve("memory.memsw.limit_in_bytes")));
     long ownMemoryLimit = unlessUnlimited(readNumber(base.resolve("memory.limit_in_bytes")));
-    swapLimit =
+    long swapLimit =
         (memswLimit >= 0L && ownMemoryLimit >= 0L)
             ? Math.max(0L, memswLimit - ownMemoryLimit)
             : -1L;
+    return new long[] {swapUsage, swapLimit};
   }
 
   /** Key/value lines of a cgroup file, or an empty map when it is missing or unreadable. */
@@ -218,8 +187,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    * @param v1 whether huge values mean "unlimited" (cgroup v1 convention)
    * @return the effective limit in bytes, or -1 if no level has a finite limit
    */
-  private long effectiveLimit(Path base, String limitFile, boolean v1) {
-    Path root = cg.baseDir;
+  private long effectiveLimit(Path base, Path root, String limitFile, boolean v1) {
     if (CollectorInput.excessiveAncestors(base, root)) {
       return -1L;
     }
@@ -290,7 +258,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   @Override
   public long getMemoryLimitBytes() {
     refreshOnRead();
-    return limit;
+    return snapshot.values[LIMIT];
   }
 
   /**
@@ -301,7 +269,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   @Override
   public long getMemoryUsageBytes() {
     refreshOnRead();
-    return usage;
+    return snapshot.values[USAGE];
   }
 
   /**
@@ -312,7 +280,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   @Override
   public long getMemoryWorkingSetBytes() {
     refreshOnRead();
-    return workingSet;
+    return snapshot.values[WORKING_SET];
   }
 
   /**
@@ -322,7 +290,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    */
   @Override
   public String getCgroupVersion() {
-    return cg.version;
+    return snapshot.version;
   }
 
   /**
@@ -332,7 +300,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    */
   @Override
   public String getCgroupPath() {
-    return cg.path == null ? "" : cg.path;
+    return snapshot.path;
   }
 
   /**
@@ -343,7 +311,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   @Override
   public long getSwapUsageBytes() {
     refreshOnRead();
-    return swapUsage;
+    return snapshot.values[SWAP_USAGE];
   }
 
   /**
@@ -354,7 +322,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   @Override
   public long getSwapLimitBytes() {
     refreshOnRead();
-    return swapLimit;
+    return snapshot.values[SWAP_LIMIT];
   }
 
   /**
@@ -365,7 +333,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   @Override
   public Long getMemoryMaxEventsTotal() {
     refreshOnRead();
-    return counterOrNull(maxEvents);
+    return counterOrNull(snapshot.values[MAX_EVENTS]);
   }
 
   /**
@@ -376,7 +344,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   @Override
   public Long getMemoryHighEventsTotal() {
     refreshOnRead();
-    return counterOrNull(highEvents);
+    return counterOrNull(snapshot.values[HIGH_EVENTS]);
   }
 
   /**
@@ -387,6 +355,6 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   @Override
   public Long getMemoryOomKillTotal() {
     refreshOnRead();
-    return counterOrNull(oomKills);
+    return counterOrNull(snapshot.values[OOM_KILLS]);
   }
 }

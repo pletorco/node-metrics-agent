@@ -60,6 +60,10 @@ echo "== preserved-metadata config edits must reload without duplicate applicati
 python3 "$HERE/config_reload_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"
 
+echo "== cgroup migration must rebind memory, PID and PSI collectors"
+python3 "$HERE/cgroup_migration_check.py" --agent-jar "$JAR" \
+  --java "$JAVA_BIN" --javac "$JAVAC_BIN"
+
 echo "== the agent must not initialize JVM-wide singletons before the application configures them"
 python3 "$HERE/global_isolation_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"

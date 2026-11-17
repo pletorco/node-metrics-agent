@@ -8,7 +8,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Implementation of {@link CpuMetricsMBean} backed by the platform {@link
@@ -505,7 +504,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   // A process rarely changes cgroup, so where cpu.stat lives is resolved once and re-resolved
   // only every minute or after a read failure, instead of probing /proc/self/cgroup and the
   // cgroup mount on every poll.
-  private static final long CGROUP_PATH_TTL_NANOS = TimeUnit.SECONDS.toNanos(60L);
+  private static final long CGROUP_PATH_TTL_NANOS = CgroupBinding.TTL_NANOS;
   private Path cachedCgroupBaseDir;
   private Path cachedCgroupStatPath;
   private long cachedCgroupStatPathAtNanos;
@@ -515,7 +514,13 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     long now = System.nanoTime();
     if (!baseDir.equals(cachedCgroupBaseDir)
         || now - cachedCgroupStatPathAtNanos >= CGROUP_PATH_TTL_NANOS) {
-      cachedCgroupStatPath = locateCgroupCpuStatPath(baseDir);
+      Path next = locateCgroupCpuStatPath(baseDir);
+      if (!java.util.Objects.equals(next, cachedCgroupStatPath)) {
+        cgroupCpuInitialized = false; // A new group has a different cumulative-counter baseline.
+        cgroupThrottledRatio = -1.0;
+        cgroupThrottledCount = 0L;
+      }
+      cachedCgroupStatPath = next;
       cachedCgroupBaseDir = baseDir;
       cachedCgroupStatPathAtNanos = now;
     }

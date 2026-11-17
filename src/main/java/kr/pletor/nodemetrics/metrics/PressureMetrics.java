@@ -46,10 +46,18 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
   private static final class Snapshot {
     static final Snapshot UNAVAILABLE = new Snapshot(unavailableAverages(), unavailableTotals());
 
+    final String version;
+    final String path;
     final double[] avg10;
     final long[] totals;
 
     Snapshot(double[] avg10, long[] totals) {
+      this(avg10, totals, new LinuxProcFs.CgroupInfo());
+    }
+
+    Snapshot(double[] avg10, long[] totals, LinuxProcFs.CgroupInfo info) {
+      this.version = info.version;
+      this.path = info.path == null ? "" : info.path;
       this.avg10 = avg10;
       this.totals = totals;
     }
@@ -69,6 +77,8 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
 
   /** Directory containing the pressure files, or {@code null} when none applies. */
   private final Path dir;
+
+  private final CgroupBinding binding;
 
   private final String[] files;
 
@@ -91,15 +101,20 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
    * @return a new instance
    */
   public static PressureMetrics forCgroup() {
-    LinuxProcFs.CgroupInfo cg = LinuxProcFs.detectCgroup();
-    Path cgroupDir = "v2".equals(cg.version) ? cg.resolved : null;
-    return new PressureMetrics(cgroupDir, CGROUP_FILES);
+    return new PressureMetrics(new CgroupBinding(LinuxProcFs::detectCgroup));
   }
 
   // Visible for testing
   PressureMetrics(Path dir, String[] files) {
     this.dir = dir;
+    this.binding = null;
     this.files = files.clone();
+  }
+
+  PressureMetrics(CgroupBinding binding) {
+    this.dir = null;
+    this.binding = binding;
+    this.files = CGROUP_FILES;
   }
 
   // ------------------------------------------------------------------------
@@ -109,7 +124,22 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
   /** Refresh the metric values. */
   @Override
   protected void doRefresh() {
-    if (dir == null || !LinuxProcFs.isLinux()) {
+    try {
+      refreshSnapshot();
+    } catch (Throwable failure) { // NOSONAR - never retain old-group counters after rejection
+      snapshot = Snapshot.UNAVAILABLE;
+      recordRefreshFailure(failure);
+    }
+  }
+
+  private void refreshSnapshot() {
+    if (!LinuxProcFs.isLinux()) {
+      snapshot = Snapshot.UNAVAILABLE;
+      return;
+    }
+    LinuxProcFs.CgroupInfo cg = binding == null ? new LinuxProcFs.CgroupInfo() : binding.current();
+    Path directory = binding == null ? dir : ("v2".equals(cg.version) ? cg.resolved : null);
+    if (directory == null) {
       snapshot = Snapshot.UNAVAILABLE;
       return;
     }
@@ -118,7 +148,7 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
     Arrays.fill(avg, -1.0);
     Arrays.fill(totals, -1L);
     for (int resource = 0; resource < files.length; resource++) {
-      List<String> lines = readLinesOrNull(dir.resolve(files[resource]));
+      List<String> lines = readLinesOrNull(directory.resolve(files[resource]));
       if (lines == null) {
         continue;
       }
@@ -133,7 +163,7 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
         totals[slot] = stall.totalMicros;
       }
     }
-    snapshot = new Snapshot(avg, totals);
+    snapshot = new Snapshot(avg, totals, cg);
   }
 
   /** Returns the lines of a file, or {@code null} when PSI is not available through it. */
@@ -197,6 +227,16 @@ public class PressureMetrics extends AbstractRefreshingMetric implements Pressur
   }
 
   // ----- MBean getters -----
+
+  @Override
+  public String getCgroupVersion() {
+    return snapshot.version;
+  }
+
+  @Override
+  public String getCgroupPath() {
+    return snapshot.path;
+  }
 
   @Override
   public double getCpuSomeAvg10() {

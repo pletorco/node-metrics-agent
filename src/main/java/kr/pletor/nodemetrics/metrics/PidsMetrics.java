@@ -17,57 +17,51 @@ import java.nio.file.Path;
  */
 public class PidsMetrics extends AbstractRefreshingMetric implements PidsMetricsMBean {
 
-  private final LinuxProcFs.CgroupInfo cg;
+  private final CgroupBinding binding;
 
-  private volatile long current = -1L;
-  private volatile long limit = -1L;
+  private static final class Snapshot {
+    static final Snapshot UNAVAILABLE = new Snapshot(new LinuxProcFs.CgroupInfo(), -1, -1);
+    final String version;
+    final String path;
+    final long current;
+    final long limit;
 
-  /** Creates a new instance and detects the cgroup; values appear after the first refresh. */
+    Snapshot(LinuxProcFs.CgroupInfo info, long current, long limit) {
+      this.version = info.version;
+      this.path = info.path == null ? "" : info.path;
+      this.current = current;
+      this.limit = limit;
+    }
+  }
+
+  @SuppressWarnings("java:S3077")
+  private volatile Snapshot snapshot = Snapshot.UNAVAILABLE;
+
+  /** Membership is resolved on polls, including after process migration. */
   public PidsMetrics() {
-    this.cg = LinuxProcFs.detectCgroup();
+    this(new CgroupBinding(() -> LinuxProcFs.detectCgroup("pids")));
+  }
+
+  PidsMetrics(CgroupBinding binding) {
+    this.binding = binding;
   }
 
   @Override
   protected void doRefresh() {
-    long[] values = {-1L, -1L};
     try {
-      if (LinuxProcFs.isLinux()) {
-        Path dir = pidsDirectory();
-        if (dir != null) {
-          values = read(dir, pidsRoot());
-        }
+      LinuxProcFs.CgroupInfo cg =
+          LinuxProcFs.isLinux() ? binding.current() : new LinuxProcFs.CgroupInfo();
+      Path dir = cg.resolved;
+      if (dir == null || !Files.isDirectory(dir) || "none".equals(cg.version)) {
+        snapshot = Snapshot.UNAVAILABLE;
+        return;
       }
-    } catch (RuntimeException e) {
-      recordRefreshFailure(e);
+      long[] values = read(dir, cg.baseDir);
+      snapshot = new Snapshot(cg, values[0], values[1]);
+    } catch (Throwable failure) { // NOSONAR - publish unavailable on any failed poll
+      recordRefreshFailure(failure);
+      snapshot = Snapshot.UNAVAILABLE;
     }
-    current = values[0];
-    limit = values[1];
-  }
-
-  /** The cgroup directory holding the pid files, or {@code null} when it cannot be determined. */
-  private Path pidsDirectory() {
-    if ("v2".equals(cg.version)) {
-      return cg.resolved != null && Files.isDirectory(cg.resolved)
-          ? cg.resolved
-          : Path.of("/sys/fs/cgroup");
-    }
-    if ("v1".equals(cg.version)) {
-      Path root = pidsRoot();
-      if (root == null || cg.resolved == null || !cg.resolved.startsWith(cg.baseDir)) {
-        return null;
-      }
-      Path dir = root.resolve(cg.baseDir.relativize(cg.resolved).toString());
-      return Files.isDirectory(dir) ? dir : null;
-    }
-    return null;
-  }
-
-  /** The mount root of the hierarchy: ancestors are read only up to and including it. */
-  private Path pidsRoot() {
-    if ("v1".equals(cg.version)) {
-      return cg.baseDir == null ? null : cg.baseDir.resolveSibling("pids");
-    }
-    return cg.baseDir;
   }
 
   /**
@@ -118,14 +112,24 @@ public class PidsMetrics extends AbstractRefreshingMetric implements PidsMetrics
   }
 
   @Override
+  public String getCgroupVersion() {
+    return snapshot.version;
+  }
+
+  @Override
+  public String getCgroupPath() {
+    return snapshot.path;
+  }
+
+  @Override
   public long getPidsCurrent() {
     refreshOnRead();
-    return current;
+    return snapshot.current;
   }
 
   @Override
   public long getPidsLimit() {
     refreshOnRead();
-    return limit;
+    return snapshot.limit;
   }
 }

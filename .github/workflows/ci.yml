@@ -206,3 +206,7 @@ jobs:
 
       - name: Scrape through JMX exporter ${{ matrix.exporter }}
         run: scripts/exporter-scrape-test.sh dist/*-all.jar exporter.jar
+
+      - name: Verify cgroup migration labels through the exporter
+        if: matrix.exporter == '1.6.0'
+        run: python3 scripts/cgroup_migration_check.py --agent-jar dist/*-all.jar --exporter-jar exporter.jar
