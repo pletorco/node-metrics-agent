@@ -9,7 +9,7 @@ import org.cyclonedx.gradle.CyclonedxDirectTask
 buildscript {
     dependencies {
         // Patch the plugins' shared classpath: CycloneDX brings Jackson and Maven's Guava.
-        classpath(platform("com.fasterxml.jackson:jackson-bom:2.22.3"))
+        classpath(platform("com.fasterxml.jackson:jackson-bom:2.23.0"))
         classpath("com.google.guava:guava:33.7.2-jre") {
             because("CVE-2026-102554: unbounded allocation during deserialization")
         }
