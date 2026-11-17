@@ -30,7 +30,7 @@ plugins {
     jacoco
 
     // SBOM generation
-    id("org.cyclonedx.bom") version "3.5.1"
+    id("org.cyclonedx.bom") version "3.6.1"
 
     // Checkstyle for linting
     checkstyle
