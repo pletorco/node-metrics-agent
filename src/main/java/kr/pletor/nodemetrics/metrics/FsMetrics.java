@@ -25,31 +25,31 @@ public class FsMetrics extends AbstractRefreshingMetric implements FsMetricsMBea
   private final Path path;
 
   /** Last observed file store name. */
-  private volatile String fsName = "";
+  private volatile String fsName = "unknown";
 
   /** Last observed filesystem type. */
-  private volatile String fsType = "";
+  private volatile String fsType = "unknown";
 
   /**
    * Last observed total size of the filesystem in bytes.
    *
    * <p>{@code -1} indicates an error or unsupported value.
    */
-  private volatile long total;
+  private volatile long total = -1L;
 
   /**
    * Last observed usable bytes on the filesystem.
    *
    * <p>{@code -1} indicates an error or unsupported value.
    */
-  private volatile long usable;
+  private volatile long usable = -1L;
 
   /**
    * Last observed unallocated bytes on the filesystem.
    *
    * <p>{@code -1} indicates an error or unsupported value.
    */
-  private volatile long unallocated;
+  private volatile long unallocated = -1L;
 
   /**
    * Create a new metrics instance for the given path.

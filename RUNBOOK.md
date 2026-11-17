@@ -84,8 +84,10 @@ curl -s http://localhost:9404/metrics | grep '^pletor_' | head
 The agent is designed never to be on the application's hot path and never to let its own failures
 reach the application:
 
-- It does not instrument or transform application classes, and application threads never run agent
-  code. JMX attribute reads return cached values.
+- It does not instrument or transform application classes. Agent-owned MBeans disable read-triggered
+  refresh before registration, so attribute and metadata reads use cached values even in registration
+  listeners, during configuration reloads, or if engine startup fails. Uncollected filesystem sizes
+  are `-1` until the first background poll. Standalone metric instances retain on-read refresh.
 - `-javaagent` startup is asynchronous. The entry point (`AgentLauncher`) only starts one daemon
   thread and returns, adding roughly 50 ms to JVM startup (measured: about 10 ms without the
   agent, about 57 ms with it). The MBeans therefore appear a short moment after `main()` starts, so

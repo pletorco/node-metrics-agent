@@ -11,9 +11,10 @@ public interface RefreshManagedMetric {
   void setReadRefreshEnabled(boolean enabled);
 
   /**
-   * Whether an attribute read may refresh the values itself. It is {@code false} once the refresh
-   * engine owns the metric, after which reads only return the stored values. The default is {@code
-   * true}, the cautious answer for a metric that does not say.
+   * Whether an attribute read may refresh the values itself. The agent sets this to {@code false}
+   * before publishing an MBean, so reads return stored values even before the refresh engine starts
+   * or if it fails. Standalone use may retain read-triggered refresh. The default is {@code true},
+   * the cautious answer for a metric that does not say.
    *
    * @return {@code true} while reads may trigger a refresh
    */

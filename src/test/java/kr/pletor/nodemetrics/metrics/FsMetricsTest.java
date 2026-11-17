@@ -34,7 +34,7 @@ class FsMetricsTest {
   @TempDir Path tempDir;
 
   @Test
-  @DisplayName("Constructor should keep path and initialize fields to default values")
+  @DisplayName("Constructor should keep path and report uncollected capacity as unavailable")
   void constructorShouldKeepPathAndInitializeDefaults() throws Exception {
     // Given: a temporary directory to use as a monitored path
     Path dir = Files.createDirectory(tempDir.resolve("fsmetrics-initial"));
@@ -49,14 +49,16 @@ class FsMetricsTest {
         metrics.getPath(),
         "getPath() should return the original Path's string representation");
 
-    // And: numeric fields should be at their default zero value before any poll()
-    assertEquals(0L, metrics.getTotalBytes(), "Initial total bytes should be zero");
-    assertEquals(0L, metrics.getUsableBytes(), "Initial usable bytes should be zero");
-    assertEquals(0L, metrics.getUnallocatedBytes(), "Initial unallocated bytes should be zero");
+    // Uncollected data must not look like a measured zero-capacity filesystem.
+    assertEquals(-1L, metrics.getTotalBytes(), "Initial total bytes should be unavailable");
+    assertEquals(-1L, metrics.getUsableBytes(), "Initial usable bytes should be unavailable");
+    assertEquals(
+        -1L, metrics.getUnallocatedBytes(), "Initial unallocated bytes should be unavailable");
 
-    // And: string fields should be empty before any poll()
-    assertEquals("", metrics.getFileStoreName(), "Initial file store name should be empty");
-    assertEquals("", metrics.getFileSystemType(), "Initial file system type should be empty");
+    assertEquals(
+        "unknown", metrics.getFileStoreName(), "Initial file store name should be unknown");
+    assertEquals(
+        "unknown", metrics.getFileSystemType(), "Initial file system type should be unknown");
 
     // And: FsMetrics should implement FsMetricsMBean (instanceof pattern with binding variable)
     Object o = metrics;
