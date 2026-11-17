@@ -56,6 +56,10 @@ echo "== partial refresh startup must disable telemetry and preserve host execut
 python3 "$HERE/engine_startup_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"
 
+echo "== preserved-metadata config edits must reload without duplicate applications"
+python3 "$HERE/config_reload_check.py" --agent-jar "$JAR" \
+  --java "$JAVA_BIN" --javac "$JAVAC_BIN"
+
 echo "== the agent must not initialize JVM-wide singletons before the application configures them"
 python3 "$HERE/global_isolation_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"

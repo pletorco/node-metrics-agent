@@ -2,7 +2,6 @@
 
 package kr.pletor.nodemetrics.agent;
 
-import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
 import java.nio.file.FileStore;
@@ -262,11 +261,8 @@ public class MetricsAgent {
   private static void initialize(String agentArgs) {
     // Resolve configuration file and load initial configuration (or defaults).
     Path cfgPath = null;
-    long startupMtime = -1L;
     try {
       cfgPath = resolveConfigPath(agentArgs);
-      // Capture the mtime before loading so a modification during startup is still picked up.
-      startupMtime = configMtimeOrUnknown(cfgPath);
       current = ConfigLoader.loadOrDefault(cfgPath);
     } catch (Throwable t) { // NOSONAR
       initStepFailed("load configuration (using defaults)", t);
@@ -385,12 +381,11 @@ public class MetricsAgent {
     // ----- Start configuration watcher -----
     // If cfgPath is null, watch the default config location (for hot creation).
     final Path watchTarget = (cfgPath != null) ? cfgPath : Paths.get("./config/node-metrics.yml");
-    final long mtime = startupMtime;
     runStep(
         "start the configuration watcher",
         () -> {
           ConfigReloader reloader =
-              new ConfigReloader(watchTarget, MetricsAgent::applyConfig, current.checksum, mtime);
+              new ConfigReloader(watchTarget, MetricsAgent::applyConfig, current.checksum);
           AgentThreads.daemon("node-metrics-config-watcher", reloader).start();
         });
 
@@ -428,17 +423,6 @@ public class MetricsAgent {
         Level.WARNING,
         "[node-metrics-agent] startup step failed, continuing without it: " + what,
         error);
-  }
-
-  private static long configMtimeOrUnknown(Path cfgPath) {
-    try {
-      if (cfgPath != null && Files.isRegularFile(cfgPath)) {
-        return Files.getLastModifiedTime(cfgPath).toMillis();
-      }
-    } catch (IOException | RuntimeException e) {
-      // Unknown mtime just means the reloader re-checks the file once.
-    }
-    return -1L;
   }
 
   /**

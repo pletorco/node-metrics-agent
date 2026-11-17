@@ -2,6 +2,7 @@ package kr.pletor.nodemetrics.agent;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,6 +16,8 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
+import org.yaml.snakeyaml.Yaml;
 
 class ConfigLoaderTest {
 
@@ -298,5 +301,20 @@ class ConfigLoaderTest {
 
     assertEquals(sha256String(bytes), c.checksum);
     assertEquals(java.util.List.of("/data"), c.fsmetricsPaths);
+  }
+
+  @Test
+  void unchangedSnapshotSkipsYamlConstructionAndChangedSnapshotKeepsItsChecksum() throws Exception {
+    Path path = writeYaml("unchanged.yml", "refresh_interval_seconds: 2\n");
+    String checksum = ConfigLoader.load(path).checksum;
+    try (var parsers = Mockito.mockConstruction(Yaml.class)) {
+      assertNull(ConfigLoader.loadIfChanged(path, checksum));
+      assertTrue(parsers.constructed().isEmpty(), "Unchanged bytes must not create a YAML parser");
+    }
+    byte[] changed = "refresh_interval_seconds: 9\n".getBytes(StandardCharsets.UTF_8);
+    Files.write(path, changed);
+    Config next = ConfigLoader.loadIfChanged(path, checksum);
+    assertEquals(9, next.refreshIntervalSeconds);
+    assertEquals(sha256String(changed), next.checksum);
   }
 }

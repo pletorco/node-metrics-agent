@@ -175,6 +175,10 @@ Agent threads must neither invoke those callbacks nor inherit host thread-local 
 checks run in smoke CI on Java 11, 17 and 21; the fixture classes are not packaged in the agent.
 The same smoke suite checks repeated/concurrent agent entry, first-argument selection, config reload,
 host-owned MBean collisions and interrupted initialization in bounded subprocesses.
+It checks same-size/same-mtime edits, atomic replacement, duplicate suppression and rejected-edit
+recovery through the real packaged agent watcher. To reproduce the unchanged-main control and
+compare watcher CPU/allocation/p99 cost at 512 bytes and 64 KiB, run
+`python3 scripts/config_reload_check.py --agent-jar <candidate.jar> --baseline-jar <main.jar> --output /tmp/reload-evidence.json`.
 It also checks collector removal/re-registration during an uninterruptible synthetic read. For
 before/after execution and diagnostic-read measurements, run
 `python3 scripts/collector_ownership_check.py --agent-jar <candidate.jar> --baseline-jar <main.jar> --output /tmp/ownership-evidence.json`.

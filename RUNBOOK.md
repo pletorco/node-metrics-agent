@@ -140,10 +140,29 @@ interpreting missing/stale series. The limits are not runtime configuration opti
 The agent watches the active config file and also polls as a fallback.
 
 - watch debounce: `500 ms`
-- fallback polling base interval: `1 s`
+- fallback content-check base interval: `1 s` after the previous check completes
 - reload failure backoff: exponential, capped at `60 s`
 
-If reload fails, the previous working configuration remains active.
+Every check reads a bounded file snapshot and compares SHA-256, regardless of mtime, size or file
+identity. Same-size edits and atomic replacements that preserve mtime are detected. Unchanged bytes
+skip YAML parsing and configuration application, even after a touch or repeated events. The watcher
+retains only the last applied checksum; parsed content and checksum come from the same read.
+
+The timer runs independently of directory events, so unrelated activity cannot starve it. Relevant
+file events and `OVERFLOW` trigger a check after the `500 ms` debounce and bypass failure backoff.
+With no events and a responsive local filesystem, a healthy watcher normally observes a stable edit
+within about two seconds plus read/apply time (the event wait is up to one second). After failures,
+polling-only recovery can take up to the `60 s` backoff plus event-wait/read/apply time. These are
+polling cadences, not timeouts for a blocked filesystem operation.
+
+Content I/O and parsing stay on the single existing config watcher daemon. Each read accepts at most
+`64 KiB`, with one extra byte read only to reject oversized files. Periodic reads run at most once
+per second; relevant event batches may trigger checks every `500 ms`. No new thread, retry queue or
+content history is added. YAML depth/alias limits remain in force for changed input.
+
+If reading, parsing or applying fails, the previous successful checksum remains in effect and the
+watcher backs off. Invalid/oversized edits do not replace the last good config. Restoring its exact
+bytes clears failure backoff without reapplying; a subsequent valid change can be applied normally.
 
 ## Suggested Alerts
 
