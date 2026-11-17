@@ -540,7 +540,7 @@ tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 0 }
 // -----------------------------------------------------------------------------
 spotless {
     java {
-        target("src/**/*.java", "scripts/soak/*.java")
+        target("src/**/*.java", "scripts/soak/*.java", "scripts/LauncherFailureProbe.java")
         googleJavaFormat(googleJavaFormatVersion)
     }
 }

@@ -90,9 +90,12 @@ reach the application:
   thread and returns, adding roughly 50 ms to JVM startup (measured: about 10 ms without the
   agent, about 57 ms with it). The MBeans therefore appear a short moment after `main()` starts, so
   do not treat their absence in the first second as a failure.
-- The entry class has no static state. If anything the agent needs cannot be loaded (for example
-  the agent jar was replaced or truncated during a deployment), one line is printed to stderr and
-  the application starts normally.
+- The entry class has no static state. Once its `premain()` is entered, task creation and thread
+  startup failures disable initialization silently: this path cannot write to stderr or JUL on
+  the JVM startup thread, since even error output can block. Errors caught on the initializer
+  daemon may print one line to stderr; a blocked write there does not hold up host startup or exit.
+  A JAR with an unreadable manifest or missing entry class, or an unsupported Java version, can
+  still be rejected by the JVM before this protection runs. Verify release checksums before use.
 - Every agent thread has its own uncaught-exception handler and its loops survive any `Throwable`,
   so errors on agent threads never reach the application's default uncaught-exception handler.
 - Startup is split into independent steps: a metric that cannot start (for example a missing JDK

@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 ### Reliability and tests
 
+- Guard launcher task creation as well as thread startup. Drop failures on the JVM startup thread
+  without logging; verify missing launcher helpers and blocked stderr in bounded host JVM tests.
 - Cap config reads at 64 KiB before allocation/parsing, limit YAML nesting and reject collection
   aliases. Verify last-good config preservation after hostile input and later recovery.
 - Preserve in-flight collector state across interval reloads; a blocked collector can no longer
