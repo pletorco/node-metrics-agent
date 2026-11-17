@@ -172,6 +172,8 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   private static Map<String, Long> readKeyValuesOrEmpty(Path file) {
     try {
       return MemStatsUtil.readKeyValues(file);
+    } catch (CollectorInput.LimitExceededException e) {
+      throw new java.io.UncheckedIOException(e);
     } catch (IOException | RuntimeException e) {
       return Map.of();
     }
@@ -194,8 +196,10 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    */
   private static long readNumber(Path file) {
     try {
-      String text = Files.readString(file).trim();
+      String text = CollectorInput.readString(file, CollectorInput.NUMBER).trim();
       return "max".equals(text) ? -1L : Long.parseLong(text);
+    } catch (CollectorInput.LimitExceededException e) {
+      throw new java.io.UncheckedIOException(e);
     } catch (IOException | RuntimeException e) {
       return -1L;
     }
@@ -215,8 +219,11 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
    * @return the effective limit in bytes, or -1 if no level has a finite limit
    */
   private long effectiveLimit(Path base, String limitFile, boolean v1) {
-    long best = readLimit(base, limitFile, v1);
     Path root = cg.baseDir;
+    if (CollectorInput.excessiveAncestors(base, root)) {
+      return -1L;
+    }
+    long best = readLimit(base, limitFile, v1);
     if (root == null || !base.startsWith(root)) {
       return best;
     }
@@ -231,7 +238,7 @@ public class CgroupMemMetrics extends AbstractRefreshingMetric implements Cgroup
   }
 
   private static long readLimit(Path dir, String limitFile, boolean v1) {
-    long value = LinuxProcFs.readFirstNumber(dir.resolve(limitFile));
+    long value = readNumber(dir.resolve(limitFile));
     // Some v1 setups use extremely large numbers to represent "unlimited".
     // Heuristic: treat values close to Long.MAX_VALUE as unlimited (-1).
     if (v1 && value >= Long.MAX_VALUE / 2) {

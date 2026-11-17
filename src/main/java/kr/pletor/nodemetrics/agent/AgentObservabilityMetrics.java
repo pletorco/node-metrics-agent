@@ -129,4 +129,9 @@ public final class AgentObservabilityMetrics implements AgentObservabilityMetric
   public long getDroppedLogCount() {
     return AgentLog.droppedCount();
   }
+
+  @Override
+  public long getInputLimitExceededCount() {
+    return kr.pletor.nodemetrics.metrics.CollectorInput.limitExceededCount();
+  }
 }

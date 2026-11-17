@@ -3,7 +3,6 @@ package kr.pletor.nodemetrics.metrics;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileStore;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -58,7 +57,7 @@ public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRunt
 
   // ----- Linux implementation -----
 
-  private void pollLinux() {
+  private void pollLinux() throws IOException {
     uptimeSeconds = readUptimeLinux();
 
     String[] m = readMountsLinux();
@@ -67,12 +66,12 @@ public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRunt
   }
 
   private long readUptimeLinux() {
-    Path p = Path.of("/proc/uptime");
+    Path p = LinuxProcFs.procPath("uptime");
     if (!Files.isRegularFile(p)) {
       return 0L;
     }
     try {
-      String s = Files.readString(p, StandardCharsets.UTF_8).trim();
+      String s = CollectorInput.readString(p, CollectorInput.NUMBER).trim();
       if (s.isEmpty()) {
         return 0L;
       }
@@ -91,10 +90,10 @@ public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRunt
     }
   }
 
-  private String[] readMountsLinux() {
-    Path p = Path.of("/proc/self/mounts");
+  private String[] readMountsLinux() throws IOException {
+    Path p = LinuxProcFs.procPath("self/mounts");
     if (!Files.isRegularFile(p)) {
-      p = Path.of("/proc/mounts");
+      p = LinuxProcFs.procPath("mounts");
     }
 
     if (!Files.isRegularFile(p)) {
@@ -104,6 +103,8 @@ public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRunt
     try {
       List<String> lines = LinuxProcFs.readLines(p);
       return lines.toArray(new String[0]);
+    } catch (CollectorInput.LimitExceededException e) {
+      throw e;
     } catch (IOException e) {
       recordRefreshFailure(e);
       return new String[0];
@@ -112,7 +113,7 @@ public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRunt
 
   // ----- Non-Linux implementation -----
 
-  private void pollNonLinux() {
+  private void pollNonLinux() throws IOException {
     uptimeSeconds = readUptimeFromRuntimeMxBean();
 
     String[] m = readMountsFromFileStores();
@@ -133,12 +134,28 @@ public class OsRuntimeMetrics extends AbstractRefreshingMetric implements OsRunt
     }
   }
 
-  private String[] readMountsFromFileStores() {
+  private String[] readMountsFromFileStores() throws IOException {
     List<String> out = new ArrayList<>();
+    int chars = 0;
     try {
       for (FileStore fs : FileSystems.getDefault().getFileStores()) {
-        String s = fs.name() + " (" + fs.type() + ")";
-        out.add(s);
+        if (out.size() >= CollectorInput.TABLE.lines) {
+          throw new CollectorInput.LimitExceededException(
+              "mount entries", CollectorInput.TABLE.lines);
+        }
+        String name = fs.name();
+        String type = fs.type();
+        long length = (long) name.length() + type.length() + 3;
+        if (length > CollectorInput.TABLE.lineBytes) {
+          throw new CollectorInput.LimitExceededException(
+              "mount characters", CollectorInput.TABLE.lineBytes);
+        }
+        if (chars + length > CollectorInput.TABLE.bytes) {
+          throw new CollectorInput.LimitExceededException(
+              "mount characters", CollectorInput.TABLE.bytes);
+        }
+        chars += (int) length;
+        out.add(name + " (" + type + ")");
       }
     } catch (RuntimeException e) {
       // Best-effort only; return what we have so far.

@@ -12,6 +12,13 @@ All notable changes to this project will be documented in this file.
 
 ### Reliability and tests
 
+- Bound procfs/sysfs/cgroup streams by total bytes, bytes per line and row count before decoding
+  or retaining their contents. Bound block-device enumeration, interface-cache admission, mount
+  snapshots and cgroup ancestor traversal. Reject partial cgroup hierarchy evaluations.
+- Expose `InputLimitExceededCount`, document per-source limits and unavailable/last-good recovery,
+  and run small-heap packaged host tests with `ExitOnOutOfMemoryError`. Compare normal and large
+  mount/interface input CPU, allocation and latency with the unchanged agent.
+
 - Preserve the application's global JUL and JMX initialization choices, including config warnings
   and setup delayed beyond 10 seconds. Discover an existing Runtime/OperatingSystem MBean server
   without creating the platform singleton; keep collectors dormant until one is available.

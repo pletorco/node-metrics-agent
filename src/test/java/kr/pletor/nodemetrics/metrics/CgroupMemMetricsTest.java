@@ -9,6 +9,7 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
 
 /**
@@ -24,6 +25,7 @@ import org.mockito.MockedStatic;
  * </ul>
  */
 class CgroupMemMetricsTest {
+  @TempDir Path root;
 
   // ------- Utility: mutate private cg field via reflection -------
 
@@ -50,8 +52,7 @@ class CgroupMemMetricsTest {
     pathField.set(cg, path);
 
     // Do not inherit the mount root of the host running the tests. With a real root, the
-    // effective-limit lookup also reads ancestor directories, which consumes the mocked
-    // readFirstNumber sequence these tests rely on (and differs between cgroup v1 and v2 hosts).
+    // effective-limit lookup would also read ancestor directories outside the fixture.
     // Tests that exercise ancestors set the root explicitly.
     Field baseDirField = cg.getClass().getDeclaredField("baseDir");
     baseDirField.setAccessible(true);
@@ -82,7 +83,9 @@ class CgroupMemMetricsTest {
     CgroupMemMetrics metrics = new CgroupMemMetrics();
 
     // Create a temporary directory and use it as cg.resolved
-    Path tempDir = Files.createTempDirectory("cg-v2-test");
+    Path tempDir = Files.createDirectory(root.resolve("v2"));
+
+    Files.writeString(tempDir.resolve("memory.max"), "1024");
 
     // cg.version = "v2", cg.resolved = tempDir, cg.path = "/my/cg/path"
     setCgroupInfo(metrics, "v2", tempDir, "/my/cg/path");
@@ -90,10 +93,8 @@ class CgroupMemMetricsTest {
     try (MockedStatic<LinuxProcFs> mocked = mockStatic(LinuxProcFs.class)) {
       mocked.when(LinuxProcFs::isLinux).thenReturn(true);
 
-      // For v2, poll() calls readFirstNumber twice:
-      //  1) memory.max     -> limit
-      //  2) memory.current -> usage
-      mocked.when(() -> LinuxProcFs.readFirstNumber(any(Path.class))).thenReturn(1024L, 2048L);
+      // The limit uses a real bounded read; current usage retains its sentinel helper.
+      mocked.when(() -> LinuxProcFs.readFirstNumber(any(Path.class))).thenReturn(2048L);
 
       metrics.poll();
 
@@ -110,19 +111,15 @@ class CgroupMemMetricsTest {
   void poll_v1_treatsHugeLimitAsUnlimited() throws Exception {
     CgroupMemMetrics metrics = new CgroupMemMetrics();
 
-    // cg.version = "v1", resolved = null (use fallback path), path = "/my/v1/path"
-    setCgroupInfo(metrics, "v1", null, "/my/v1/path");
+    Path directory = Files.createDirectory(root.resolve("v1"));
+    Files.writeString(directory.resolve("memory.limit_in_bytes"), Long.toString(Long.MAX_VALUE));
+    setCgroupInfo(metrics, "v1", directory, "/my/v1/path");
 
     try (MockedStatic<LinuxProcFs> mocked = mockStatic(LinuxProcFs.class)) {
       mocked.when(LinuxProcFs::isLinux).thenReturn(true);
 
-      // For v1, poll() calls readFirstNumber in this order:
-      //  1) memory.limit_in_bytes  -> lim
-      //  2) memory.usage_in_bytes  -> cur
-      // If lim >= Long.MAX_VALUE / 2, it is treated as "unlimited" and mapped to -1.
-      mocked
-          .when(() -> LinuxProcFs.readFirstNumber(any(Path.class)))
-          .thenReturn(Long.MAX_VALUE, 4096L);
+      // The huge limit is read from the actual fixture; only current usage is mocked.
+      mocked.when(() -> LinuxProcFs.readFirstNumber(any(Path.class))).thenReturn(4096L);
 
       metrics.poll();
 

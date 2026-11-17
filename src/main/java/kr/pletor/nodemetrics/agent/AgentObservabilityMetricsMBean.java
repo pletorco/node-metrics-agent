@@ -91,4 +91,8 @@ public interface AgentObservabilityMetricsMBean {
   /** Diagnostic records discarded because their private writer is unavailable or saturated. */
   @JmxMetricHint("counter")
   long getDroppedLogCount();
+
+  /** Collector input reads rejected at a byte, line, enumeration or traversal limit. */
+  @JmxMetricHint("counter")
+  long getInputLimitExceededCount();
 }

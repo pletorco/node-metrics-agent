@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
-import java.util.List;
 
 /**
  * Number of memory mappings of the JVM process, compared with {@code vm.max_map_count}.
@@ -54,7 +53,9 @@ public class MemoryMapMetrics extends AbstractRefreshingMetric implements Memory
   private static long countLines() throws IOException {
     byte[] buffer = new byte[BUFFER_BYTES];
     long lines = 0L;
-    try (InputStream in = Files.newInputStream(LinuxProcFs.procPath("self/maps"))) {
+    try (InputStream in =
+        CollectorInput.limited(
+            Files.newInputStream(LinuxProcFs.procPath("self/maps")), CollectorInput.MAPS, false)) {
       int read;
       while ((read = in.read(buffer)) > 0) {
         for (int i = 0; i < read; i++) {
@@ -68,13 +69,15 @@ public class MemoryMapMetrics extends AbstractRefreshingMetric implements Memory
   }
 
   /**
-   * Reads {@code vm.max_map_count}, or -1 when it cannot be read. Read line-wise because {@code
-   * Files.readString} returns only the first character of {@code /proc/sys} files on some kernels.
+   * Reads {@code vm.max_map_count} through the bounded stream, or -1 when unavailable. Procfs size
+   * metadata is not used.
    */
   private static long readMaxMapCount() {
     try {
-      List<String> lines = LinuxProcFs.readLines(LinuxProcFs.procPath("sys/vm/max_map_count"));
-      return lines.isEmpty() ? -1L : MemoryMapMetrics.parse(lines.get(0));
+      String text =
+          CollectorInput.readString(
+              LinuxProcFs.procPath("sys/vm/max_map_count"), CollectorInput.NUMBER);
+      return MemoryMapMetrics.parse(text);
     } catch (IOException | RuntimeException e) {
       return -1L;
     }

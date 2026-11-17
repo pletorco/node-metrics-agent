@@ -89,7 +89,8 @@ public class FdMetrics extends AbstractRefreshingMetric implements FdMetricsMBea
       // Read line-wise: Files.readString/readAllBytes return only the first character of files
       // under /proc/sys on some kernels (size reported as 0), which would silently give 6 instead
       // of a real count.
-      List<String> lines = LinuxProcFs.readLines(LinuxProcFs.procPath("sys/fs/file-nr"));
+      List<String> lines =
+          CollectorInput.readLines(LinuxProcFs.procPath("sys/fs/file-nr"), CollectorInput.NUMBER);
       String[] fields = (lines.isEmpty() ? "" : lines.get(0)).trim().split("\\s+");
       long allocated = fields.length > 0 ? parse(fields[0]) : -1L;
       long unused = fields.length > 1 ? parse(fields[1]) : 0L;

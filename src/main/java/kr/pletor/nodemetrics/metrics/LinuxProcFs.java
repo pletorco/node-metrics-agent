@@ -1,12 +1,9 @@
 package kr.pletor.nodemetrics.metrics;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -101,13 +98,7 @@ final class LinuxProcFs {
    * @throws IOException if the file cannot be read
    */
   static List<String> readLines(Path p) throws IOException {
-    try (BufferedReader br = Files.newBufferedReader(p, StandardCharsets.UTF_8)) {
-      List<String> out = new ArrayList<>();
-      for (String line; (line = br.readLine()) != null; ) {
-        out.add(line);
-      }
-      return out;
-    }
+    return CollectorInput.readLines(p, CollectorInput.TABLE);
   }
 
   // ---------------------------------------------------------------------------
@@ -161,7 +152,7 @@ final class LinuxProcFs {
    * <p>If discovery fails, an empty set is returned and the caller should fall back to the legacy
    * behavior.
    */
-  private static Set<String> collectLeafBlockDevices() {
+  private static Set<String> collectLeafBlockDevices() throws IOException {
     Set<String> leaf = new HashSet<>();
 
     Path sysBlock = sysRoot.resolve(BLOCK_DIR);
@@ -170,34 +161,35 @@ final class LinuxProcFs {
     }
 
     try (Stream<Path> stream = Files.list(sysBlock)) {
-      stream.forEach(
-          devPath -> {
-            String name = devPath.getFileName().toString();
-
-            // Skip well-known pseudo / virtual devices.
-            if (isPseudoBlockDevice(name)) {
-              return;
-            }
-
-            Path slavesDir = devPath.resolve("slaves");
-            boolean hasSlaves = false;
-
-            if (Files.isDirectory(slavesDir)) {
-              try (Stream<Path> slaves = Files.list(slavesDir)) {
-                hasSlaves = slaves.findAny().isPresent();
-              } catch (IOException e) {
-                // In doubt, treat as non-leaf to avoid double-counting stacked devices.
-                hasSlaves = true;
-              }
-            }
-
-            // Devices without slaves are treated as leaf devices (physical / backing).
-            if (!hasSlaves) {
-              leaf.add(name);
-            }
-          });
+      java.util.Iterator<Path> entries = stream.iterator();
+      int count = 0;
+      while (entries.hasNext()) {
+        if (++count > CollectorInput.MAX_DIRECTORY_ENTRIES) {
+          throw new CollectorInput.LimitExceededException(
+              "directory entries", CollectorInput.MAX_DIRECTORY_ENTRIES);
+        }
+        Path devPath = entries.next();
+        String name = devPath.getFileName().toString();
+        if (isPseudoBlockDevice(name)) {
+          continue;
+        }
+        Path slavesDir = devPath.resolve("slaves");
+        boolean hasSlaves = false;
+        if (Files.isDirectory(slavesDir)) {
+          try (Stream<Path> slaves = Files.list(slavesDir)) {
+            hasSlaves = slaves.findAny().isPresent();
+          } catch (IOException e) {
+            hasSlaves = true;
+          }
+        }
+        if (!hasSlaves) {
+          leaf.add(name);
+        }
+      }
+    } catch (CollectorInput.LimitExceededException e) {
+      throw e; // Do not publish a partial device set or silently fall back to partial totals.
     } catch (IOException ignore) {
-      // On any failure, return an empty set to let the caller fall back to legacy behavior.
+      return Set.of();
     }
 
     return leaf;
@@ -214,7 +206,7 @@ final class LinuxProcFs {
    * Return cached leaf block devices with a short TTL to avoid repeated expensive scans of
    * /sys/block on every scrape.
    */
-  private static Set<String> getLeafBlockDevicesCached() {
+  private static Set<String> getLeafBlockDevicesCached() throws IOException {
     long now = System.currentTimeMillis();
     long age = now - leafDeviceCacheTimeMs;
     if (leafDeviceCacheTimeMs > 0L && age >= 0L && age < LEAF_DEVICE_CACHE_TTL_MS) {
@@ -418,8 +410,19 @@ final class LinuxProcFs {
       PHYSICAL_IFACE_CACHE.clear();
       physicalIfaceCacheStartNanos = now;
     }
-    return PHYSICAL_IFACE_CACHE.computeIfAbsent(
-        iface, name -> Files.exists(sysRoot.resolve("class/net").resolve(name).resolve("device")));
+    Boolean cached = PHYSICAL_IFACE_CACHE.get(iface);
+    if (cached != null) {
+      return cached;
+    }
+    boolean physical = Files.exists(sysRoot.resolve("class/net").resolve(iface).resolve("device"));
+    if (iface.length() <= CollectorInput.MAX_CACHE_KEY_CHARS) {
+      synchronized (PHYSICAL_IFACE_CACHE) {
+        if (PHYSICAL_IFACE_CACHE.size() < CollectorInput.MAX_INTERFACE_CACHE_ENTRIES) {
+          PHYSICAL_IFACE_CACHE.putIfAbsent(iface, physical);
+        }
+      }
+    }
+    return physical; // A full cache bypasses insertion, never truncates network totals.
   }
 
   /**
@@ -529,12 +532,14 @@ final class LinuxProcFs {
       if (!Files.isRegularFile(selfCgroup)) {
         return "";
       }
-      for (String ln : readLines(selfCgroup)) {
+      for (String ln : CollectorInput.readLines(selfCgroup, CollectorInput.SMALL)) {
         String[] parts = ln.split(":", 3);
         if (parts.length == 3 && "0".equals(parts[0])) {
           return parts[2];
         }
       }
+    } catch (CollectorInput.LimitExceededException e) {
+      throw new java.io.UncheckedIOException(e);
     } catch (Exception ignore) {
       // ignore and fallback
     }
@@ -571,7 +576,7 @@ final class LinuxProcFs {
    */
   private static String findMemoryControllerPath(Path cgroupFile) {
     try {
-      for (String ln : readLines(cgroupFile)) {
+      for (String ln : CollectorInput.readLines(cgroupFile, CollectorInput.SMALL)) {
         String[] parts = ln.split(":", 3);
         if (parts.length == 3) {
           String controllers = parts[1];
@@ -580,6 +585,8 @@ final class LinuxProcFs {
           }
         }
       }
+    } catch (CollectorInput.LimitExceededException e) {
+      throw new java.io.UncheckedIOException(e);
     } catch (Exception ignore) {
       // ignore and fallback
     }
@@ -614,7 +621,7 @@ final class LinuxProcFs {
    */
   static long readFirstNumber(Path p) {
     try {
-      String s = Files.readString(p, StandardCharsets.UTF_8).trim();
+      String s = CollectorInput.readString(p, CollectorInput.NUMBER).trim();
       // cgroup v2 memory.max could be "max"
       if ("max".equals(s)) {
         return -1L;
