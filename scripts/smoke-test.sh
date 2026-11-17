@@ -41,33 +41,14 @@ if [ -n "$(ls -A "$WORK/app-no-config")" ]; then
   exit 1
 fi
 
-echo "== a broken agent jar must not stop the application from starting"
-# Remove one class the agent needs, as happens when a jar is replaced or truncated while deploying.
-BROKEN="$WORK/broken-agent.jar"
-python3 - "$JAR" "$BROKEN" <<'PY'
-import sys, zipfile
-src = zipfile.ZipFile(sys.argv[1])
-dst = zipfile.ZipFile(sys.argv[2], "w", zipfile.ZIP_DEFLATED)
-for item in src.infolist():
-    if item.filename != "kr/pletor/nodemetrics/agent/ThrottledLogger.class":
-        dst.writestr(item, src.read(item.filename))
-dst.close()
-PY
-mkdir -p "$WORK/app-broken-agent"
-OUT="$(cd "$WORK/app-broken-agent" && "$JAVA_BIN" "-javaagent:$BROKEN" "$HERE/AppStarted.java" 2>&1)" || {
-  echo "SMOKE FAILURE: the JVM did not start with a broken agent jar:" >&2
-  echo "$OUT" >&2
-  exit 1
-}
-echo "$OUT" | grep -q '^APPLICATION STARTED$' || {
-  echo "SMOKE FAILURE: the application did not run with a broken agent jar:" >&2
-  echo "$OUT" >&2
-  exit 1
-}
-
-echo "== the agent must not initialize JVM-wide singletons before the application configures them"
 JAVAC_BIN="$(dirname "$JAVA_BIN")/javac"
 [ -x "$JAVAC_BIN" ] || JAVAC_BIN=javac
+
+echo "== launcher failures must preserve host startup, including with blocked stderr"
+python3 "$HERE/launcher_isolation_check.py" --agent-jar "$JAR" \
+  --java "$JAVA_BIN" --javac "$JAVAC_BIN"
+
+echo "== the agent must not initialize JVM-wide singletons before the application configures them"
 mkdir -p "$WORK/late-classes" "$WORK/app-late"
 "$JAVAC_BIN" -d "$WORK/late-classes" "$HERE/LateGlobalSetup.java"
 OUT="$(cd "$WORK/app-late" && "$JAVA_BIN" "-javaagent:$JAR" -cp "$WORK/late-classes" LateGlobalSetup 2>&1)" || {

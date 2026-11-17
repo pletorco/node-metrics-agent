@@ -12,9 +12,10 @@ import java.lang.instrument.Instrumentation;
  *
  * <p>It does no real work either: it starts one low-priority daemon thread that runs the actual
  * initialization ({@link MetricsAgent#premain}) and returns immediately, so the application's main
- * thread is not delayed by JMX registration, file access or class loading. Every failure -
- * including {@link Error}s such as {@link LinkageError} - is confined to that thread and never
- * reaches the application.
+ * thread does not wait for JMX registration or file access. Task creation and thread startup are
+ * guarded as well: failures on the JVM's startup thread are dropped without logging, because even
+ * stderr may block. Initialization failures on the daemon are reported there and never handed to
+ * the application's default uncaught-exception handler.
  */
 public final class AgentLauncher {
 
@@ -29,7 +30,12 @@ public final class AgentLauncher {
    * @param inst instrumentation handle (not used)
    */
   public static void premain(String agentArgs, Instrumentation inst) {
-    start(new InitTask(agentArgs, inst));
+    try {
+      start(new InitTask(agentArgs, inst));
+    } catch (Throwable ignored) { // NOSONAR - even task creation can fail before start is entered
+      // Do not log on the application's startup thread: stderr and JUL can block or initialize
+      // application-wide state. Losing metrics is preferable to delaying or aborting the host.
+    }
   }
 
   // Visible for testing
@@ -40,8 +46,8 @@ public final class AgentLauncher {
       thread.setPriority(Thread.MIN_PRIORITY);
       thread.setUncaughtExceptionHandler(new SwallowingHandler());
       thread.start();
-    } catch (Throwable t) { // NOSONAR - the agent must never break the application's startup
-      report(t);
+    } catch (Throwable ignored) { // NOSONAR - thread creation/start must not break host startup
+      // This can also run on the application's startup thread. Do not attempt failure reporting.
     }
   }
 
