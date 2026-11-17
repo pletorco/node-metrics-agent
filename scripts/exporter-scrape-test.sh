@@ -61,6 +61,8 @@ grep -q '^# TYPE pletor_node_iorates_diskreadbytestotal_total counter$' "$WORK/m
 grep -q '^pletor_node_cpumetrics_systemcpuload ' "$WORK/metrics.txt" || fail "a gauge is missing"
 grep -q '^pletor_agent_observability_processedcount_total ' "$WORK/metrics.txt" \
   || fail "an agent counter is missing"
+grep -q '^# TYPE pletor_agent_observability_droppedlogcount_total counter$' "$WORK/metrics.txt" \
+  || fail "the diagnostic loss counter is missing or mistyped"
 if grep -Eq '^pletor_[a-z0-9_]+_total(\{[^}]*\})? -' "$WORK/metrics.txt"; then
   fail "a counter is negative: $(grep -E '^pletor_[a-z0-9_]+_total(\{[^}]*\})? -' "$WORK/metrics.txt" | head -3)"
 fi

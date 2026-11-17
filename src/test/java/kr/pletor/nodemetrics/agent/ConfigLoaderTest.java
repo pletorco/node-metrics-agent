@@ -270,34 +270,18 @@ class ConfigLoaderTest {
   void load_shouldWarnAboutUnknownKeysAndStillUseDefaults() {
     Path p = writeYaml("typo.yml", "fsmetric_paths:\n  - /data\n");
     java.util.List<String> warnings = new java.util.ArrayList<>();
-    java.util.logging.Logger logger =
-        java.util.logging.Logger.getLogger(ConfigLoader.class.getName());
-    java.util.logging.Handler handler =
-        new java.util.logging.Handler() {
-          @Override
-          public void publish(java.util.logging.LogRecord r) {
-            if (r.getLevel() == java.util.logging.Level.WARNING) {
-              warnings.add(java.text.MessageFormat.format(r.getMessage(), r.getParameters()));
-            }
-          }
-
-          @Override
-          public void flush() {
-            // no-op
-          }
-
-          @Override
-          public void close() {
-            // no-op
-          }
-        };
-    logger.addHandler(handler);
-    try {
+    try (var capture =
+        new AgentLogCapture(
+            record -> {
+              if (ConfigLoader.class.getName().equals(record.getLoggerName())
+                  && record.getLevel() == java.util.logging.Level.WARNING) {
+                warnings.add(
+                    java.text.MessageFormat.format(record.getMessage(), record.getParameters()));
+              }
+            })) {
       Config c = assertDoesNotThrow(() -> ConfigLoader.load(p));
       assertEquals(
           java.util.List.of("/"), c.fsmetricsPaths, "Typo key falls back to the default path");
-    } finally {
-      logger.removeHandler(handler);
     }
 
     assertEquals(1, warnings.size(), "Exactly one warning expected: " + warnings);

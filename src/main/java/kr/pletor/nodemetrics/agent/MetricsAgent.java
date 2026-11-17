@@ -128,11 +128,8 @@ public class MetricsAgent {
   private static final long OS_INFO_REFRESH_INTERVAL_MS = 300_000L;
   private static final long MEMORY_MAP_REFRESH_INTERVAL_MS = 60_000L;
 
-  /** How long to wait for an existing MBeanServer before creating the platform one. */
-  private static final long JMX_SERVER_WAIT_MS = 5_000L;
-
-  // Not final so tests do not wait for a server that no test creates.
-  private static long jmxServerWaitMs = JMX_SERVER_WAIT_MS;
+  /** Discovery cadence on the initializer daemon; the agent never creates a platform server. */
+  private static final long JMX_DISCOVERY_INTERVAL_MS = 1_000L;
 
   /** Refresh interval of the fast metrics; guarded by {@link #APPLY_LOCK}. */
   private static long fastRefreshIntervalMs =
@@ -270,7 +267,10 @@ public class MetricsAgent {
     }
 
     try {
-      svr = awaitPlatformMBeanServer(jmxServerWaitMs);
+      svr = awaitExistingMBeanServer();
+      if (svr == null) {
+        return; // Interrupted while waiting: leave the application's singleton ownership intact.
+      }
     } catch (Throwable t) { // NOSONAR
       initStepFailed("obtain the platform MBeanServer (nothing can be registered)", t);
       return;
@@ -483,27 +483,36 @@ public class MetricsAgent {
   }
 
   /**
-   * Returns the platform MBeanServer, without being the one that creates it if it can be avoided.
+   * Wait on the initializer daemon for an application/exporter-owned management server.
    *
-   * <p>Creating it reads {@code javax.management.builder.initial} for the whole JVM, and an
-   * application may set that from {@code main}, after this agent has started. Any JMX use before
-   * that (a JMX exporter agent, {@code -Dcom.sun.management.jmxremote}) creates the server at JVM
-   * startup, so it usually exists already. Otherwise wait up to {@code waitMs} for it to appear,
-   * then create it: with no server nobody can read the MBeans anyway.
+   * <p>There is no timeout that permits creating the platform singleton. With no discoverable
+   * server the agent stays dormant on one daemon; the application may initialize JMX much later.
    */
-  static MBeanServer awaitPlatformMBeanServer(long waitMs) {
+  static MBeanServer awaitExistingMBeanServer() {
     try {
-      long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(waitMs);
-      while (MBeanServerFactory.findMBeanServer(null).isEmpty()
-          && System.nanoTime() - deadline < 0L) {
-        Thread.sleep(100L);
+      while (!Thread.currentThread().isInterrupted()) {
+        MBeanServer existing = findExistingMBeanServer();
+        if (existing != null) {
+          return existing;
+        }
+        Thread.sleep(JMX_DISCOVERY_INTERVAL_MS);
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-    } catch (RuntimeException e) {
-      // Not allowed to look (security manager): fall through and create it.
     }
-    return ManagementFactory.getPlatformMBeanServer();
+    return null;
+  }
+
+  /** Discover only existing servers exposing standard runtime/OS beans; never create a server. */
+  static MBeanServer findExistingMBeanServer() {
+    ObjectName runtime = fixedObjectName(ManagementFactory.RUNTIME_MXBEAN_NAME);
+    ObjectName os = fixedObjectName(ManagementFactory.OPERATING_SYSTEM_MXBEAN_NAME);
+    for (MBeanServer candidate : MBeanServerFactory.findMBeanServer(null)) {
+      if (candidate.isRegistered(runtime) && candidate.isRegistered(os)) {
+        return candidate;
+      }
+    }
+    return null;
   }
 
   private static long resolveFastRefreshIntervalMs(Config cfg) {

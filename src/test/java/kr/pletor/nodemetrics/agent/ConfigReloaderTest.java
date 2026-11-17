@@ -16,14 +16,12 @@ import java.nio.file.Paths;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.Watchable;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
-import java.util.logging.Logger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -49,9 +47,9 @@ class ConfigReloaderTest {
   // --- Simple test doubles for logger and applier ---
 
   static class ListHandler extends Handler {
-    final List<String> infos = new ArrayList<>();
-    final List<String> warns = new ArrayList<>();
-    final List<String> errors = new ArrayList<>();
+    final List<String> infos = new java.util.concurrent.CopyOnWriteArrayList<>();
+    final List<String> warns = new java.util.concurrent.CopyOnWriteArrayList<>();
+    final List<String> errors = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     @Override
     public void publish(LogRecord logRecord) {
@@ -578,26 +576,25 @@ class ConfigReloaderTest {
    * Helper resource for attaching/detaching a handler to the ConfigReloader class logger.
    */
   static class LogHandlerResource implements AutoCloseable {
-    private final Logger targetLogger;
-    private final Handler handler;
+    private final AgentLogCapture capture;
 
-    private LogHandlerResource(Logger logger, Handler handler) {
-      this.targetLogger = logger;
-      this.handler = handler;
-      targetLogger.addHandler(handler);
+    private LogHandlerResource(Handler handler) {
+      capture =
+          new AgentLogCapture(
+              record -> {
+                if (ConfigReloader.class.getName().equals(record.getLoggerName())) {
+                  handler.publish(record);
+                }
+              });
     }
 
     static LogHandlerResource attach(Handler handler) {
-      // Find the logger used by ConfigReloader (based on class name refactoring)
-      Logger logger = Logger.getLogger(ConfigReloader.class.getName());
-      // Ensure we catch everything for tests
-      logger.setLevel(Level.ALL);
-      return new LogHandlerResource(logger, handler);
+      return new LogHandlerResource(handler);
     }
 
     @Override
     public void close() {
-      targetLogger.removeHandler(handler);
+      capture.close();
     }
   }
 

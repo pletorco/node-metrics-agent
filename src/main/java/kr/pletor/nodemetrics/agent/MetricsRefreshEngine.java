@@ -357,7 +357,6 @@ final class MetricsRefreshEngine implements AutoCloseable {
       try {
         updateMode();
         dispatchCycle(tasksRef.get());
-        AgentLog.flushIfDue();
       } catch (Throwable t) { // NOSONAR - the dispatcher must survive anything and keep going
         logLoopFailure("dispatcher", t);
       }

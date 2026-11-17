@@ -124,4 +124,9 @@ public final class AgentObservabilityMetrics implements AgentObservabilityMetric
     Long count = throttledLoggerOverflowSupplier.get();
     return count == null ? 0L : count;
   }
+
+  @Override
+  public long getDroppedLogCount() {
+    return AgentLog.droppedCount();
+  }
 }

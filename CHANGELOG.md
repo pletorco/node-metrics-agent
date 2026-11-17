@@ -12,6 +12,15 @@ All notable changes to this project will be documented in this file.
 
 ### Reliability and tests
 
+- Preserve the application's global JUL and JMX initialization choices, including config warnings
+  and setup delayed beyond 10 seconds. Discover an existing Runtime/OperatingSystem MBean server
+  without creating the platform singleton; keep collectors dormant until one is available.
+- Send agent diagnostics to stderr on a private daemon with a 256-record queue and bounded output
+  lines, without invoking application JUL handlers. Expose diagnostic losses as `DroppedLogCount`
+  and verify blocked/throwing output and delayed/no-JMX startup in separate host JVMs.
+- Redirect the packaged SnakeYAML internal logger (including its Java 9+ variant) to the private
+  diagnostic bridge so constructing the parser cannot initialize JUL or System.Logger.
+
 - Disable read-triggered refresh before MBean publication, including filesystem additions during
   reload and engine startup failures. Expose unavailable filesystem capacity until the first poll.
 - Guard launcher task creation as well as thread startup. Drop failures on the JVM startup thread

@@ -322,6 +322,11 @@ tasks.shadowJar {
     // Keep Shadow inputs explicit so SBOM scope can match packaged dependencies.
     configurations = listOf(deploymentRuntimeConfiguration.get())
 
+    // SnakeYAML creates its logger while constructing a parser. Redirect both base and Java 9+
+    // logger references before the general relocation so neither JUL nor System.Logger is used.
+    exclude("org/yaml/snakeyaml/internal/Logger*.class")
+    exclude("META-INF/versions/*/org/yaml/snakeyaml/internal/Logger*.class")
+    relocate("org.yaml.snakeyaml.internal.Logger", "kr.pletor.nodemetrics.agent.SnakeYamlLog")
     // Relocate snakeyaml to avoid conflicts with application's classpath
     relocate("org.yaml.snakeyaml", "kr.pletor.nodemetrics.shaded.snakeyaml")
 
@@ -540,7 +545,7 @@ tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 0 }
 // -----------------------------------------------------------------------------
 spotless {
     java {
-        target("src/**/*.java", "scripts/soak/*.java", "scripts/LauncherFailureProbe.java")
+        target("src/**/*.java", "scripts/soak/*.java", "scripts/LauncherFailureProbe.java", "scripts/LateGlobalSetup.java")
         googleJavaFormat(googleJavaFormatVersion)
     }
 }
