@@ -11,6 +11,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
@@ -81,11 +82,23 @@ final class ConfigLoader {
    * @throws IllegalArgumentException if the YAML content is invalid
    */
   static Config load(Path path) throws IOException {
+    return loadIfChanged(path, null);
+  }
+
+  /**
+   * Read a bounded snapshot and parse it only if its checksum differs from the applied config.
+   * Returns {@code null} for unchanged bytes, without constructing a YAML parser.
+   */
+  static Config loadIfChanged(Path path, String appliedChecksum) throws IOException {
     // Read the file exactly once so the parsed content and the checksum always describe the
     // same bytes, even if the file is rewritten while we are loading it.
     byte[] bytes;
     try (InputStream file = Files.newInputStream(path)) {
       bytes = readBounded(file);
+    }
+    String checksum = sha256String(bytes);
+    if (Objects.equals(checksum, appliedChecksum)) {
+      return null;
     }
     try (InputStream in = new ByteArrayInputStream(bytes)) {
       LoaderOptions options = new LoaderOptions();
@@ -150,7 +163,7 @@ final class ConfigLoader {
 
       // ---- checksum ----
       // Use file bytes as the source for a SHA-256 checksum
-      c.checksum = sha256String(bytes);
+      c.checksum = checksum;
 
       return c;
     }
@@ -195,11 +208,14 @@ final class ConfigLoader {
       MessageDigest md = MessageDigest.getInstance("SHA-256");
       byte[] d = md.digest(bytes);
 
-      StringBuilder sb = new StringBuilder(d.length * 2);
-      for (byte b : d) {
-        sb.append(String.format("%02x", b));
+      char[] hex = new char[d.length * 2];
+      String digits = "0123456789abcdef";
+      for (int i = 0; i < d.length; i++) {
+        int value = d[i] & 0xff;
+        hex[i * 2] = digits.charAt(value >>> 4);
+        hex[i * 2 + 1] = digits.charAt(value & 0xf);
       }
-      return sb.toString();
+      return new String(hex);
     } catch (NoSuchAlgorithmException e) {
       // On a standard JVM this should never happen; wrap as unchecked.
       throw new IllegalStateException("SHA-256 MessageDigest not available", e);

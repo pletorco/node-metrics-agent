@@ -12,7 +12,6 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
-import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
@@ -23,7 +22,7 @@ import java.util.logging.Level;
  *
  * <ul>
  *   <li>Uses {@link WatchService} to monitor the parent directory of the config file
- *   <li>Falls back to periodic timestamp polling when no file events are delivered (useful for
+ *   <li>Falls back to periodic content polling when no file events are delivered (useful for
  *       NFS/containers where watch events can be unreliable)
  *   <li>Uses a checksum to avoid unnecessary reloads when only the timestamp changes
  * </ul>
@@ -38,9 +37,6 @@ final class ConfigReloader implements Runnable {
 
   /** Controls the main loop. When set to {@code false}, the watcher stops. */
   private volatile boolean running = true;
-
-  /** Last observed modification time (in milliseconds) of the config file. */
-  private long lastSeenMtime = -1L;
 
   /** Last applied configuration checksum, used to detect real content changes. */
   private String lastChecksum = null;
@@ -62,6 +58,9 @@ final class ConfigReloader implements Runnable {
    */
   private long retryNotBeforeNanos;
 
+  /** Bounds periodic content checks even when unrelated directory events arrive continuously. */
+  private long nextContentCheckNanos = System.nanoTime();
+
   /**
    * Create a new configuration reloader.
    *
@@ -69,7 +68,7 @@ final class ConfigReloader implements Runnable {
    * @param applier callback that applies a new {@link Config}
    */
   ConfigReloader(Path configPath, MetricsAgent.ApplyConfigFn applier) {
-    this(configPath, applier, null, -1L);
+    this(configPath, applier, null);
   }
 
   /**
@@ -79,19 +78,11 @@ final class ConfigReloader implements Runnable {
    * @param configPath path to the configuration file to watch
    * @param applier callback that applies a new {@link Config}
    * @param initialChecksum checksum of the configuration currently in effect (may be {@code null})
-   * @param initialMtime modification time (ms) of the file <em>before</em> it was loaded at
-   *     startup, or {@code -1} if unknown; reading it before the load means a concurrent
-   *     modification is still detected
    */
-  ConfigReloader(
-      Path configPath,
-      MetricsAgent.ApplyConfigFn applier,
-      String initialChecksum,
-      long initialMtime) {
+  ConfigReloader(Path configPath, MetricsAgent.ApplyConfigFn applier, String initialChecksum) {
     this.configPath = configPath;
     this.applier = applier;
     this.lastChecksum = initialChecksum;
-    this.lastSeenMtime = initialMtime;
   }
 
   /**
@@ -182,13 +173,12 @@ final class ConfigReloader implements Runnable {
   /** Main watcher loop: waits for file events or falls back to periodic polling. */
   private void watchLoop(WatchService ws, boolean watching) throws InterruptedException {
     while (running) {
+      // Check independently of event delivery: unrelated events must not starve fallback polling.
+      if (pollDue(System.nanoTime())) {
+        checkAndReloadIfChanged();
+      }
       WatchKey key = watching ? ws.poll(1, TimeUnit.SECONDS) : null;
       if (key == null) {
-        // Fallback: periodically check the timestamp directly.
-        // This handles environments where WatchService is unreliable (e.g. NFS, containers).
-        if (pollDue(System.nanoTime())) {
-          checkAndReloadIfChanged();
-        }
         if (!watching) {
           Thread.sleep(computePollingIntervalMs());
           // Pick up a config directory that was created after startup.
@@ -217,7 +207,8 @@ final class ConfigReloader implements Runnable {
    * exponentially; file-system events bypass this so a fixed file is retried immediately.
    */
   boolean pollDue(long nowNanos) {
-    return consecutiveReloadFailures <= 0 || nowNanos - retryNotBeforeNanos >= 0L;
+    return nowNanos - nextContentCheckNanos >= 0L
+        && (consecutiveReloadFailures <= 0 || nowNanos - retryNotBeforeNanos >= 0L);
   }
 
   // Visible for testing
@@ -248,6 +239,10 @@ final class ConfigReloader implements Runnable {
       return false;
     }
     for (WatchEvent<?> ev : key.pollEvents()) {
+      if (ev.kind() == StandardWatchEventKinds.OVERFLOW) {
+        // Lost events may include a config edit even though OVERFLOW has no path context.
+        return true;
+      }
       Object ctx = ev.context();
       if (ctx instanceof Path) {
         Path changed = (Path) ctx;
@@ -274,14 +269,9 @@ final class ConfigReloader implements Runnable {
   /**
    * Check if the configuration file has changed and reload it if necessary.
    *
-   * <p>Change detection is done in two steps:
-   *
-   * <ol>
-   *   <li>Compare the last modified time
-   *   <li>If the time changed, load the file and compare checksum
-   * </ol>
-   *
-   * <p>This avoids reapplying the same configuration when only the timestamp changes.
+   * <p>Read at most 64 KiB plus one rejection byte and compare the content checksum, regardless of
+   * mtime, file size or identity. Only changed bytes are parsed and applied. The parsed snapshot
+   * and its checksum describe the same read, including if a writer replaces the path concurrently.
    */
   private void checkAndReloadIfChanged() {
     try {
@@ -290,17 +280,10 @@ final class ConfigReloader implements Runnable {
         return;
       }
 
-      long mtime = Files.getLastModifiedTime(configPath).toMillis();
-      if (mtime == lastSeenMtime) {
-        // Timestamp unchanged; skip reload.
-        return;
-      }
-
-      Config cfg = ConfigLoader.load(configPath);
-
-      if (Objects.equals(cfg.checksum, lastChecksum)) {
-        // Content unchanged; only update the timestamp.
-        lastSeenMtime = mtime;
+      Config cfg = ConfigLoader.loadIfChanged(configPath, lastChecksum);
+      if (cfg == null) {
+        // Restoring the already-applied bytes also recovers from a failed edit.
+        consecutiveReloadFailures = 0;
         return;
       }
 
@@ -309,7 +292,6 @@ final class ConfigReloader implements Runnable {
           Level.INFO, "[node-metrics-agent] configuration changed, reloading: {0}", configPath);
       applier.apply(cfg);
 
-      lastSeenMtime = mtime;
       lastChecksum = cfg.checksum;
       consecutiveReloadFailures = 0;
     } catch (Throwable e) {
@@ -322,6 +304,9 @@ final class ConfigReloader implements Runnable {
           e,
           () ->
               "[node-metrics-agent] configuration reload failed (keeping previous configuration)");
+    } finally {
+      nextContentCheckNanos =
+          System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(BASE_RELOAD_BACKOFF_MS);
     }
   }
 }

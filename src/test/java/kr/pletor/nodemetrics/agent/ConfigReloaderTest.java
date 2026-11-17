@@ -124,15 +124,13 @@ class ConfigReloaderTest {
     Config applied = applier.lastConfig.get();
     assertNotNull(applied, "Last applied config should not be null");
 
-    long lastSeenMtime = getLongField(reloader, "lastSeenMtime");
     String lastChecksum = (String) getField(reloader, "lastChecksum");
 
-    assertTrue(lastSeenMtime > 0, "lastSeenMtime should be updated after first load");
     assertNotNull(lastChecksum, "lastChecksum should be set after first load");
   }
 
   @Test
-  void unchangedTimestamp_shouldSkipReload() throws Exception {
+  void unchangedBytes_shouldSkipReapplying() throws Exception {
     Path cfgPath = tempDir.resolve("config.yml");
     RecordingApplier applier = new RecordingApplier();
     ListHandler handler = new ListHandler();
@@ -149,20 +147,20 @@ class ConfigReloaderTest {
     }
     assertEquals(1, applier.callCount.get(), "Applier should be called once on first load");
 
-    long lastSeenMtimeAfterFirst = getLongField(reloader, "lastSeenMtime");
+    String checksumAfterFirst = (String) getField(reloader, "lastChecksum");
 
     // Second check without touching the file: mtime is the same
     try (LogHandlerResource ignored = LogHandlerResource.attach(handler)) {
       invokeCheckAndReload(reloader);
     }
     assertEquals(
-        1, applier.callCount.get(), "Applier must not be called again if mtime is unchanged");
+        1, applier.callCount.get(), "Applier must not be called again if content is unchanged");
 
-    long lastSeenMtimeAfterSecond = getLongField(reloader, "lastSeenMtime");
+    String checksumAfterSecond = (String) getField(reloader, "lastChecksum");
     assertEquals(
-        lastSeenMtimeAfterFirst,
-        lastSeenMtimeAfterSecond,
-        "lastSeenMtime should not change when mtime is unchanged");
+        checksumAfterFirst, checksumAfterSecond, "The applied checksum should remain unchanged");
+    assertFalse(reloader.pollDue(System.nanoTime()), "Unchanged checks must also be rate limited");
+    assertTrue(reloader.pollDue(System.nanoTime() + 2_000_000_000L));
   }
 
   @Test
@@ -186,7 +184,7 @@ class ConfigReloaderTest {
     }
     assertEquals(1, applier.callCount.get(), "Applier should be called once on first load");
     final String firstChecksum = (String) getField(reloader, "lastChecksum");
-    final long firstMtime = getLongField(reloader, "lastSeenMtime");
+    final long firstMtime = Files.getLastModifiedTime(cfgPath).toMillis();
 
     // Change content and (likely) mtime
     Thread.sleep(20L);
@@ -199,10 +197,10 @@ class ConfigReloaderTest {
     assertEquals(2, applier.callCount.get(), "Applier should be called again when content changes");
 
     String secondChecksum = (String) getField(reloader, "lastChecksum");
-    long secondMtime = getLongField(reloader, "lastSeenMtime");
+    long secondMtime = Files.getLastModifiedTime(cfgPath).toMillis();
 
     assertNotEquals(firstChecksum, secondChecksum, "Checksum should change when content changes");
-    assertTrue(secondMtime >= firstMtime, "lastSeenMtime should be updated");
+    assertTrue(secondMtime >= firstMtime, "The test edit must not move mtime backwards");
   }
 
   @Test
@@ -225,10 +223,9 @@ class ConfigReloaderTest {
 
     final String checksumAfterFirst = (String) getField(reloader, "lastChecksum");
 
-    // Simulate a "touch": force lastSeenMtime to a different value so that
-    // checkAndReloadIfChanged sees a changed timestamp, but keep the file
-    // content identical so checksum remains the same.
-    setLongField(reloader, "lastSeenMtime", 0L);
+    // Touch the real file, keeping its bytes identical.
+    Files.setLastModifiedTime(
+        cfgPath, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 5_000L));
 
     try (LogHandlerResource ignored = LogHandlerResource.attach(handler)) {
       invokeCheckAndReload(reloader);
@@ -525,18 +522,6 @@ class ConfigReloaderTest {
     return f.get(target);
   }
 
-  private static long getLongField(Object target, String name) throws Exception {
-    Field f = target.getClass().getDeclaredField(name);
-    f.setAccessible(true);
-    return f.getLong(target);
-  }
-
-  private static void setLongField(Object target, String name, long value) throws Exception {
-    Field f = target.getClass().getDeclaredField(name);
-    f.setAccessible(true);
-    f.setLong(target, value);
-  }
-
   private static int getIntField(Object target, String name) throws Exception {
     Field f = target.getClass().getDeclaredField(name);
     f.setAccessible(true);
@@ -652,17 +637,16 @@ class ConfigReloaderTest {
     Files.writeString(cfgPath, "fsmetrics_paths:\n  - /\n", StandardCharsets.UTF_8);
     RecordingApplier applier = new RecordingApplier();
 
-    long startupMtime = Files.getLastModifiedTime(cfgPath).toMillis();
     String startupChecksum = ConfigLoader.load(cfgPath).checksum;
-    ConfigReloader reloader = new ConfigReloader(cfgPath, applier, startupChecksum, startupMtime);
+    ConfigReloader reloader = new ConfigReloader(cfgPath, applier, startupChecksum);
     invokeCheckAndReload(reloader);
 
     assertEquals(
         0, applier.callCount.get(), "Config already applied at startup must not be applied again");
     assertEquals(
-        startupMtime,
-        getLongField(reloader, "lastSeenMtime"),
-        "An unchanged file must be skipped without re-parsing");
+        startupChecksum,
+        getField(reloader, "lastChecksum"),
+        "An unchanged file must keep its applied checksum");
 
     Files.writeString(cfgPath, "fsmetrics_paths:\n  - /tmp\n", StandardCharsets.UTF_8);
     Files.setLastModifiedTime(
