@@ -68,6 +68,12 @@ the option or calling the same `premain` entry point again. Runtime changes use 
 configuration file's existing watcher. Fixed MBean names already owned by another component are
 left in place. Collectors whose registration fails are excluded from refresh scheduling.
 
+Refresh dispatch begins only after the dispatcher and all six workers have started. If any thread
+cannot be created or started, partial startup is rolled back and refresh stays disabled until the
+host JVM restarts. `RefreshEngineState`, `RefreshEngineRunning`, `RefreshWorkerCount` and
+`RefreshEngineStartFailureCount` expose this outcome; both mode MBeans report `BYPASS` while
+the engine is inactive. See [refresh engine startup troubleshooting](RUNBOOK.md#refresh-engine-startup).
+
 If no config path is provided, the agent resolves config in this order:
 
 1. agent argument path

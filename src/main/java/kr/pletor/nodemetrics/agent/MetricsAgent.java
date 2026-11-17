@@ -114,8 +114,8 @@ public class MetricsAgent {
 
   private static final TelemetryModeState TELEMETRY_MODE_STATE = new TelemetryModeState();
   private static final TelemetryModeMetrics TELEMETRY_MODE_METRICS =
-      new TelemetryModeMetrics(TELEMETRY_MODE_STATE);
-  private static MetricsRefreshEngine refreshEngine;
+      new TelemetryModeMetrics(TELEMETRY_MODE_STATE, MetricsAgent::currentTelemetryMode);
+  private static volatile MetricsRefreshEngine refreshEngine;
   private static final AgentObservabilityMetrics AGENT_OBSERVABILITY_METRICS =
       new AgentObservabilityMetrics(
           MetricsAgent::refreshEngineInstance,
@@ -830,13 +830,21 @@ public class MetricsAgent {
       if (refreshEngine != null) {
         return;
       }
-      refreshEngine =
-          new MetricsRefreshEngine(
-              REFRESH_DISPATCH_INTERVAL_MS,
-              REFRESH_QUEUE_CAPACITY,
-              MetricsAgent::transitionTelemetryMode);
-      updateRefreshEngineTasksLocked();
-      refreshEngine.start();
+      try {
+        // Publish an explicit NEW/STARTING/FAILED lifecycle, never a healthy-looking partial
+        // engine.
+        MetricsRefreshEngine candidate =
+            new MetricsRefreshEngine(
+                REFRESH_DISPATCH_INTERVAL_MS,
+                REFRESH_QUEUE_CAPACITY,
+                MetricsAgent::transitionTelemetryMode);
+        candidate.setTasks(buildRefreshTasksLocked());
+        refreshEngine = candidate;
+        candidate.start();
+      } catch (Throwable failure) { // NOSONAR - also expose allocation/construction failure
+        transitionTelemetryMode(TelemetryMode.BYPASS);
+        throw failure;
+      }
     }
   }
 
@@ -993,7 +1001,8 @@ public class MetricsAgent {
   }
 
   static TelemetryMode currentTelemetryMode() {
-    return TELEMETRY_MODE_STATE.current();
+    MetricsRefreshEngine engine = refreshEngine;
+    return engine == null ? TELEMETRY_MODE_STATE.current() : engine.currentMode();
   }
 
   private static MetricsRefreshEngine refreshEngineInstance() {

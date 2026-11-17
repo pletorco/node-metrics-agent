@@ -31,6 +31,22 @@ public interface AgentObservabilityMetricsMBean {
   @JmxMetricHint("gauge")
   String getMode();
 
+  /** NEW, STARTING, RUNNING, FAILED, STOPPED, or UNAVAILABLE when no engine was allocated. */
+  @JmxMetricHint("gauge")
+  String getRefreshEngineState();
+
+  /** One after the complete thread set starts successfully; zero before startup or after stop. */
+  @JmxMetricHint("gauge")
+  int getRefreshEngineRunning();
+
+  /** Live worker threads in an activated engine (normally six); zero while inactive. */
+  @JmxMetricHint("gauge")
+  int getRefreshWorkerCount();
+
+  /** Failed thread-set startup attempts for the allocated engine (at most one). */
+  @JmxMetricHint("counter")
+  long getRefreshEngineStartFailureCount();
+
   @JmxMetricHint("gauge")
   int getQueueDepth();
 
@@ -52,14 +68,15 @@ public interface AgentObservabilityMetricsMBean {
 
   /**
    * Number of refresh tasks whose most recent poll failed (for example an unreadable {@code /proc}
-   * file or an unavailable filesystem). {@code 0} means every task is healthy.
+   * file or an unavailable filesystem). Zero does not imply startup succeeded; also inspect the
+   * engine lifecycle and running gauge.
    */
   @JmxMetricHint("gauge")
   int getFailingTaskCount();
 
   /**
    * Comma-separated names of the tasks counted by {@link #getFailingTaskCount()}, or an empty
-   * string when all tasks are healthy.
+   * string when no poll has reported a failure. Inspect engine state separately for startup faults.
    */
   @JmxMetricHint("gauge")
   String getFailingTasks();

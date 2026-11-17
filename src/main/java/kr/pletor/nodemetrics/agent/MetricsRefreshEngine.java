@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -14,6 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import kr.pletor.nodemetrics.metrics.RefreshManagedMetric;
@@ -44,6 +46,15 @@ final class MetricsRefreshEngine implements AutoCloseable {
   static final int CRITICAL_WORKERS = 3;
   static final int BACKGROUND_WORKERS = 3;
   static final long DEFAULT_STUCK_THRESHOLD_MS = 30_000L;
+  private static final long DEFAULT_STARTUP_GRACE_MS = 5_000L;
+
+  enum Lifecycle {
+    NEW,
+    STARTING,
+    RUNNING,
+    FAILED,
+    STOPPED
+  }
 
   private final long dispatchIntervalMs;
   private final ArrayBlockingQueue<QueuedTask> queue;
@@ -56,7 +67,12 @@ final class MetricsRefreshEngine implements AutoCloseable {
       new ConcurrentHashMap<>(CRITICAL_WORKERS + BACKGROUND_WORKERS);
   private final Semaphore criticalPolls = new Semaphore(CRITICAL_WORKERS);
   private final Semaphore backgroundPolls = new Semaphore(BACKGROUND_WORKERS);
-  private final AtomicBoolean running = new AtomicBoolean(false);
+  private final AtomicReference<Lifecycle> lifecycle = new AtomicReference<>(Lifecycle.NEW);
+  private final CountDownLatch startupGate = new CountDownLatch(1);
+  private final BiFunction<String, Runnable, Thread> threadFactory;
+  private final LongAdder startFailures = new LongAdder();
+  private volatile long startAttemptEpochMs;
+  private volatile long startupGraceMs = DEFAULT_STARTUP_GRACE_MS;
   private final LongAdder droppedCount = new LongAdder();
   private final LongAdder enqueuedCount = new LongAdder();
   private final LongAdder dequeuedCount = new LongAdder();
@@ -167,10 +183,20 @@ final class MetricsRefreshEngine implements AutoCloseable {
 
   MetricsRefreshEngine(
       long dispatchIntervalMs, int queueCapacity, Consumer<TelemetryMode> modeListener) {
+    this(dispatchIntervalMs, queueCapacity, modeListener, AgentThreads::daemon);
+  }
+
+  // Thread creation/start failures can be injected without changing JVM-wide security policy.
+  MetricsRefreshEngine(
+      long dispatchIntervalMs,
+      int queueCapacity,
+      Consumer<TelemetryMode> modeListener,
+      BiFunction<String, Runnable, Thread> threadFactory) {
     this.dispatchIntervalMs = dispatchIntervalMs;
     this.queue = new ArrayBlockingQueue<>(queueCapacity);
     this.backgroundQueue = new ArrayBlockingQueue<>(queueCapacity);
     this.modeListener = modeListener;
+    this.threadFactory = threadFactory;
   }
 
   /**
@@ -300,7 +326,38 @@ final class MetricsRefreshEngine implements AutoCloseable {
   }
 
   TelemetryMode currentMode() {
-    return mode;
+    return isRunning() ? mode : TelemetryMode.BYPASS;
+  }
+
+  Lifecycle lifecycle() {
+    return lifecycle.get();
+  }
+
+  boolean isRunning() {
+    return lifecycle.get() == Lifecycle.RUNNING;
+  }
+
+  long startFailureCount() {
+    return startFailures.sum();
+  }
+
+  int liveWorkerCount() {
+    if (!isRunning()) {
+      return 0;
+    }
+    int live = 0;
+    for (Thread thread : criticalThreads) {
+      live += thread != null && thread.isAlive() ? 1 : 0;
+    }
+    for (Thread thread : backgroundThreads) {
+      live += thread != null && thread.isAlive() ? 1 : 0;
+    }
+    return live;
+  }
+
+  // Visible for testing. Production grants a fixed five seconds before never-polled tasks age.
+  void setStartupGraceMs(long graceMs) {
+    startupGraceMs = graceMs;
   }
 
   /**
@@ -311,7 +368,8 @@ final class MetricsRefreshEngine implements AutoCloseable {
    * {@code BYPASS} mode (when tasks are dropped) and when a task keeps failing. A task that has
    * never succeeded counts from its registration time once it is running or has failed at least
    * once. Removed running tasks remain included until their calls return. Returns {@code 0} if
-   * nothing is registered or running, or none has started polling yet.
+   * nothing is registered or running. Never-polled tasks also age after the five-second startup
+   * grace plus their refresh interval, even if thread-set startup failed.
    */
   long maxTaskStalenessMs() {
     long now = System.currentTimeMillis();
@@ -325,52 +383,130 @@ final class MetricsRefreshEngine implements AutoCloseable {
     return maxOverdue;
   }
 
-  private static long taskStalenessMs(RefreshTask task, long now) {
+  private long taskStalenessMs(RefreshTask task, long now) {
     long baseline = task.lastSuccessEpochMs.get();
     if (baseline <= 0L && (task.consecutiveFailures.get() > 0 || task.runningSinceNanos != 0L)) {
       baseline = task.registeredAtEpochMs;
+    } else if (baseline <= 0L && startAttemptEpochMs > 0L) {
+      baseline = Math.max(task.registeredAtEpochMs, startAttemptEpochMs + startupGraceMs);
     }
     return baseline > 0L ? Math.max(0L, now - baseline - task.intervalMs) : 0L;
   }
 
   void start() {
-    if (!running.compareAndSet(false, true)) {
+    if (!lifecycle.compareAndSet(Lifecycle.NEW, Lifecycle.STARTING)) {
       return;
     }
-    dispatcherThread = AgentThreads.daemon("node-metrics-refresh-dispatcher", this::dispatchLoop);
-    dispatcherThread.start();
-    for (int i = 0; i < criticalThreads.length; i++) {
-      Thread t =
-          AgentThreads.daemon("node-metrics-refresh-worker-" + (i + 1), () -> workerLoop(queue));
-      criticalThreads[i] = t;
-      t.start();
-    }
-    for (int i = 0; i < backgroundThreads.length; i++) {
-      Thread t =
-          AgentThreads.daemon(
-              "node-metrics-refresh-bg-worker-" + (i + 1), () -> workerLoop(backgroundQueue));
-      backgroundThreads[i] = t;
-      t.start();
+    startAttemptEpochMs = System.currentTimeMillis();
+    notifyMode();
+    try {
+      dispatcherThread = startupThread("node-metrics-refresh-dispatcher", this::dispatchLoop);
+      for (int i = 0; i < criticalThreads.length; i++) {
+        criticalThreads[i] =
+            startupThread("node-metrics-refresh-worker-" + (i + 1), () -> workerLoop(queue));
+      }
+      for (int i = 0; i < backgroundThreads.length; i++) {
+        backgroundThreads[i] =
+            startupThread(
+                "node-metrics-refresh-bg-worker-" + (i + 1), () -> workerLoop(backgroundQueue));
+      }
+      if (!startThread(dispatcherThread)) {
+        return;
+      }
+      for (Thread thread : criticalThreads) {
+        if (!startThread(thread)) {
+          return;
+        }
+      }
+      for (Thread thread : backgroundThreads) {
+        if (!startThread(thread)) {
+          return;
+        }
+      }
+      lifecycle.compareAndSet(Lifecycle.STARTING, Lifecycle.RUNNING);
+    } catch (Throwable failure) { // NOSONAR - roll back even native-thread/OOM/linkage failures
+      startFailures.increment();
+      lifecycle.compareAndSet(Lifecycle.STARTING, Lifecycle.FAILED);
+      throw failure;
+    } finally {
+      startupGate.countDown();
+      if (!isRunning()) {
+        interruptThreads();
+        cancelQueuedTasks();
+      }
+      notifyMode();
     }
   }
 
   void stop() {
-    if (!running.compareAndSet(true, false)) {
-      return;
+    lifecycle.updateAndGet(state -> state == Lifecycle.FAILED ? state : Lifecycle.STOPPED);
+    startupGate.countDown();
+    interruptThreads();
+    cancelQueuedTasks();
+    notifyMode();
+  }
+
+  private Thread startupThread(String name, Runnable work) {
+    return threadFactory.apply(
+        name,
+        () -> {
+          try {
+            startupGate.await(); // Agent daemons only; no collector runs during partial startup.
+            if (isRunning()) {
+              work.run();
+            }
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        });
+  }
+
+  private boolean startThread(Thread thread) {
+    if (lifecycle.get() != Lifecycle.STARTING) {
+      return false;
     }
-    Thread dispatcher = dispatcherThread;
-    if (dispatcher != null) {
-      dispatcher.interrupt();
+    thread.start();
+    return true;
+  }
+
+  private void interruptThreads() {
+    interruptThread(dispatcherThread);
+    for (Thread thread : criticalThreads) {
+      interruptThread(thread);
     }
-    for (Thread t : criticalThreads) {
-      if (t != null) {
-        t.interrupt();
+    for (Thread thread : backgroundThreads) {
+      interruptThread(thread);
+    }
+  }
+
+  private static void interruptThread(Thread thread) {
+    if (thread != null) {
+      try {
+        thread.interrupt();
+      } catch (Throwable ignored) { // NOSONAR - one denied interrupt must not prevent cleanup
+        // Opening the startup gate also lets partially started daemons exit without interruption.
       }
     }
-    for (Thread t : backgroundThreads) {
-      if (t != null) {
-        t.interrupt();
-      }
+  }
+
+  private void cancelQueuedTasks() {
+    cancelQueue(queue);
+    cancelQueue(backgroundQueue);
+  }
+
+  private void cancelQueue(ArrayBlockingQueue<QueuedTask> source) {
+    QueuedTask queued;
+    while ((queued = source.poll()) != null) {
+      queued.task.pending.set(false);
+      droppedCount.increment();
+    }
+  }
+
+  private void notifyMode() {
+    try {
+      modeListener.accept(currentMode());
+    } catch (Throwable ignored) { // NOSONAR - diagnostics cannot prevent startup/rollback
+      // The engine's lifecycle and JMX state remain available even if the listener fails.
     }
   }
 
@@ -380,7 +516,7 @@ final class MetricsRefreshEngine implements AutoCloseable {
   }
 
   private void dispatchLoop() {
-    while (running.get()) {
+    while (isRunning()) {
       try {
         updateMode();
         dispatchCycle(tasksRef.get());
@@ -402,11 +538,16 @@ final class MetricsRefreshEngine implements AutoCloseable {
   }
 
   private void workerLoop(ArrayBlockingQueue<QueuedTask> source) {
-    while (running.get() || !source.isEmpty()) {
+    while (isRunning()) {
       try {
         QueuedTask queuedTask = source.poll(500L, TimeUnit.MILLISECONDS);
         if (queuedTask != null) {
-          processQueuedTask(queuedTask);
+          if (isRunning()) {
+            processQueuedTask(queuedTask);
+          } else {
+            queuedTask.task.pending.set(false);
+            droppedCount.increment();
+          }
         }
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
@@ -424,6 +565,9 @@ final class MetricsRefreshEngine implements AutoCloseable {
     long enqueueFailures = 0L;
     long now = System.nanoTime();
     for (RefreshTask task : tasks) {
+      if (!isRunning()) {
+        break;
+      }
       if (!task.isDue(now)) {
         continue;
       }
@@ -486,9 +630,14 @@ final class MetricsRefreshEngine implements AutoCloseable {
   }
 
   private boolean enqueue(ArrayBlockingQueue<QueuedTask> target, RefreshTask task) {
-    boolean accepted = target.offer(new QueuedTask(task, System.nanoTime()));
+    QueuedTask queued = new QueuedTask(task, System.nanoTime());
+    boolean accepted = target.offer(queued);
     if (accepted) {
       enqueuedCount.increment();
+      if (!isRunning() && target.remove(queued)) {
+        task.pending.set(false);
+        droppedCount.increment();
+      }
     }
     return accepted;
   }
@@ -603,11 +752,7 @@ final class MetricsRefreshEngine implements AutoCloseable {
 
     if (next != mode) {
       mode = next;
-      try {
-        modeListener.accept(next);
-      } catch (Exception ignored) {
-        // Keep refresh engine running even if listener fails.
-      }
+      notifyMode();
     }
   }
 }

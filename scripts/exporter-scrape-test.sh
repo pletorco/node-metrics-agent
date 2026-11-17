@@ -65,6 +65,12 @@ grep -q '^# TYPE pletor_agent_observability_droppedlogcount_total counter$' "$WO
   || fail "the diagnostic loss counter is missing or mistyped"
 grep -q '^# TYPE pletor_agent_observability_inputlimitexceededcount_total counter$' "$WORK/metrics.txt" \
   || fail "the collector input rejection counter is missing or mistyped"
+grep -Eq '^pletor_agent_observability_refreshenginerunning 1(\.0)?$' "$WORK/metrics.txt" \
+  || fail "the activated refresh engine gauge is missing or inactive"
+grep -Eq '^pletor_agent_observability_refreshworkercount 6(\.0)?$' "$WORK/metrics.txt" \
+  || fail "the live refresh worker gauge is missing or incomplete"
+grep -q '^# TYPE pletor_agent_observability_refreshenginestartfailurecount_total counter$' "$WORK/metrics.txt" \
+  || fail "the refresh engine startup failure counter is missing or mistyped"
 if grep -Eq '^pletor_[a-z0-9_]+_total(\{[^}]*\})? -' "$WORK/metrics.txt"; then
   fail "a counter is negative: $(grep -E '^pletor_[a-z0-9_]+_total(\{[^}]*\})? -' "$WORK/metrics.txt" | head -3)"
 fi

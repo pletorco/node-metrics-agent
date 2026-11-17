@@ -14,6 +14,14 @@
 groups:
   - name: node-metrics-agent-health
     rules:
+      - alert: NodeMetricsAgentRefreshUnavailable
+        expr: pletor_agent_observability_refreshenginerunning == 0 or pletor_agent_observability_refreshworkercount < 6
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The metric refresh engine is inactive or missing workers on {{ $labels.instance }}"
+          description: "See RefreshEngineState and RefreshEngineStartFailureCount. A failed startup is disabled until host restart."
+
       - alert: NodeMetricsAgentTaskStuck
         expr: pletor_agent_observability_stucktaskcount > 0
         for: 2m

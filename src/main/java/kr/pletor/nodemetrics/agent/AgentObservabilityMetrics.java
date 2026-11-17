@@ -67,8 +67,36 @@ public final class AgentObservabilityMetrics implements AgentObservabilityMetric
 
   @Override
   public String getMode() {
+    MetricsRefreshEngine engine = engineSupplier.get();
+    if (engine != null) {
+      return engine.currentMode().name();
+    }
     TelemetryMode mode = modeSupplier.get();
     return mode == null ? TelemetryMode.NORMAL.name() : mode.name();
+  }
+
+  @Override
+  public String getRefreshEngineState() {
+    MetricsRefreshEngine engine = engineSupplier.get();
+    return engine == null ? "UNAVAILABLE" : engine.lifecycle().name();
+  }
+
+  @Override
+  public int getRefreshEngineRunning() {
+    MetricsRefreshEngine engine = engineSupplier.get();
+    return engine != null && engine.isRunning() ? 1 : 0;
+  }
+
+  @Override
+  public int getRefreshWorkerCount() {
+    MetricsRefreshEngine engine = engineSupplier.get();
+    return engine == null ? 0 : engine.liveWorkerCount();
+  }
+
+  @Override
+  public long getRefreshEngineStartFailureCount() {
+    MetricsRefreshEngine engine = engineSupplier.get();
+    return engine == null ? 0L : engine.startFailureCount();
   }
 
   @Override
