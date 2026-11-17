@@ -14,11 +14,11 @@ class SnakeYamlLogTest {
     List<String> messages = new CopyOnWriteArrayList<>();
     try (var capture = new AgentLogCapture(record -> messages.add(record.getMessage()))) {
       SnakeYamlLog first = SnakeYamlLog.getLogger("first parser");
-      SnakeYamlLog second = SnakeYamlLog.getLogger("second parser");
       assertTrue(first.isLoggable(SnakeYamlLog.Level.WARNING));
       assertFalse(first.isLoggable(SnakeYamlLog.Level.DEBUG));
       first.debug("filtered");
       first.warn("first warning");
+      SnakeYamlLog second = SnakeYamlLog.getLogger("second parser");
       second.warn("repeated warning");
     }
     assertEquals(List.of("first warning"), messages);
