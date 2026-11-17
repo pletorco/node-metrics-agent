@@ -41,7 +41,9 @@ public final class AgentLauncher {
   // Visible for testing
   static void start(Runnable initTask) {
     try {
-      Thread thread = new Thread(initTask, "node-metrics-agent-init");
+      // Inheritance can invoke application childValue callbacks synchronously on the startup
+      // thread. They can block or retain host context even though initialization is offloaded.
+      Thread thread = new Thread(null, initTask, "node-metrics-agent-init", 0L, false);
       thread.setDaemon(true);
       thread.setPriority(Thread.MIN_PRIORITY);
       thread.setUncaughtExceptionHandler(new SwallowingHandler());
