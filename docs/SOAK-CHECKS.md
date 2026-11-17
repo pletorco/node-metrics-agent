@@ -100,7 +100,7 @@ supported HotSpot runtime with `--java`; `--javac` can remain the build JDK.
 ```bash
 ./gradlew spotlessCheck shadowJar
 python3 scripts/soak_check.py \
-  --agent-jar build/libs/node-metrics-agent-0.10.1-all.jar \
+  --agent-jar build/libs/node-metrics-agent-0.11.0-all.jar \
   --exporter-jar /path/to/jmx_prometheus_javaagent-1.0.1.jar
 ```
 

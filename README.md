@@ -21,7 +21,7 @@ The agent is designed to run inside production JVMs with a fail-open posture:
 - self-observability MBeans for queue pressure, drops, latency, staleness, and failing metric refreshes
 - Prometheus JMX exporter example rules using the `pletor_*` metric prefix
 
-Current version: `0.10.1`
+Current version: `0.11.0`
 
 ## MBeans
 
@@ -57,7 +57,7 @@ Attach it to a JVM:
 
 ```bash
 java \
-  -javaagent:/path/to/node-metrics-agent-0.10.1-all.jar=/path/to/node-metrics.yml \
+  -javaagent:/path/to/node-metrics-agent-0.11.0-all.jar=/path/to/node-metrics.yml \
   -jar your-app.jar
 ```
 
@@ -111,8 +111,8 @@ working configuration and can recover after the file is corrected.
 The JAR can also generate config files:
 
 ```bash
-java -jar node-metrics-agent-0.10.1-all.jar init-config --fs-path /data,/var
-java -jar node-metrics-agent-0.10.1-all.jar init-kafka-config \
+java -jar node-metrics-agent-0.11.0-all.jar init-config --fs-path /data,/var
+java -jar node-metrics-agent-0.11.0-all.jar init-kafka-config \
   --server-properties /opt/kafka/config/server.properties
 ```
 
@@ -128,7 +128,7 @@ One common launch shape is:
 ```bash
 java \
   -javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=9404:/opt/jmx-exporter/pletor-node-metrics.yml \
-  -javaagent:/opt/pletor/node-metrics-agent-0.10.1-all.jar=/opt/pletor/node-metrics.yml \
+  -javaagent:/opt/pletor/node-metrics-agent-0.11.0-all.jar=/opt/pletor/node-metrics.yml \
   -jar your-app.jar
 ```
 
@@ -168,7 +168,7 @@ Common commands:
 ./gradlew trivyScan
 ```
 
-After `./gradlew shadowJar`, `scripts/smoke-test.sh build/libs/node-metrics-agent-0.10.1-all.jar`
+After `./gradlew shadowJar`, `scripts/smoke-test.sh build/libs/node-metrics-agent-0.11.0-all.jar`
 checks the packaged agent. Its launcher checks run in disposable JVMs with external time limits,
 including a preceding agent whose inherited thread-local callbacks block, throw, or copy 8 MiB.
 Agent threads must neither invoke those callbacks nor inherit host thread-local values. The same

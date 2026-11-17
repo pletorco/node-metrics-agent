@@ -91,7 +91,7 @@ latency comparison:
 
 ```sh
 python3 scripts/collector_input_check.py \
-  --agent-jar build/libs/node-metrics-agent-0.10.1-all.jar \
+  --agent-jar build/libs/node-metrics-agent-0.11.0-all.jar \
   --baseline-jar /path/to/unchanged-main-all.jar \
   --output /tmp/collector-input-evidence.json
 ```

@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-17
+
+### Upgrade notes
+
+- Update copied exporter rules to include the new refresh-engine health metrics and cgroup identity
+  labels on PID and PSI metrics. Exporter 1.6.0 is verified to apply these labels; 1.0.1 remains
+  scrape-compatible but does not distinguish cgroup identities. Apply `rate()` before aggregating
+  across cgroup labels. Existing JMX domains and `pletor_*` metric names remain unchanged.
+- Agent initialization is attempted once per loaded agent class. The first `-javaagent` option owns
+  configuration; repeated options/entry calls do not retry or replace an engine. Thread-set startup
+  failure disables refresh until the cause is fixed and the host JVM restarts; both mode MBeans
+  report `BYPASS` rather than false health.
+- Memory, PID and cgroup PSI re-resolve membership on a 60-second TTL, then use the next scheduled
+  poll. Counters describe the new group without carrying old totals forward. CPU starts a fresh
+  throttling window on a detected path change. Separate MBeans/getters are not a transaction.
+- Configuration is limited to 64 KiB, filesystem registrations to 256 partitions, and collector
+  input/hierarchy sizes have explicit limits. Rejected reads use unavailable/last-good semantics;
+  see `docs/COLLECTOR-INPUT-LIMITS.md` and the runbook before upgrading unusual deployments.
+- Java 11 and later remain supported; builds use JDK 21. Runtime dependencies are unchanged.
+
+### Added
+
+- `RefreshEngineState`, `RefreshEngineRunning`, `RefreshWorkerCount` and
+  `RefreshEngineStartFailureCount` on the observability MBean, with example exporter mappings and
+  an inactive/missing-worker alert. Never-polled tasks become stale after startup grace and their
+  configured interval, including after failed startup.
+- `CgroupVersion` and `CgroupPath` on PID and PSI MBeans; cgroup exporter rules refresh dynamic
+  identity labels rather than retaining old cached rule results.
+
+### Fixed
+
+- Prevent agent threads from inheriting application thread-local callbacks and values.
+- Initialize once under repeated/concurrent entry, preserve host-owned MBeans, and schedule only
+  successfully registered collectors.
+- Preserve running collector ownership across removal/re-registration, so a blocked old collector
+  cannot consume replacement workers or disappear from stuck/failure/staleness diagnostics.
+- Gate dispatcher/worker activation on complete thread-set startup; roll back partial starts and
+  cancel queued pending work without host waits, joins, or automatic retry threads.
+- Detect same-size/same-mtime configuration edits and atomic replacements through bounded checksum
+  polling. Suppress duplicate parsing/application and recover from missed/overflow/unrelated events.
+- Follow v1/v2 cgroup migration while the old group remains readable, resolve v1 memory/PID
+  controllers independently, recompute ancestor limits, and reject unavailable/invalid membership
+  without substituting the root or retaining an expired binding.
+
 ### Soak validation
 
 - Add weekly/opt-in Java 11 and 21 soak checks comparing control and enabled packaged agents,

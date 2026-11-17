@@ -1,7 +1,7 @@
 # Policy Status
 
-Date: 2026-11-16
-Target: `node-metrics-agent` `0.10.1`
+Date: 2026-11-17
+Target: `node-metrics-agent` `0.11.0`
 
 ## Module Classification
 
@@ -10,16 +10,17 @@ Target: `node-metrics-agent` `0.10.1`
 - Host entry points:
   - `kr.pletor.nodemetrics.agent.AgentLauncher.premain(...)`: no static state; starts one daemon
     thread and returns. The actual initialization (`MetricsAgent.premain(...)`) runs on that thread.
-  - JMX getter paths in metric MBeans (return cached values; no I/O when the refresh engine runs)
+  - JMX getter paths in metric MBeans (return cached values; read refresh disabled before publication)
   - Agent daemon threads: initialization, refresh dispatcher and workers, filesystem probes, and the
     `ConfigReloader` watcher
 
 ## Current Status
 
 - Fail-open startup and metric refresh behavior is preserved.
-- Nothing the agent needs to load or run can stop the application: the entry class has no static
-  state, initialization is asynchronous and split into independent steps, and every agent thread
-  has its own uncaught-exception handler, so errors never reach the application's default handler.
+- After the JVM enters the launcher, guarded task construction/start failures are contained.
+  Initialization is asynchronous and attempted once; partial refresh startup rolls back and remains
+  explicitly disabled. Agent threads have private error handlers and do not inherit host thread
+  locals. JVM rejection of the manifest/entry class before entry is outside these guards.
 - The agent does not initialize JVM-wide singletons (`java.util.logging` `LogManager`, platform
   MBeanServer) ahead of the application; see `RUNBOOK.md`, "Isolation From The Application".
 - Metrics are refreshed by background threads at a configurable interval
@@ -38,9 +39,12 @@ Target: `node-metrics-agent` `0.10.1`
 
 Before release:
 
-- `./gradlew test`
-- `./gradlew checkstyleMain checkstyleTest`
-- `./gradlew shadowJar`
-- optional: `./gradlew trivyScanAll`
+- `./gradlew spotlessCheck check shadowJar cyclonedxBom`
+- `python3 -m unittest discover -s scripts/tests -v`
+- Packaged smoke on Java 11/17/21 and exporter integration checks
+- Mandatory PR and release-context dependency security gates through GitHub Actions
+- Release candidate commit/policy/checksum and packaged/published SBOM verification
 
-Security scan tasks require a local `trivy` binary or the GitHub security workflow.
+Security scans require the reviewed Trivy binary and fresh databases. The release workflow publishes
+only the exact checked candidate after its release-context gate passes; missing/incomplete evidence
+blocks publication. See `docs/SECURITY-CHECKS.md`.
