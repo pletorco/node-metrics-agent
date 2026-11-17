@@ -56,6 +56,10 @@ echo "== the agent must not initialize JVM-wide singletons before the applicatio
 python3 "$HERE/global_isolation_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"
 
+echo "== retired collectors must retain ownership without starving other background work"
+python3 "$HERE/collector_ownership_check.py" --agent-jar "$JAR" \
+  --java "$JAVA_BIN" --javac "$JAVAC_BIN"
+
 echo "== oversized collector input must preserve a 32 MiB host JVM"
 python3 "$HERE/collector_input_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"

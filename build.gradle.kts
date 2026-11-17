@@ -547,7 +547,7 @@ tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 0 }
 // -----------------------------------------------------------------------------
 spotless {
     java {
-        target("src/**/*.java", "scripts/soak/*.java", "scripts/inputs/*.java", "scripts/LauncherFailureProbe.java", "scripts/InheritedContextProbe.java", "scripts/DuplicateAgentProbe.java", "scripts/LateGlobalSetup.java")
+        target("src/**/*.java", "scripts/soak/*.java", "scripts/inputs/*.java", "scripts/ownership/*.java", "scripts/LauncherFailureProbe.java", "scripts/InheritedContextProbe.java", "scripts/DuplicateAgentProbe.java", "scripts/LateGlobalSetup.java")
         googleJavaFormat(googleJavaFormatVersion)
     }
 }

@@ -221,6 +221,14 @@ Stuck reads:
   refreshing.
 - `StuckTaskCount > 0` / `StuckTasks` names the tasks whose current refresh has been running for
   more than 30 seconds. `MaxTaskStalenessMs` rises for the same task.
+- Removing a filesystem MBean does not cancel an outstanding kernel call. Its name remains in
+  stuck/failing diagnostics and staleness while the call runs, even after removal. Re-adding the
+  same normalized path creates a new bean whose polling waits for the previous call to return;
+  the other resources keep their workers. Names identify logical tasks, not physical mount aliases.
+  Running ownership is capped at three records per lane, six total, and released on completion.
+  Removed queued work is skipped when dequeued and its pending flag cleared; it remains within
+  the existing queue capacity until drained. Removed collectors leave no history or tombstone
+  after completion; active collectors retain their usual refresh history.
 - A blocked call cannot be interrupted from Java; it clears when the mount or kernel path
   recovers. Each stuck task holds one worker of its lane, and while it is stuck it is skipped
   (counted in `DroppedCount`, once per refresh interval) instead of being queued again. It does not
