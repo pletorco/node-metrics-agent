@@ -3,6 +3,12 @@
 `node-metrics-agent` is a lightweight JVM agent from Pletor Co., Ltd. that registers host and
 container node metrics as JMX MBeans.
 
+The application, JVM management options or a JMX exporter must create the platform MBeanServer.
+The agent waits for an existing discoverable server without creating this JVM-wide singleton;
+without one, metrics collection remains dormant. Agent diagnostics use bounded asynchronous stderr
+output and do not use the application's JUL handlers. See [startup behavior](RUNBOOK.md#isolation-from-the-application)
+for details.
+
 The agent does not open an HTTP metrics endpoint by itself. You can inspect metrics through a JMX
 connection, and the recommended Prometheus integration is the
 [Prometheus JMX exporter](https://github.com/prometheus/jmx_exporter).

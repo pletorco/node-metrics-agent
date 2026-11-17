@@ -1,253 +1,195 @@
 package kr.pletor.nodemetrics.agent;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.io.PrintStream;
+import java.text.MessageFormat;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 /**
- * Logging facade that keeps the agent from initializing {@code java.util.logging} early.
+ * Bounded, asynchronous agent diagnostics independent of the application's JUL configuration.
  *
- * <p>The first use of {@link Logger#getLogger(String)} creates the JVM-wide {@code LogManager} from
- * the {@code java.util.logging.manager} and {@code java.util.logging.config.file} properties as
- * they are at that moment. An application that sets them from {@code main} (Quarkus and Log4j2
- * setups do) would have them ignored if the agent, which starts before {@code main}, got there
- * first. So this class does not touch {@code java.util.logging} until it has something that must
- * not wait:
- *
- * <ul>
- *   <li>{@code WARNING} and above are published right away.
- *   <li>Anything below that (startup information, debug details) is held in a small bounded queue,
- *       keeping its original time, and published once {@link #DEFAULT_DEFER_MS} has passed, or
- *       earlier when a {@code WARNING} needs the log anyway. The refresh engine calls {@link
- *       #flushIfDue()} on every cycle.
- * </ul>
- *
- * <p>Logging never throws.
+ * <p>Production loggers never discover a JUL logger or invoke application handlers. One private
+ * daemon writes INFO and higher records to stderr. A blocked output occupies only that daemon;
+ * producers discard records when its 256-entry queue is full. There is no synchronous fallback.
  */
 public final class AgentLog {
-
-  /** How long records below {@code WARNING} are held back after the class is first used. */
-  static final long DEFAULT_DEFER_MS = 10_000L;
-
   private static final int MAX_PENDING = 256;
-  // Names, not class literals: this class must stay usable when ThrottledLogger cannot be loaded.
+  private static final int MAX_LINE_CHARS = 4096;
+  private static final ArrayBlockingQueue<LogRecord> PENDING =
+      new ArrayBlockingQueue<>(MAX_PENDING);
+  private static final AtomicInteger OUTSTANDING = new AtomicInteger();
+  private static final AtomicInteger WRITER_STATE = new AtomicInteger();
+  private static final LongAdder DROPPED = new LongAdder();
+  private static volatile Consumer<LogRecord> sink = AgentLog::writeToStderr;
   private static final String[] OWN_CLASSES = {
     "kr.pletor.nodemetrics.agent.AgentLog", "kr.pletor.nodemetrics.agent.ThrottledLogger"
   };
 
-  private static final Object LOCK = new Object();
-  private static final ArrayDeque<Pending> PENDING = new ArrayDeque<>();
-
-  /** Guarded by {@link #LOCK}; {@code nanoTime} value from which records are no longer held. */
-  private static long deferUntilNanos = System.nanoTime() + ms(DEFAULT_DEFER_MS);
-
-  private static volatile boolean hasPending;
-
   private final String name;
-  private final boolean immediate;
-  private volatile Logger jul;
+  private final Logger injectedLogger;
 
-  private AgentLog(String name, Logger jul) {
+  private AgentLog(String name, Logger injectedLogger) {
     this.name = name;
-    this.jul = jul;
-    this.immediate = jul != null;
+    this.injectedLogger = injectedLogger;
   }
 
-  /**
-   * Returns a logger for the given name. Does not touch {@code java.util.logging}.
-   *
-   * @param name the logger name, usually the class name
-   * @return the logger
-   */
+  /** Returns an agent logger without initializing the JVM's LogManager. */
   public static AgentLog getLogger(String name) {
     return new AgentLog(name, null);
   }
 
-  /** Wraps an existing JUL logger; records are published immediately (used by tests). */
+  /** Test adapter for an explicitly supplied logger; production never discovers a JUL logger. */
   static AgentLog wrap(Logger logger) {
     return new AgentLog(logger.getName(), logger);
   }
 
-  /**
-   * Logs a message.
-   *
-   * @param level the level
-   * @param message the message
-   */
+  /** Log a message. */
   public void log(Level level, String message) {
     publish(level, message, null, null);
   }
 
-  /**
-   * Logs a message with one parameter.
-   *
-   * @param level the level
-   * @param message the message pattern
-   * @param param the parameter for {@code {0}}
-   */
-  public void log(Level level, String message, Object param) {
-    publish(level, message, new Object[] {param}, null);
+  /** Log a message with one parameter. */
+  public void log(Level level, String message, Object parameter) {
+    publish(level, message, new Object[] {parameter}, null);
   }
 
-  /**
-   * Logs a message with parameters.
-   *
-   * @param level the level
-   * @param message the message pattern
-   * @param params the parameters
-   */
-  public void log(Level level, String message, Object[] params) {
-    publish(level, message, params, null);
+  /** Log a message with parameters. */
+  public void log(Level level, String message, Object[] parameters) {
+    publish(level, message, parameters, null);
   }
 
-  /**
-   * Logs a message with an exception.
-   *
-   * @param level the level
-   * @param message the message
-   * @param thrown the exception
-   */
+  /** Log a message with its failure. */
   public void log(Level level, String message, Throwable thrown) {
     publish(level, message, null, thrown);
   }
 
-  /**
-   * Logs a lazily built message with an exception.
-   *
-   * @param level the level
-   * @param thrown the exception
-   * @param message supplies the message
-   */
+  /** Log a lazily constructed message with its failure. */
   public void log(Level level, Throwable thrown, Supplier<String> message) {
-    publish(level, resolve(message), null, thrown);
-  }
-
-  /** Publishes records that were held back, if their time has come. Cheap when nothing is held. */
-  static void flushIfDue() {
-    if (hasPending && !deferring()) {
-      flushPending();
-    }
-  }
-
-  // Visible for testing: start over with the given deferral window and no held records.
-  static void resetForTest(long deferMs) {
-    synchronized (LOCK) {
-      PENDING.clear();
-      hasPending = false;
-      deferUntilNanos = System.nanoTime() + ms(deferMs);
-    }
-  }
-
-  // Visible for testing.
-  static int pendingCount() {
-    synchronized (LOCK) {
-      return PENDING.size();
-    }
-  }
-
-  private static long ms(long millis) {
-    return TimeUnit.MILLISECONDS.toNanos(millis);
-  }
-
-  private static boolean deferring() {
-    long until;
-    synchronized (LOCK) {
-      until = deferUntilNanos;
-    }
-    return System.nanoTime() - until < 0L;
-  }
-
-  private static String resolve(Supplier<String> message) {
     try {
-      return message.get();
-    } catch (Throwable t) { // NOSONAR - logging must never throw
-      return "<message unavailable: " + t + ">";
+      log(level, message.get(), thrown);
+    } catch (Throwable ignored) { // NOSONAR - diagnostics must not propagate supplier failures
+      publish(level, "<message unavailable>", null, thrown);
     }
   }
 
-  private void publish(Level level, String message, Object[] params, Throwable thrown) {
+  /** Records discarded because of saturation, writer startup failure or an output failure. */
+  public static long droppedCount() {
+    return DROPPED.sum();
+  }
+
+  private void publish(Level level, String message, Object[] parameters, Throwable thrown) {
     try {
-      boolean urgent = immediate || level.intValue() >= Level.WARNING.intValue();
-      if (!urgent && deferring()) {
-        hold(level, message, params, thrown);
+      if (injectedLogger != null) {
+        injectedLogger.log(record(level, message, parameters, thrown));
         return;
       }
-      flushPending();
-      Logger target = target();
-      if (target.isLoggable(level)) {
-        target.log(record(level, message, params, thrown));
-      }
-    } catch (Throwable ignored) { // NOSONAR - logging must never throw
-      // Nothing else can be done.
-    }
-  }
-
-  private void hold(Level level, String message, Object[] params, Throwable thrown) {
-    LogRecord record = record(level, message, params, thrown);
-    synchronized (LOCK) {
-      if (PENDING.size() < MAX_PENDING) {
-        PENDING.add(new Pending(this, record));
-        hasPending = true;
-      }
-    }
-  }
-
-  private static void flushPending() {
-    List<Pending> drained;
-    synchronized (LOCK) {
-      if (PENDING.isEmpty()) {
+      if (level.intValue() < Level.INFO.intValue()) {
         return;
       }
-      drained = new ArrayList<>(PENDING);
-      PENDING.clear();
-      hasPending = false;
+      if (!startWriter()) {
+        DROPPED.increment();
+        return;
+      }
+      LogRecord record = record(level, message, parameters, thrown);
+      OUTSTANDING.incrementAndGet();
+      if (!PENDING.offer(record)) {
+        OUTSTANDING.decrementAndGet();
+        DROPPED.increment();
+      } else if (WRITER_STATE.get() < 0 && PENDING.remove(record)) {
+        // The writer can fail between the state check and offer. Do not retain a stranded record.
+        OUTSTANDING.decrementAndGet();
+        DROPPED.increment();
+      }
+    } catch (Throwable ignored) { // NOSONAR - diagnostics must never affect their caller
+      // No recursive logging or synchronous fallback.
     }
-    for (Pending p : drained) {
+  }
+
+  private static boolean startWriter() {
+    if (WRITER_STATE.compareAndSet(0, 1)) {
       try {
-        Logger target = p.owner.target();
-        if (target.isLoggable(p.record.getLevel())) {
-          target.log(p.record);
-        }
-      } catch (Throwable ignored) { // NOSONAR - logging must never throw
-        // Skip this record.
+        Thread writer = new Thread(null, AgentLog::drain, "node-metrics-agent-log", 0L, false);
+        writer.setDaemon(true);
+        writer.setPriority(Thread.MIN_PRIORITY);
+        writer.setUncaughtExceptionHandler((thread, error) -> disableWriter());
+        writer.start();
+      } catch (Throwable ignored) { // NOSONAR - abandon diagnostics if a worker cannot be started
+        disableWriter();
+      }
+    }
+    return WRITER_STATE.get() == 1;
+  }
+
+  private static void disableWriter() {
+    WRITER_STATE.set(-1);
+    while (PENDING.poll() != null) {
+      OUTSTANDING.decrementAndGet();
+      DROPPED.increment();
+    }
+  }
+
+  private static void drain() {
+    while (true) {
+      final LogRecord record;
+      try {
+        record = PENDING.take();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        disableWriter();
+        return;
+      }
+      try {
+        sink.accept(record);
+      } catch (Throwable ignored) { // NOSONAR - discard bad output; never invoke a host handler
+        DROPPED.increment();
+      } finally {
+        OUTSTANDING.decrementAndGet();
       }
     }
   }
 
-  private Logger target() {
-    Logger l = jul;
-    if (l == null) {
-      l = Logger.getLogger(name);
-      jul = l;
+  private static void writeToStderr(LogRecord record) {
+    String message = record.getMessage();
+    Object[] parameters = record.getParameters();
+    if (parameters != null && parameters.length > 0) {
+      message = MessageFormat.format(message, parameters);
     }
-    return l;
+    Throwable error = record.getThrown();
+    String line =
+        "[node-metrics-agent] "
+            + record.getLevel().getName()
+            + " "
+            + record.getLoggerName()
+            + ": "
+            + message
+            + (error == null ? "" : " (" + error.getClass().getName() + ")");
+    PrintStream output = System.err;
+    output.println(line.substring(0, Math.min(line.length(), MAX_LINE_CHARS)));
+    if (output.checkError()) {
+      DROPPED.increment();
+    }
   }
 
-  private LogRecord record(Level level, String message, Object[] params, Throwable thrown) {
-    LogRecord r = new LogRecord(level, message);
-    r.setLoggerName(name);
-    if (params != null) {
-      r.setParameters(params);
-    }
-    if (thrown != null) {
-      r.setThrown(thrown);
-    }
-    // Keep the "class method" prefix that JUL would infer from the call stack; it cannot infer
-    // it for a record published later, or through this class.
+  private LogRecord record(Level level, String message, Object[] parameters, Throwable thrown) {
+    LogRecord record = new LogRecord(level, message);
+    record.setLoggerName(name);
+    record.setParameters(parameters);
+    record.setThrown(thrown);
     StackWalker.StackFrame caller =
         StackWalker.getInstance()
-            .walk(frames -> frames.filter(f -> !isOwnClass(f.getClassName())).findFirst())
+            .walk(frames -> frames.filter(frame -> !isOwnClass(frame.getClassName())).findFirst())
             .orElse(null);
     if (caller != null) {
-      r.setSourceClassName(caller.getClassName());
-      r.setSourceMethodName(caller.getMethodName());
+      record.setSourceClassName(caller.getClassName());
+      record.setSourceMethodName(caller.getMethodName());
     }
-    return r;
+    return record;
   }
 
   private static boolean isOwnClass(String className) {
@@ -259,13 +201,18 @@ public final class AgentLog {
     return false;
   }
 
-  private static final class Pending {
-    final AgentLog owner;
-    final LogRecord record;
+  // Test seams. Swapping the sink does not change the production queue or writer behavior.
+  static Consumer<LogRecord> swapSinkForTest(Consumer<LogRecord> replacement) {
+    Consumer<LogRecord> previous = sink;
+    sink = replacement;
+    return previous;
+  }
 
-    Pending(AgentLog owner, LogRecord record) {
-      this.owner = owner;
-      this.record = record;
-    }
+  static int pendingCount() {
+    return OUTSTANDING.get();
+  }
+
+  static int queuedCount() {
+    return PENDING.size();
   }
 }

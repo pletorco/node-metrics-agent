@@ -49,17 +49,7 @@ python3 "$HERE/launcher_isolation_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"
 
 echo "== the agent must not initialize JVM-wide singletons before the application configures them"
-mkdir -p "$WORK/late-classes" "$WORK/app-late"
-"$JAVAC_BIN" -d "$WORK/late-classes" "$HERE/LateGlobalSetup.java"
-OUT="$(cd "$WORK/app-late" && "$JAVA_BIN" "-javaagent:$JAR" -cp "$WORK/late-classes" LateGlobalSetup 2>&1)" || {
-  echo "SMOKE FAILURE: the agent interfered with the application's own setup:" >&2
-  echo "$OUT" >&2
-  exit 1
-}
-echo "$OUT" | grep -q '^LATE SETUP OK$' || {
-  echo "SMOKE FAILURE: unexpected output:" >&2
-  echo "$OUT" >&2
-  exit 1
-}
+python3 "$HERE/global_isolation_check.py" --agent-jar "$JAR" \
+  --java "$JAVA_BIN" --javac "$JAVAC_BIN"
 
 echo "smoke test passed"

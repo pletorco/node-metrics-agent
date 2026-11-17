@@ -701,13 +701,14 @@ class MetricsAgentTest {
   void premain_shouldInitializeAgentAndRegisterMBeans() throws Exception {
     MBeanServer mockSvr = Mockito.mock(MBeanServer.class);
 
-    // Mock static ManagementFactory to return our mock server
-    try (var mockedFactory = Mockito.mockStatic(java.lang.management.ManagementFactory.class);
+    // Discover the mock server without creating the platform singleton
+    try (var mockedFactory = Mockito.mockStatic(javax.management.MBeanServerFactory.class);
         var mockedLoader = Mockito.mockStatic(ConfigLoader.class)) {
 
+      Mockito.when(mockSvr.isRegistered(Mockito.any(ObjectName.class))).thenReturn(true);
       mockedFactory
-          .when(java.lang.management.ManagementFactory::getPlatformMBeanServer)
-          .thenReturn(mockSvr);
+          .when(() -> javax.management.MBeanServerFactory.findMBeanServer(null))
+          .thenReturn(new java.util.ArrayList<>(java.util.List.of(mockSvr)));
 
       // Mock ConfigLoader to return a default config
       Object mockConfig = newConfigInstance();
@@ -739,9 +740,9 @@ class MetricsAgentTest {
   @Test
   @DisplayName("premain should catch exceptions and log error without crashing")
   void premain_shouldCatchExceptionAndNotCrash() {
-    try (var mockedFactory = Mockito.mockStatic(java.lang.management.ManagementFactory.class)) {
+    try (var mockedFactory = Mockito.mockStatic(javax.management.MBeanServerFactory.class)) {
       mockedFactory
-          .when(java.lang.management.ManagementFactory::getPlatformMBeanServer)
+          .when(() -> javax.management.MBeanServerFactory.findMBeanServer(null))
           .thenThrow(new RuntimeException("Simulated Startup Failure"));
 
       // Should not throw

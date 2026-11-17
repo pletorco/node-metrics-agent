@@ -107,13 +107,20 @@ reach the application:
   `java.util.logging.manager` or `javax.management.builder.initial` from `main()`; if the agent
   had initialized `java.util.logging` or the platform MBeanServer first, the JVM would silently
   ignore those settings.
-  - Logging: records below `WARNING` (startup information) are held in a small in-memory queue
-    with their original time and published 10 s after startup, or sooner when a `WARNING` occurs.
-    `WARNING` and above are published immediately. So `INFO` lines such as `config applied` show
-    up about 10 s late, and a JVM that exits within 10 s of starting does not print them.
-  - JMX: if no MBeanServer exists yet (no JMX exporter agent, no `-Dcom.sun.management.jmxremote`),
-    the agent waits up to 5 s for the application to create one before creating it itself, so the
-    MBeans then appear up to 5 s after startup. When one already exists there is no wait.
+  - Logging: `INFO` and higher go to stderr through one private daemon, independently of JUL.
+    Application JUL handlers and `java.util.logging` configuration do not control agent diagnostics.
+    The queue holds at most 256 records; producers discard new records on saturation, without
+    waiting for output. Each rendered line is capped at 4096 characters and includes the exception
+    class, without a stack trace. Writer startup or output failures also discard diagnostics, with
+    no synchronous fallback. `DroppedLogCount` exposes these losses. A blocked stderr can occupy
+    the diagnostic daemon, but cannot block collectors or application startup.
+  - JMX: the agent never creates the platform MBeanServer. It checks once per second for an
+    existing server registered with `MBeanServerFactory` that exposes the standard Runtime and
+    OperatingSystem MBeans, and uses the first match. The application, JMX exporter or JVM
+    management options must create that server. Until then the initializer remains dormant and
+    collectors/config watching do not start, even if this takes more than 5 or 10 seconds.
+    `newMBeanServer()` servers and servers released from the factory are not discoverable this way.
+    If the application never creates a discoverable server, agent metrics remain unavailable.
 
 ## Configuration Reload
 
@@ -133,6 +140,8 @@ Prometheus alerting rules; check it with `promtool check rules` and tune the thr
 - telemetry mode is not `NORMAL` for a sustained period
 - `pletor_agent_observability_droppedcount_total` increases above baseline (the agent's own
   counters stay `COUNTER`, so the exporter 1.x appends `_total`; exporter 0.x does not)
+- `pletor_agent_observability_droppedlogcount_total` increases (agent diagnostic output is
+  saturated or failing; inspect stderr and its destination)
 - `pletor_agent_observability_queuefillratio >= 0.80`
 - `pletor_agent_observability_maxtaskstalenessms` rises for a sustained period
   (seconds behind schedule; healthy tasks stay near `0` whatever their refresh interval)

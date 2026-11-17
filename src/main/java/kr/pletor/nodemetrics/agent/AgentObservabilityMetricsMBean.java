@@ -87,4 +87,8 @@ public interface AgentObservabilityMetricsMBean {
    */
   @JmxMetricHint("counter")
   long getThrottledLoggerOverflowCount();
+
+  /** Diagnostic records discarded because their private writer is unavailable or saturated. */
+  @JmxMetricHint("counter")
+  long getDroppedLogCount();
 }
