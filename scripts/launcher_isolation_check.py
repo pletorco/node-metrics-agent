@@ -32,7 +32,8 @@ def main():
             for compiled in sorted(classes.rglob("*.class")):
                 guard.write(compiled, compiled.relative_to(classes).as_posix())
         cases = [("thread-creation", agent, False), ("background-error", agent, False)]
-        for missing in ("ThrottledLogger", "AgentLauncher$InitTask", "AgentLauncher$SwallowingHandler"):
+        for missing in ("ThrottledLogger", "AgentLauncher$StartOnce", "AgentLauncher$InitTask",
+                        "AgentLauncher$SwallowingHandler"):
             broken = work / f"missing-{missing}.jar"
             omitted = f"kr/pletor/nodemetrics/agent/{missing}.class"
             with zipfile.ZipFile(agent) as source, zipfile.ZipFile(broken, "w", zipfile.ZIP_DEFLATED) as target:

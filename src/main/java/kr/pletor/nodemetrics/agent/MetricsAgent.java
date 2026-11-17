@@ -19,6 +19,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -92,6 +93,9 @@ public class MetricsAgent {
 
   /** Lock used to serialize configuration updates (including MBean changes). */
   private static final Object APPLY_LOCK = new Object();
+
+  /** Also protects direct/concurrent premain calls that bypass the packaged launcher. */
+  private static final AtomicBoolean INITIALIZATION_CLAIMED = new AtomicBoolean();
 
   /**
    * Map of configured filesystem paths to their corresponding MBean entries.
@@ -226,12 +230,17 @@ public class MetricsAgent {
    * JVM agent entry point, executed before the main application.
    *
    * <p>Agent arguments (if present) are interpreted as the path to the YAML configuration file.
+   * Only the first invocation initializes this class's agent instance. The claim is retained on
+   * partial failure so another call cannot replace published beans or duplicate surviving workers.
    *
    * @param agentArgs agent argument string (optional configuration path)
    * @param inst instrumentation handle (not used here but required by the JVM)
    */
   public static void premain(String agentArgs, Instrumentation inst) {
     try {
+      if (!INITIALIZATION_CLAIMED.compareAndSet(false, true)) {
+        return;
+      }
       initialize(agentArgs);
     } catch (Throwable t) { // NOSONAR
       // Last resort: prevent the agent from ever crashing the application.
@@ -396,8 +405,9 @@ public class MetricsAgent {
       String what, Supplier<T> factory, Class<?> mbeanInterface, String objectName) {
     try {
       T bean = factory.get();
-      registerStandardMBeanSafely(bean, mbeanInterface, fixedObjectName(objectName));
-      return bean;
+      return registerStandardMBeanSafely(bean, mbeanInterface, fixedObjectName(objectName))
+          ? bean
+          : null;
     } catch (Throwable t) { // NOSONAR
       initStepFailed(what, t);
       return null;
@@ -771,7 +781,7 @@ public class MetricsAgent {
   }
 
   @SuppressWarnings({"rawtypes", "unchecked"})
-  private static void registerStandardMBeanSafely(
+  private static boolean registerStandardMBeanSafely(
       Object bean, Class<?> mbeanInterface, ObjectName objectName) {
     try {
       if (bean instanceof RefreshManagedMetric) {
@@ -780,12 +790,14 @@ public class MetricsAgent {
       }
       StandardMBean wrapped = new AbsentValueHider(bean, (Class) mbeanInterface);
       svr.registerMBean(wrapped, objectName);
+      return true;
     } catch (Throwable e) { // NOSONAR
       THROTTLED_LOGGER.log(
           Level.WARNING,
           LOG_KEY_FIXED_MBEAN_REGISTRATION_FAILURE,
           e,
           () -> "[node-metrics-agent] failed to register fixed MBean: " + objectName);
+      return false;
     }
   }
 

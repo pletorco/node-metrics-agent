@@ -61,6 +61,13 @@ java \
   -jar your-app.jar
 ```
 
+Initialization is attempted once per loaded agent class. With repeated `-javaagent` options, the
+first option selects the startup configuration; later options return without starting another
+initializer, collector pipeline or watcher. A failed or partial attempt is not retried by repeating
+the option or calling the same `premain` entry point again. Runtime changes use the first
+configuration file's existing watcher. Fixed MBean names already owned by another component are
+left in place. Collectors whose registration fails are excluded from refresh scheduling.
+
 If no config path is provided, the agent resolves config in this order:
 
 1. agent argument path
@@ -160,6 +167,8 @@ checks the packaged agent. Its launcher checks run in disposable JVMs with exter
 including a preceding agent whose inherited thread-local callbacks block, throw, or copy 8 MiB.
 Agent threads must neither invoke those callbacks nor inherit host thread-local values. The same
 checks run in smoke CI on Java 11, 17 and 21; the fixture classes are not packaged in the agent.
+The same smoke suite checks repeated/concurrent agent entry, first-argument selection, config reload,
+host-owned MBean collisions and interrupted initialization in bounded subprocesses.
 
 `trivyScan` requires Python 3.9+ and Trivy. It checks runtime, test and build-tool dependencies
 and Gradle vendor advisories; `trivyScanAll` blocks all severities. See

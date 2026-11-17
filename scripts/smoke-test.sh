@@ -48,6 +48,10 @@ echo "== launcher failures must preserve host startup, including with blocked st
 python3 "$HERE/launcher_isolation_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"
 
+echo "== repeated agent entry must preserve one collector pipeline and host MBean ownership"
+python3 "$HERE/duplicate_agent_check.py" --agent-jar "$JAR" \
+  --java "$JAVA_BIN" --javac "$JAVAC_BIN"
+
 echo "== the agent must not initialize JVM-wide singletons before the application configures them"
 python3 "$HERE/global_isolation_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"

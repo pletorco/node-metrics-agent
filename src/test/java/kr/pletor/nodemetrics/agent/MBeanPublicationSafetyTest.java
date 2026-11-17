@@ -138,6 +138,29 @@ class MBeanPublicationSafetyTest {
   }
 
   @Test
+  void registrationCollisionDoesNotReturnOrScheduleAnInvisibleReplacement() throws Exception {
+    ObjectName name = publishCpu();
+    SlowCpu replacement = new SlowCpu();
+    Object registered =
+        invoke(
+            "createAndRegister",
+            new Class<?>[] {String.class, Supplier.class, Class.class, String.class},
+            "colliding CPU",
+            (Supplier<CpuMetrics>) () -> replacement,
+            CpuMetricsMBean.class,
+            name.toString());
+
+    assertNull(registered, "a failed registration must not become a refresh target");
+    set("cpuBean", registered);
+    List<?> tasks = (List<?>) invoke("buildRefreshTasksLocked", new Class<?>[] {});
+    assertTrue(tasks.isEmpty());
+    assertTrue(server.isRegistered(name), "the existing owner's MBean must remain registered");
+    assertEquals(-1.0, server.getAttribute(name, "SystemCpuLoad"));
+    assertFalse(replacement.isReadRefreshEnabled());
+    assertEquals(0, replacement.reads.get());
+  }
+
+  @Test
   void registrationNotificationReadsAndDescriptionsNeverRefresh() throws Exception {
     AtomicReference<Throwable> failed = new AtomicReference<>();
     AtomicInteger observed = new AtomicInteger();
