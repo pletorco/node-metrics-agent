@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.management.MBeanRegistrationException;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -31,6 +32,7 @@ import kr.pletor.nodemetrics.metrics.NodeMemMetrics;
 import kr.pletor.nodemetrics.metrics.OsInfoMetrics;
 import kr.pletor.nodemetrics.metrics.OsRuntimeMetrics;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,6 +47,14 @@ import org.mockito.Mockito;
 class MetricsAgentTest {
 
   @TempDir Path tempDir;
+
+  private boolean previousInitializationClaim;
+
+  @BeforeEach
+  void isolateInitializationClaim() throws Exception {
+    previousInitializationClaim =
+        ((AtomicBoolean) getStaticField("INITIALIZATION_CLAIMED")).getAndSet(false);
+  }
 
   // ------------------------------------------------------------------------
   // Reflection helpers
@@ -117,6 +127,7 @@ class MetricsAgentTest {
 
   @AfterEach
   void cleanupFsMap() throws Exception {
+    ((AtomicBoolean) getStaticField("INITIALIZATION_CLAIMED")).set(previousInitializationClaim);
     MetricsAgent.stopRefreshEngineForTest();
     @SuppressWarnings("unchecked")
     Map<String, ?> fsMap = (Map<String, ?>) getStaticField("fsMap");
@@ -747,6 +758,8 @@ class MetricsAgentTest {
 
       // Should not throw
       assertDoesNotThrow(() -> MetricsAgent.premain(null, null));
+      assertDoesNotThrow(() -> MetricsAgent.premain("ignored-after-failure.yml", null));
+      mockedFactory.verify(() -> javax.management.MBeanServerFactory.findMBeanServer(null));
     }
   }
 

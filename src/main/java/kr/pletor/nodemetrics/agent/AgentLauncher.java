@@ -1,6 +1,7 @@
 package kr.pletor.nodemetrics.agent;
 
 import java.lang.instrument.Instrumentation;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * JVM entry point of the agent ({@code Premain-Class}).
@@ -26,16 +27,27 @@ public final class AgentLauncher {
   /**
    * JVM agent entry point, executed before the application's {@code main}.
    *
+   * <p>The first invocation selects the startup arguments. Later invocations, including those
+   * during initialization or after a failed attempt, return without spawning another daemon.
+   *
    * @param agentArgs agent argument string (optional configuration path)
    * @param inst instrumentation handle (not used)
    */
   public static void premain(String agentArgs, Instrumentation inst) {
     try {
+      if (!StartOnce.CLAIMED.compareAndSet(false, true)) {
+        return;
+      }
       start(new InitTask(agentArgs, inst));
     } catch (Throwable ignored) { // NOSONAR - even task creation can fail before start is entered
       // Do not log on the application's startup thread: stderr and JUL can block or initialize
       // application-wide state. Losing metrics is preferable to delaying or aborting the host.
     }
+  }
+
+  /** Loaded only inside premain's protection; the entry-point class itself has no static state. */
+  private static final class StartOnce {
+    private static final AtomicBoolean CLAIMED = new AtomicBoolean();
   }
 
   // Visible for testing
