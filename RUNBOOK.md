@@ -108,6 +108,7 @@ reach the application:
   had initialized `java.util.logging` or the platform MBeanServer first, the JVM would silently
   ignore those settings.
   - Logging: `INFO` and higher go to stderr through one private daemon, independently of JUL.
+    The packaged YAML parser uses the same private output, including duplicate-key warnings.
     Application JUL handlers and `java.util.logging` configuration do not control agent diagnostics.
     The queue holds at most 256 records; producers discard new records on saturation, without
     waiting for output. Each rendered line is capped at 4096 characters and includes the exception

@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 - Send agent diagnostics to stderr on a private daemon with a 256-record queue and bounded output
   lines, without invoking application JUL handlers. Expose diagnostic losses as `DroppedLogCount`
   and verify blocked/throwing output and delayed/no-JMX startup in separate host JVMs.
+- Redirect the packaged SnakeYAML internal logger (including its Java 9+ variant) to the private
+  diagnostic bridge so constructing the parser cannot initialize JUL or System.Logger.
 
 - Disable read-triggered refresh before MBean publication, including filesystem additions during
   reload and engine startup failures. Expose unavailable filesystem capacity until the first poll.

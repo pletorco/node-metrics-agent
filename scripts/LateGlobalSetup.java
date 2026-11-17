@@ -108,6 +108,10 @@ public class LateGlobalSetup {
         require(System.nanoTime() < deadline, "agent did not resume collection in the host server");
         Thread.sleep(50L);
       }
+      String expectedPath = args.length < 4 ? "/" : args[3];
+      require(
+          server.isRegistered(new ObjectName("kr.pletor.node:type=FsMetrics,path=" + expectedPath)),
+          "packaged parser did not apply the requested filesystem path");
       if (blocked || "throwing-output".equals(mode)) {
         require(outputAttempts.get() > 0, "output failure was not exercised");
         require(

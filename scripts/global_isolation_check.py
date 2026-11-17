@@ -24,10 +24,13 @@ def main():
         subprocess.run([args.javac, "--release", "11", "-cp", str(jar), "-d", str(classes), str(source)],
                        check=True, timeout=30)
         valid, invalid = work / "valid.yml", work / "invalid.yml"
-        valid.write_text("fsmetrics_paths: [/]\n")
+        warning = work / "warning.yml"
+        valid.write_text("fsmetrics_paths: [/tmp]\n")
+        warning.write_text("fsmetrics_paths: [/]\nfsmetrics_paths: [/tmp]\n")
         invalid.write_text("fsmetrics_paths: [\n")
         cases = [("control", "late", 12000, None), ("late-valid", "late", 12000, valid),
-                 ("early-warning", "late", 1000, invalid), ("no-jmx", "no-jmx", 12000, invalid),
+                 ("early-warning", "late", 1000, invalid),
+                 ("yaml-warning", "late", 1000, warning), ("no-jmx", "no-jmx", 12000, invalid),
                  ("blocked-output", "blocked-output", 0, valid),
                  ("throwing-output", "throwing-output", 0, valid)]
         for name, mode, delay, config in cases:
@@ -35,10 +38,12 @@ def main():
             if config:
                 command.append(f"-javaagent:{jar}={config}")
             command.extend(["-cp", str(classes) + os.pathsep + str(jar), "LateGlobalSetup", str(delay),
-                            mode, str(config is not None).lower()])
+                            mode, str(config is not None).lower(),
+                            "/tmp" if config in (valid, warning) else "/"])
             try:
                 result = subprocess.run(command, cwd=work, capture_output=True, text=True, timeout=45)
-                if result.returncode == 0 and "LATE SETUP OK" in result.stdout.splitlines():
+                if (result.returncode == 0 and "LATE SETUP OK" in result.stdout.splitlines()
+                        and (name != "yaml-warning" or "duplicate keys found" in result.stderr)):
                     print(f"PASS {name}: application singleton choices and execution preserved", flush=True)
                 else:
                     failures.append(name)
