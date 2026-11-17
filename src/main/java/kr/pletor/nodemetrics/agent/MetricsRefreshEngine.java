@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -48,6 +50,12 @@ final class MetricsRefreshEngine implements AutoCloseable {
   private final ArrayBlockingQueue<QueuedTask> backgroundQueue;
   private final Consumer<TelemetryMode> modeListener;
   private final AtomicReference<List<RefreshTask>> tasksRef = new AtomicReference<>(List.of());
+  // Execution ownership survives task removal/replacement. Only workers insert, after taking a
+  // lane permit: at most three owners per lane, six in total, including retired collectors.
+  private final Map<String, RefreshTask> runningTasks =
+      new ConcurrentHashMap<>(CRITICAL_WORKERS + BACKGROUND_WORKERS);
+  private final Semaphore criticalPolls = new Semaphore(CRITICAL_WORKERS);
+  private final Semaphore backgroundPolls = new Semaphore(BACKGROUND_WORKERS);
   private final AtomicBoolean running = new AtomicBoolean(false);
   private final LongAdder droppedCount = new LongAdder();
   private final LongAdder enqueuedCount = new LongAdder();
@@ -167,7 +175,9 @@ final class MetricsRefreshEngine implements AutoCloseable {
 
   /**
    * Replace the task set. A task with the same name, metric and lane keeps its in-flight state,
-   * success/failure history and staleness even when a config reload changes its interval.
+   * success/failure history and staleness even when a config reload changes its interval. Removed
+   * queued tasks are discarded by workers; removed running tasks retain resource ownership until
+   * poll returns. A replacement never polls concurrently with its predecessor.
    */
   void setTasks(List<RefreshTask> tasks) {
     Map<String, RefreshTask> existing = new HashMap<>();
@@ -187,11 +197,16 @@ final class MetricsRefreshEngine implements AutoCloseable {
     tasksRef.set(List.copyOf(merged));
   }
 
-  /** Names of tasks whose most recent poll failed, in registration order. */
+  /** Active failures in registration order, followed by failed collectors with retired polls. */
   List<String> failingTaskNames() {
     List<String> names = new ArrayList<>();
     for (RefreshTask t : tasksRef.get()) {
       if (t.consecutiveFailures.get() > 0) {
+        names.add(t.name);
+      }
+    }
+    for (RefreshTask t : runningTasks.values()) {
+      if (t.consecutiveFailures.get() > 0 && !names.contains(t.name)) {
         names.add(t.name);
       }
     }
@@ -231,7 +246,17 @@ final class MetricsRefreshEngine implements AutoCloseable {
         names.add(t.name);
       }
     }
+    for (RefreshTask t : runningTasks.values()) {
+      if (t.isStuck(now, stuckThresholdMs) && !names.contains(t.name)) {
+        names.add(t.name);
+      }
+    }
     return names;
+  }
+
+  // Visible for testing. Queued tasks stay bounded by their lane's existing queue capacity.
+  int runningTaskCount() {
+    return runningTasks.size();
   }
 
   long droppedCount() {
@@ -284,26 +309,28 @@ final class MetricsRefreshEngine implements AutoCloseable {
    *
    * <p>A healthy task is always close to {@code 0}, whatever its interval. The value rises during
    * {@code BYPASS} mode (when tasks are dropped) and when a task keeps failing. A task that has
-   * never succeeded counts from its registration time once it has failed at least once. Returns
-   * {@code 0} if no tasks are registered or none has been polled yet.
+   * never succeeded counts from its registration time once it is running or has failed at least
+   * once. Removed running tasks remain included until their calls return. Returns {@code 0} if
+   * nothing is registered or running, or none has started polling yet.
    */
   long maxTaskStalenessMs() {
-    List<RefreshTask> tasks = tasksRef.get();
-    if (tasks.isEmpty()) {
-      return 0L;
-    }
     long now = System.currentTimeMillis();
     long maxOverdue = 0L;
-    for (RefreshTask t : tasks) {
-      long baseline = t.lastSuccessEpochMs.get();
-      if (baseline <= 0L && t.consecutiveFailures.get() > 0) {
-        baseline = t.registeredAtEpochMs;
-      }
-      if (baseline > 0L) {
-        maxOverdue = Math.max(maxOverdue, now - baseline - t.intervalMs);
-      }
+    for (RefreshTask t : tasksRef.get()) {
+      maxOverdue = Math.max(maxOverdue, taskStalenessMs(t, now));
+    }
+    for (RefreshTask t : runningTasks.values()) {
+      maxOverdue = Math.max(maxOverdue, taskStalenessMs(t, now));
     }
     return maxOverdue;
+  }
+
+  private static long taskStalenessMs(RefreshTask task, long now) {
+    long baseline = task.lastSuccessEpochMs.get();
+    if (baseline <= 0L && (task.consecutiveFailures.get() > 0 || task.runningSinceNanos != 0L)) {
+      baseline = task.registeredAtEpochMs;
+    }
+    return baseline > 0L ? Math.max(0L, now - baseline - task.intervalMs) : 0L;
   }
 
   void start() {
@@ -400,7 +427,12 @@ final class MetricsRefreshEngine implements AutoCloseable {
       if (!task.isDue(now)) {
         continue;
       }
-      if (shouldDropTask(task)) {
+      RefreshTask owner = runningTasks.get(task.name);
+      if (!isRegistered(task) || (owner != null && owner != task)) {
+        // A fresh bean for the same logical resource must wait for the retired poll to finish.
+        task.scheduleNext(now);
+        droppedThisCycle++;
+      } else if (shouldDropTask(task)) {
         droppedThisCycle++;
       } else if (task.lowPriority) {
         if (!dispatchToBackground(task, now)) {
@@ -474,8 +506,19 @@ final class MetricsRefreshEngine implements AutoCloseable {
   private void processQueuedTask(QueuedTask queuedTask) {
     dequeuedCount.increment();
     RefreshTask task = queuedTask.task;
-    task.markPollStarted();
+    boolean claimed = false;
     try {
+      if (!isRegistered(task) || !claimPoll(task)) {
+        droppedCount.increment();
+        return;
+      }
+      claimed = true;
+      // setTasks may have replaced the collector between the first check and ownership claim.
+      if (!isRegistered(task)) {
+        droppedCount.increment();
+        return;
+      }
+      task.markPollStarted();
       task.metric.poll();
       // Metrics absorb read failures to keep JMX reads exception-free; they report them here.
       Throwable absorbed = task.metric.lastRefreshError();
@@ -487,9 +530,37 @@ final class MetricsRefreshEngine implements AutoCloseable {
     } catch (Exception | Error e) { // NOSONAR - worker must stay alive on metric failures
       recordFailure(task, e);
     } finally {
-      task.markPollFinished();
+      if (claimed) {
+        task.markPollFinished();
+        runningTasks.remove(task.name, task);
+        pollPermits(task).release();
+      }
       task.pending.set(false);
       recordEndToEndLatency(queuedTask.enqueuedAtNanos);
+    }
+  }
+
+  private boolean isRegistered(RefreshTask task) {
+    return tasksRef.get().contains(task);
+  }
+
+  private Semaphore pollPermits(RefreshTask task) {
+    return task.lowPriority ? backgroundPolls : criticalPolls;
+  }
+
+  private boolean claimPoll(RefreshTask task) {
+    Semaphore permits = pollPermits(task);
+    if (!permits.tryAcquire()) {
+      return false;
+    }
+    boolean claimed = false;
+    try {
+      claimed = runningTasks.putIfAbsent(task.name, task) == null;
+      return claimed;
+    } finally {
+      if (!claimed) {
+        permits.release();
+      }
     }
   }
 

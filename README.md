@@ -169,6 +169,9 @@ Agent threads must neither invoke those callbacks nor inherit host thread-local 
 checks run in smoke CI on Java 11, 17 and 21; the fixture classes are not packaged in the agent.
 The same smoke suite checks repeated/concurrent agent entry, first-argument selection, config reload,
 host-owned MBean collisions and interrupted initialization in bounded subprocesses.
+It also checks collector removal/re-registration during an uninterruptible synthetic read. For
+before/after execution and diagnostic-read measurements, run
+`python3 scripts/collector_ownership_check.py --agent-jar <candidate.jar> --baseline-jar <main.jar> --output /tmp/ownership-evidence.json`.
 
 `trivyScan` requires Python 3.9+ and Trivy. It checks runtime, test and build-tool dependencies
 and Gradle vendor advisories; `trivyScanAll` blocks all severities. See
