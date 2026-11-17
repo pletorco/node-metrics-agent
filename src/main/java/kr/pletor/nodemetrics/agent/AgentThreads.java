@@ -9,6 +9,8 @@ import java.util.logging.Level;
  * an {@link Error} escaping an agent thread would be handed to the application's default handler
  * ({@link Thread#setDefaultUncaughtExceptionHandler}), which in many applications logs and exits
  * the JVM. Agent failures must never reach the application, so they are logged here and dropped.
+ * Threads do not inherit thread locals: copying them can invoke application callbacks on the
+ * creating thread and retain application context for the lifetime of an agent daemon.
  */
 final class AgentThreads {
 
@@ -17,7 +19,7 @@ final class AgentThreads {
   }
 
   static Thread daemon(String name, Runnable task) {
-    Thread thread = new Thread(task, name);
+    Thread thread = new Thread(null, task, name, 0L, false);
     thread.setDaemon(true);
     thread.setUncaughtExceptionHandler(new LoggingHandler());
     return thread;

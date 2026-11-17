@@ -24,7 +24,8 @@ def main():
         classes = work / "classes"
         classes.mkdir()
         subprocess.run([args.javac, "--release", "11", "-cp", str(agent), "-d", str(classes),
-                        str(script_dir / "LauncherFailureProbe.java")], check=True, timeout=30)
+                        str(script_dir / "LauncherFailureProbe.java"),
+                        str(script_dir / "InheritedContextProbe.java")], check=True, timeout=30)
         guard_agent = work / "host-guards.jar"
         with zipfile.ZipFile(guard_agent, "w", zipfile.ZIP_DEFLATED) as guard:
             guard.writestr("META-INF/MANIFEST.MF", f"Manifest-Version: 1.0\nPremain-Class: {probe}\n\n")
@@ -63,6 +64,36 @@ def main():
             except subprocess.TimeoutExpired:
                 failures.append(name)
                 print(f"FAIL {name}: host JVM did not exit within 10 seconds", flush=True)
+
+        context_probe = "kr.pletor.nodemetrics.agent.InheritedContextProbe"
+        context_agent = work / "host-context.jar"
+        with zipfile.ZipFile(context_agent, "w", zipfile.ZIP_DEFLATED) as guard:
+            guard.writestr("META-INF/MANIFEST.MF",
+                           f"Manifest-Version: 1.0\nPremain-Class: {context_probe}\n\n")
+            for compiled in sorted(classes.rglob("*.class")):
+                guard.write(compiled, compiled.relative_to(classes).as_posix())
+        config = work / "context.yml"
+        config.write_text("refresh_interval_seconds: 1\nfsmetrics_paths: []\n", encoding="utf-8")
+        for mode in ("block", "throw", "copy"):
+            for control in (True, False):
+                name = f"inherited-{mode}-{'control' if control else 'candidate'}"
+                command = [args.java, "-Xmx64m", "-XX:-CreateCoredumpOnCrash",
+                           f"-javaagent:{context_agent}={mode}"]
+                if not control:
+                    command.append(f"-javaagent:{agent}={config}")
+                command.extend(["-cp", str(classes) + os.pathsep + str(agent), context_probe])
+                if control:
+                    command.append("control")
+                try:
+                    result = subprocess.run(command, cwd=work, capture_output=True, text=True, timeout=10)
+                    if result.returncode != 0 or f"INHERITED CONTEXT SAFE: {mode}" not in result.stdout.splitlines():
+                        failures.append(name)
+                        print(f"FAIL {name}: exit={result.returncode}\n{result.stdout}{result.stderr}", flush=True)
+                    else:
+                        print(f"PASS {name}: no agent childValue calls; host main completed", flush=True)
+                except subprocess.TimeoutExpired:
+                    failures.append(name)
+                    print(f"FAIL {name}: host JVM did not exit within 10 seconds", flush=True)
     return 1 if failures else 0
 
 

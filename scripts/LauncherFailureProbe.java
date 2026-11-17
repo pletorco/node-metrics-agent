@@ -60,18 +60,23 @@ public final class LauncherFailureProbe {
     installHostGuards();
     String scenario = args[0];
     if ("thread-creation".equals(scenario)) {
+      AtomicInteger inheritanceCalls = new AtomicInteger();
+      CountDownLatch started = new CountDownLatch(1);
       InheritableThreadLocal<Object> failingInheritance =
           new InheritableThreadLocal<>() {
             @Override
             protected Object childValue(Object parentValue) {
+              inheritanceCalls.incrementAndGet();
               throw new LinkageError("injected thread creation failure");
             }
           };
       failingInheritance.set(new Object());
       try {
         long before = System.nanoTime();
-        AgentLauncher.start(() -> APPLICATION_ERRORS.incrementAndGet());
+        AgentLauncher.start(started::countDown);
         require(System.nanoTime() - before < TimeUnit.SECONDS.toNanos(1), "launcher waited");
+        require(started.await(3, TimeUnit.SECONDS), "initializer did not run");
+        require(inheritanceCalls.get() == 0, "launcher invoked the application's childValue");
       } finally {
         failingInheritance.remove();
       }

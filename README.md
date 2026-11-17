@@ -155,6 +155,12 @@ Common commands:
 ./gradlew trivyScan
 ```
 
+After `./gradlew shadowJar`, `scripts/smoke-test.sh build/libs/node-metrics-agent-0.10.1-all.jar`
+checks the packaged agent. Its launcher checks run in disposable JVMs with external time limits,
+including a preceding agent whose inherited thread-local callbacks block, throw, or copy 8 MiB.
+Agent threads must neither invoke those callbacks nor inherit host thread-local values. The same
+checks run in smoke CI on Java 11, 17 and 21; the fixture classes are not packaged in the agent.
+
 `trivyScan` requires Python 3.9+ and Trivy. It checks runtime, test and build-tool dependencies
 and Gradle vendor advisories; `trivyScanAll` blocks all severities. See
 [Dependency security checks](docs/SECURITY-CHECKS.md) for reports, failure handling and coverage
