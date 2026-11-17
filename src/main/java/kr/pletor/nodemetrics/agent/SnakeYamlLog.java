@@ -8,11 +8,11 @@ package kr.pletor.nodemetrics.agent;
  * JDK System.Logger bridge). The packaged host probes verify this boundary with real YAML.
  */
 public final class SnakeYamlLog {
-  private final ThrottledLogger logger;
+  private static final SnakeYamlLog INSTANCE = new SnakeYamlLog();
+  private static final ThrottledLogger WARNINGS =
+      new ThrottledLogger(AgentLog.getLogger(SnakeYamlLog.class.getName()), 30_000L);
 
-  private SnakeYamlLog(String name) {
-    logger = new ThrottledLogger(AgentLog.getLogger(name), 30_000L);
-  }
+  private SnakeYamlLog() {}
 
   /** Levels used by SnakeYAML's internal diagnostic API. */
   public enum Level {
@@ -22,7 +22,8 @@ public final class SnakeYamlLog {
 
   /** Creates the parser's private logger without touching application logging. */
   public static SnakeYamlLog getLogger(String name) {
-    return new SnakeYamlLog(name);
+    // A new parser is constructed on every reload; its warnings share one bounded throttle.
+    return INSTANCE;
   }
 
   /** Only warning diagnostics are enabled. */
@@ -32,7 +33,7 @@ public final class SnakeYamlLog {
 
   /** Rate-limit repeated parser warnings before offering them to the private writer. */
   public void warn(String message) {
-    logger.log(java.util.logging.Level.WARNING, "yaml-warning", () -> message);
+    WARNINGS.log(java.util.logging.Level.WARNING, "yaml-warning", () -> message);
   }
 
   /** Debug output is disabled, consistently with the agent's INFO threshold. */
