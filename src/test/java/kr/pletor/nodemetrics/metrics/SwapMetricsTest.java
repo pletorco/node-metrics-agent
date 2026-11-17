@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -133,21 +132,11 @@ class SwapMetricsTest {
 
   private CgroupMemMetrics cgroup(String version) throws Exception {
     Assumptions.assumeTrue(LinuxProcFs.isLinux(), "reads the Linux code path");
-    CgroupMemMetrics metrics = new CgroupMemMetrics();
-    Field cgField = CgroupMemMetrics.class.getDeclaredField("cg");
-    cgField.setAccessible(true);
-    Object cg = cgField.get(metrics);
-    set(cg, "version", version);
-    set(cg, "resolved", dir);
-    set(cg, "path", "/test");
-    set(cg, "baseDir", null); // do not walk the host's real ancestors
-    return metrics;
-  }
-
-  private static void set(Object target, String field, Object value) throws Exception {
-    Field f = target.getClass().getDeclaredField(field);
-    f.setAccessible(true);
-    f.set(target, value);
+    LinuxProcFs.CgroupInfo info = new LinuxProcFs.CgroupInfo();
+    info.version = version;
+    info.resolved = dir;
+    info.path = "/test";
+    return new CgroupMemMetrics(new CgroupBinding(() -> info));
   }
 
   @Test

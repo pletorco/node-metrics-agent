@@ -17,6 +17,14 @@ package kr.pletor.nodemetrics.metrics;
  */
 public interface PressureMetricsMBean {
 
+  /** Current cgroup identity; empty for node PSI or unavailable membership. */
+  @JmxMetricHint("gauge")
+  String getCgroupPath();
+
+  /** v2 for available cgroup PSI, none for node PSI or unavailable membership. */
+  @JmxMetricHint("gauge")
+  String getCgroupVersion();
+
   /**
    * Returns the share of the last 10 seconds during which at least one task was stalled waiting for
    * CPU, in percent.

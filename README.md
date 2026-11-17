@@ -183,6 +183,12 @@ It also checks collector removal/re-registration during an uninterruptible synth
 before/after execution and diagnostic-read measurements, run
 `python3 scripts/collector_ownership_check.py --agent-jar <candidate.jar> --baseline-jar <main.jar> --output /tmp/ownership-evidence.json`.
 
+Cgroup migration checks use synthetic v1/v2 files and the packaged collectors; they do not move the
+host process. Run `python3 scripts/cgroup_migration_check.py --agent-jar <candidate.jar> --baseline-jar <main.jar> --output /tmp/migration-evidence.json`
+for the unchanged-main control and worker/getter CPU/allocation/p99 measurements. Add
+`--exporter-jar <jmx-exporter-1.6.0.jar>` to verify HTTP scrapes and changing memory/PID/PSI identity
+labels. See [membership and counter semantics](RUNBOOK.md#cgroup-membership-changes).
+
 `trivyScan` requires Python 3.9+ and Trivy. It checks runtime, test and build-tool dependencies
 and Gradle vendor advisories; `trivyScanAll` blocks all severities. See
 [Dependency security checks](docs/SECURITY-CHECKS.md) for reports, failure handling and coverage

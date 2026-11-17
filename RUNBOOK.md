@@ -255,11 +255,13 @@ Unavailable values and the exporter:
 - A `null` value is safe only because the agent also leaves such an attribute out of the MBean's
   attribute list until it has a value. Exporter 1.6.0 fails the whole scrape with a
   `NullPointerException` when a `null` value sits in an MBean that a rule customizes with
-  `attributesAsLabels` (the example rules do for the cgroup memory MBean), whereas an attribute that is
+  `attributesAsLabels` (the example rules do for cgroup memory, PID and PSI MBeans), whereas an attribute that is
   not listed is never read. A JMX client therefore sees the counter appear and disappear with its
   source, and reading it directly returns `null`.
 - `attributesAsLabels` labels (`CgroupVersion`, `CgroupPath`, the `OsInfoMetrics` labels) were not
-  applied by exporter 1.0.1 in the same test, and were by 1.6.0; use a recent exporter if you want them.
+  applied by exporter 1.0.1 in the same test, and were by 1.6.0. Use an exporter that applies these
+  labels when querying counters across cgroup migration; an unlabeled series cannot distinguish
+  the counters of two different groups.
 - The agent's own `kr.pletor.agent` counters are never unavailable and are plain `long` values.
 - `src/main/resources/prometheus_alerts_example.yml` has example alerts that follow these rules;
   the build checks that every metric name in it is one the example exporter rules produce.
@@ -368,6 +370,46 @@ OOM kills:
   before the first OOM kill, so `rate(...memorymaxeventstotal_total[5m]) > 0` for several minutes is the
   earlier warning. `MemoryHighEventsTotal` counts crossings of `memory.high` (v2 only, absent on v1);
   it stays `0` unless `memory.high` is set, which Kubernetes does only with the memory QoS feature.
+
+### Cgroup membership changes
+
+Memory, PID and cgroup PSI collectors resolve membership on their polling workers and cache one
+binding per collector for `60 s`. The next scheduled poll after expiry re-reads membership even if
+the old group is still readable. A stable move is normally reflected within `60 s` plus that
+collector's refresh interval and I/O time; worker saturation or a stalled filesystem can delay it.
+Initial absence and failed resolution are also cached for `60 s`, avoiding retries on every poll.
+No constructor or managed JMX getter performs membership I/O. CPU uses the same one-minute TTL and
+also retains its existing early re-resolution after a cpu.stat read failure. When its resolved path
+changes, CPU starts a fresh throttling window: ratio is `-1` and delta count is `0` until the next
+sample, while cumulative counters describe the new group.
+
+On v1, memory and PID resolve their own controller membership independently, under the common
+`memory` and `pids` mount layouts; their paths need not match. V2 uses the unified membership. The
+new binding's mount root bounds ancestor-limit traversal. Missing, unreadable, malformed, oversized
+or escaping membership never substitutes the mount root or retains the expired group. An explicit
+valid `/` membership still denotes the root. Missing metric files report their usual unavailable
+values; independent files that remain readable can still report values for that same binding.
+
+Each collector publishes a complete immutable snapshot containing its identity and values. There
+is no transaction spanning all MBeans or separate JMX getter calls: a scrape concurrent with a
+transition can straddle snapshots, and collectors can observe a move on different polls. A subsequent
+stable scrape converges. Resolution is single-flight per collector; an overlapping resolver caller
+gets unavailable rather than waiting behind a stalled read. There are three membership caches,
+no historical-group map or replacement workers. Membership scans retain the existing `64 KiB`,
+`16 KiB` per-line and `1024`-line limits; detection may try v2 then v1 (at most two bounded scans).
+Ancestor walks retain their 64-level cap.
+
+Memory and PSI counters expose the raw cumulative values of the current group, without adding old
+group totals or calculating deltas across groups. They can decrease or increase on a move. The
+example exporter rules apply `CgroupVersion` and `CgroupPath` labels to memory, PID and cgroup PSI
+and disable cgroup rule caching so path changes appear in series identity. Exporter `1.6.0` migration
+scrapes verify both decreasing memory counters and increasing PSI counters. Apply `rate()` before
+aggregating across these labels. Exporter `1.0.1` remains scrape-compatible but does not apply these
+identity labels. CPU's existing node counter series has no cgroup identity labels; avoid deriving a
+rate across a known migration from that unlabeled cumulative series. The CPU window ratio/delta
+attributes reset their baseline on a detected path change.
+
+Before the first completed poll, cgroup identity is `none`/empty and values are unavailable.
 
 Process limit (PIDs):
 

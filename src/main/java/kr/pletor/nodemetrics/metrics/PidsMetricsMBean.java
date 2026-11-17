@@ -13,6 +13,14 @@ package kr.pletor.nodemetrics.metrics;
  */
 public interface PidsMetricsMBean {
 
+  /** Membership identity for this snapshot, independent of the ancestor enforcing its limit. */
+  @JmxMetricHint("gauge")
+  String getCgroupPath();
+
+  /** v1, v2, or none when unavailable. */
+  @JmxMetricHint("gauge")
+  String getCgroupVersion();
+
   /**
    * Returns the number of processes and threads in the cgroup that enforces the limit: the tightest
    * finite {@code pids.max} of the JVM's cgroup and its ancestors. Without any limit it is the

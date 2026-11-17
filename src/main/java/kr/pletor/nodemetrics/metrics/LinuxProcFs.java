@@ -474,6 +474,11 @@ final class LinuxProcFs {
    * @return populated {@link CgroupInfo} (version may be {@code "none"})
    */
   static CgroupInfo detectCgroup() {
+    return detectCgroup("memory");
+  }
+
+  /** Resolve a v1 controller independently; v2 has a unified membership. */
+  static CgroupInfo detectCgroup(String controller) {
     CgroupInfo info = new CgroupInfo();
     if (!isLinux()) {
       return info;
@@ -486,7 +491,7 @@ final class LinuxProcFs {
         return v2;
       }
 
-      CgroupInfo v1 = tryDetectCgroupV1();
+      CgroupInfo v1 = tryDetectCgroupV1(controller);
       if (v1 != null) {
         LOGGER.log(Level.FINE, "Detected cgroup v1: {0}", v1.resolved);
         return v1;
@@ -516,8 +521,8 @@ final class LinuxProcFs {
     info.baseDir = sysRoot.resolve("fs/cgroup");
 
     String path = readV2SelfCgroupPath();
-    if (path == null || path.isEmpty()) {
-      path = "/";
+    if (path == null || !path.startsWith("/")) {
+      return null; // Missing/unreadable membership is not permission to report the mount root.
     }
 
     info.path = path;
@@ -534,7 +539,7 @@ final class LinuxProcFs {
       }
       for (String ln : CollectorInput.readLines(selfCgroup, CollectorInput.SMALL)) {
         String[] parts = ln.split(":", 3);
-        if (parts.length == 3 && "0".equals(parts[0])) {
+        if (parts.length == 3 && "0".equals(parts[0]) && parts[1].isEmpty()) {
           return parts[2];
         }
       }
@@ -551,21 +556,21 @@ final class LinuxProcFs {
    *
    * @return populated {@link CgroupInfo} for v1, or {@code null} if not v1.
    */
-  private static CgroupInfo tryDetectCgroupV1() {
+  private static CgroupInfo tryDetectCgroupV1(String controller) {
     Path cgroupFile = procRoot.resolve("self/cgroup");
     if (!Files.isRegularFile(cgroupFile)) {
       return null;
     }
 
-    String memoryPath = findMemoryControllerPath(cgroupFile);
-    if (memoryPath == null) {
+    String memoryPath = findControllerPath(cgroupFile, controller);
+    if (memoryPath == null || !memoryPath.startsWith("/")) {
       return null;
     }
 
     CgroupInfo info = new CgroupInfo();
     info.version = "v1";
     info.path = memoryPath;
-    info.baseDir = sysRoot.resolve("fs/cgroup/memory");
+    info.baseDir = sysRoot.resolve("fs/cgroup").resolve(controller);
     info.resolved = resolveCgroupPath(info.baseDir, memoryPath);
     return info;
   }
@@ -574,13 +579,13 @@ final class LinuxProcFs {
    * Look for a line containing "memory" controller in {@code /proc/self/cgroup} and return its
    * cgroup path.
    */
-  private static String findMemoryControllerPath(Path cgroupFile) {
+  private static String findControllerPath(Path cgroupFile, String target) {
     try {
       for (String ln : CollectorInput.readLines(cgroupFile, CollectorInput.SMALL)) {
         String[] parts = ln.split(":", 3);
         if (parts.length == 3) {
           String controllers = parts[1];
-          if (controllers.contains("memory")) {
+          if (java.util.Arrays.asList(controllers.split(",")).contains(target)) {
             return parts[2];
           }
         }
@@ -603,7 +608,8 @@ final class LinuxProcFs {
     }
     // strip leading "/" to avoid double separators
     String relative = cgroupPath.replaceFirst("^/", "");
-    return baseDir.resolve(relative);
+    Path resolved = baseDir.resolve(relative).normalize();
+    return resolved.startsWith(baseDir.normalize()) ? resolved : null;
   }
 
   /**

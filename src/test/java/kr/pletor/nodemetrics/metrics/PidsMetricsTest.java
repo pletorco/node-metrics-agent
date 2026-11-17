@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Assumptions;
@@ -23,21 +22,16 @@ class PidsMetricsTest {
   }
 
   private static PidsMetrics metrics(String version, Path resolved, Path baseDir) throws Exception {
-    PidsMetrics metrics = new PidsMetrics();
-    Field cgField = PidsMetrics.class.getDeclaredField("cg");
-    cgField.setAccessible(true);
-    Object cg = cgField.get(metrics);
-    set(cg, "version", version);
-    set(cg, "resolved", resolved);
-    set(cg, "path", "/test");
-    set(cg, "baseDir", baseDir);
-    return metrics;
-  }
-
-  private static void set(Object target, String field, Object value) throws Exception {
-    Field f = target.getClass().getDeclaredField(field);
-    f.setAccessible(true);
-    f.set(target, value);
+    LinuxProcFs.CgroupInfo info = new LinuxProcFs.CgroupInfo();
+    info.version = version;
+    info.path = "/test";
+    info.resolved = resolved;
+    info.baseDir = baseDir;
+    if ("v1".equals(version) && baseDir != null) {
+      info.baseDir = baseDir.resolveSibling("pids");
+      info.resolved = info.baseDir.resolve(baseDir.relativize(resolved));
+    }
+    return new PidsMetrics(new CgroupBinding(() -> info));
   }
 
   private static Path level(Path dir, String current, String max) throws IOException {

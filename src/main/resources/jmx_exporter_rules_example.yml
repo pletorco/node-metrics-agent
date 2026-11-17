@@ -30,6 +30,22 @@ metricCustomizers:
       - CgroupVersion
       - CgroupPath
 
+  - mbeanFilter:
+      domain: kr.pletor.cgroup
+      properties:
+        type: PressureMetrics
+    attributesAsLabels:
+      - CgroupVersion
+      - CgroupPath
+
+  - mbeanFilter:
+      domain: kr.pletor.cgroup
+      properties:
+        type: PidsMetrics
+    attributesAsLabels:
+      - CgroupVersion
+      - CgroupPath
+
 rules:
   # ============================================================================
   # Cumulative counters are typed COUNTER, so the exporter names them "<attribute>_total" (for
@@ -54,12 +70,12 @@ rules:
   - pattern: 'kr.pletor.cgroup<type=(.+?)(?:,(.+))?><>(CgroupCpuThrottledCount|[A-Za-z]+Total|(?:Cpu|Memory|Io)(?:Some|Full)TotalMicros|Count):'
     name: pletor_cgroup_$1_$3
     type: COUNTER
-    cache: true
+    cache: false
 
   - pattern: 'kr.pletor.cgroup<type=(.+?)(?:,(.+))?><>(.+):'
     name: pletor_cgroup_$1_$3
     type: GAUGE
-    cache: true
+    cache: false
 
 
   # ----------------------------------------------------------------------------

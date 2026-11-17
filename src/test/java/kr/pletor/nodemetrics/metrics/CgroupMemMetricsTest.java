@@ -5,58 +5,22 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mockStatic;
 
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
 
-/**
- * High-coverage tests for {@link CgroupMemMetrics}.
- *
- * <p>Test strategy:
- *
- * <ul>
- *   <li>Control {@code LinuxProcFs.isLinux()} and {@code LinuxProcFs.readFirstNumber(...)} via
- *       static mocking.
- *   <li>Use reflection to force internal {@code CgroupInfo cg} fields ({@code version}, {@code
- *       path}, {@code resolved}).
- * </ul>
- */
+/** Memory values and ancestor limits using fixed membership fixtures. */
 class CgroupMemMetricsTest {
   @TempDir Path root;
 
-  // ------- Utility: mutate private cg field via reflection -------
-
-  /**
-   * Helper that updates the internal {@code cg} field on {@link CgroupMemMetrics} to simulate
-   * different cgroup environments.
-   */
-  private void setCgroupInfo(CgroupMemMetrics metrics, String version, Path resolved, String path)
-      throws Exception {
-    Field cgField = CgroupMemMetrics.class.getDeclaredField("cg");
-    cgField.setAccessible(true);
-    Object cg = cgField.get(metrics);
-
-    Field versionField = cg.getClass().getDeclaredField("version");
-    versionField.setAccessible(true);
-    versionField.set(cg, version);
-
-    Field resolvedField = cg.getClass().getDeclaredField("resolved");
-    resolvedField.setAccessible(true);
-    resolvedField.set(cg, resolved);
-
-    Field pathField = cg.getClass().getDeclaredField("path");
-    pathField.setAccessible(true);
-    pathField.set(cg, path);
-
-    // Do not inherit the mount root of the host running the tests. With a real root, the
-    // effective-limit lookup would also read ancestor directories outside the fixture.
-    // Tests that exercise ancestors set the root explicitly.
-    Field baseDirField = cg.getClass().getDeclaredField("baseDir");
-    baseDirField.setAccessible(true);
-    baseDirField.set(cg, null);
+  private CgroupMemMetrics withCgroup(String version, Path resolved, String path) {
+    LinuxProcFs.CgroupInfo info = new LinuxProcFs.CgroupInfo();
+    info.version = version;
+    info.resolved = resolved;
+    info.path = path;
+    return new CgroupMemMetrics(new CgroupBinding(() -> info));
   }
 
   // ------- 1. Non-Linux (isLinux == false) -------
@@ -88,7 +52,7 @@ class CgroupMemMetricsTest {
     Files.writeString(tempDir.resolve("memory.max"), "1024");
 
     // cg.version = "v2", cg.resolved = tempDir, cg.path = "/my/cg/path"
-    setCgroupInfo(metrics, "v2", tempDir, "/my/cg/path");
+    metrics = withCgroup("v2", tempDir, "/my/cg/path");
 
     try (MockedStatic<LinuxProcFs> mocked = mockStatic(LinuxProcFs.class)) {
       mocked.when(LinuxProcFs::isLinux).thenReturn(true);
@@ -113,7 +77,7 @@ class CgroupMemMetricsTest {
 
     Path directory = Files.createDirectory(root.resolve("v1"));
     Files.writeString(directory.resolve("memory.limit_in_bytes"), Long.toString(Long.MAX_VALUE));
-    setCgroupInfo(metrics, "v1", directory, "/my/v1/path");
+    metrics = withCgroup("v1", directory, "/my/v1/path");
 
     try (MockedStatic<LinuxProcFs> mocked = mockStatic(LinuxProcFs.class)) {
       mocked.when(LinuxProcFs::isLinux).thenReturn(true);
@@ -138,7 +102,7 @@ class CgroupMemMetricsTest {
     CgroupMemMetrics metrics = new CgroupMemMetrics();
 
     // cg.version = "none"
-    setCgroupInfo(metrics, "none", null, null);
+    metrics = withCgroup("none", null, null);
 
     try (MockedStatic<LinuxProcFs> mocked = mockStatic(LinuxProcFs.class)) {
       mocked.when(LinuxProcFs::isLinux).thenReturn(true);
@@ -160,7 +124,7 @@ class CgroupMemMetricsTest {
     CgroupMemMetrics metrics = new CgroupMemMetrics();
 
     // Assume v2 (v1 would hit the same catch(Throwable) branch)
-    setCgroupInfo(metrics, "v2", null, "/error/path");
+    metrics = withCgroup("v2", root, "/error/path");
 
     try (MockedStatic<LinuxProcFs> mocked = mockStatic(LinuxProcFs.class)) {
       mocked.when(LinuxProcFs::isLinux).thenReturn(true);
@@ -185,7 +149,7 @@ class CgroupMemMetricsTest {
       Files.writeString(dir.resolve(files[i]), files[i + 1]);
     }
     CgroupMemMetrics metrics = new CgroupMemMetrics();
-    setCgroupInfo(metrics, version, dir, "/pod/container");
+    metrics = withCgroup(version, dir, "/pod/container");
     metrics.poll();
     metrics.setReadRefreshEnabled(false);
     return metrics;
@@ -271,15 +235,12 @@ class CgroupMemMetricsTest {
   private CgroupMemMetrics metricsInHierarchy(String version, Path root, Path leaf)
       throws Exception {
     org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
-    CgroupMemMetrics metrics = new CgroupMemMetrics();
-    setCgroupInfo(metrics, version, leaf, "/pod/container");
-    Field cgField = CgroupMemMetrics.class.getDeclaredField("cg");
-    cgField.setAccessible(true);
-    Object cg = cgField.get(metrics);
-    Field baseDir = cg.getClass().getDeclaredField("baseDir");
-    baseDir.setAccessible(true);
-    baseDir.set(cg, root);
-    return metrics;
+    LinuxProcFs.CgroupInfo info = new LinuxProcFs.CgroupInfo();
+    info.version = version;
+    info.resolved = leaf;
+    info.path = "/pod/container";
+    info.baseDir = root;
+    return new CgroupMemMetrics(new CgroupBinding(() -> info));
   }
 
   @Test

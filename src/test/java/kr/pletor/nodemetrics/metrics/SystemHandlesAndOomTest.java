@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -151,21 +150,11 @@ class SystemHandlesAndOomTest {
 
   private CgroupMemMetrics cgroup(String version) throws Exception {
     cgroupDir = Files.createDirectories(root.resolve("cg-" + version));
-    CgroupMemMetrics metrics = new CgroupMemMetrics();
-    Field cgField = CgroupMemMetrics.class.getDeclaredField("cg");
-    cgField.setAccessible(true);
-    Object cg = cgField.get(metrics);
-    set(cg, "version", version);
-    set(cg, "resolved", cgroupDir);
-    set(cg, "path", "/test");
-    set(cg, "baseDir", null);
-    return metrics;
-  }
-
-  private static void set(Object target, String field, Object value) throws Exception {
-    Field f = target.getClass().getDeclaredField(field);
-    f.setAccessible(true);
-    f.set(target, value);
+    LinuxProcFs.CgroupInfo info = new LinuxProcFs.CgroupInfo();
+    info.version = version;
+    info.resolved = cgroupDir;
+    info.path = "/test";
+    return new CgroupMemMetrics(new CgroupBinding(() -> info));
   }
 
   @Test
