@@ -1,8 +1,6 @@
 package kr.pletor.nodemetrics.metrics;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -147,20 +145,18 @@ final class MemStatsUtil {
    */
   static Map<String, Long> readKeyValues(Path file) throws IOException {
     Map<String, Long> out = new HashMap<>();
-    try (BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-      String line;
-      while ((line = br.readLine()) != null) {
-        line = line.trim();
-        if (line.isEmpty()) {
-          continue;
-        }
-        String[] parts = line.split("\\s+");
-        if (parts.length >= 2) {
-          try {
-            out.put(parts[0], Long.parseLong(parts[1]));
-          } catch (NumberFormatException ignore) {
-            // Skip malformed line.
-          }
+    for (String raw : CollectorInput.readLines(file, CollectorInput.SMALL)) {
+      String line = raw;
+      line = line.trim();
+      if (line.isEmpty()) {
+        continue;
+      }
+      String[] parts = line.split("\\s+");
+      if (parts.length >= 2) {
+        try {
+          out.put(parts[0], Long.parseLong(parts[1]));
+        } catch (NumberFormatException ignore) {
+          // Skip malformed line.
         }
       }
     }

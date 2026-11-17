@@ -123,6 +123,18 @@ reach the application:
     `newMBeanServer()` servers and servers released from the factory are not discoverable this way.
     If the application never creates a discoverable server, agent metrics remain unavailable.
 
+## Collector Input Limits
+
+Collector streams have fixed byte, line-length and row limits; sysfs scans, retained mounts,
+interface-cache entries and cgroup ancestor traversal are also bounded. Oversized input is
+rejected before publishing partial tables. Affected metrics keep their last valid snapshot or
+expose their defined unavailable value. Normal polling recovers after the source becomes valid.
+
+See [the input inventory and exact limits](docs/COLLECTOR-INPUT-LIMITS.md) for each source,
+read-ahead behavior, failure policy and the small-heap host regression command. Large hosts can
+exceed these safety ceilings: inspect `InputLimitExceededCount` and the failing task before
+interpreting missing/stale series. The limits are not runtime configuration options.
+
 ## Configuration Reload
 
 The agent watches the active config file and also polls as a fallback.
@@ -143,6 +155,8 @@ Prometheus alerting rules; check it with `promtool check rules` and tune the thr
   counters stay `COUNTER`, so the exporter 1.x appends `_total`; exporter 0.x does not)
 - `pletor_agent_observability_droppedlogcount_total` increases (agent diagnostic output is
   saturated or failing; inspect stderr and its destination)
+- `pletor_agent_observability_inputlimitexceededcount_total` increases (a collector source,
+  enumeration or cgroup hierarchy exceeded its safety limit)
 - `pletor_agent_observability_queuefillratio >= 0.80`
 - `pletor_agent_observability_maxtaskstalenessms` rises for a sustained period
   (seconds behind schedule; healthy tasks stay near `0` whatever their refresh interval)

@@ -1,7 +1,6 @@
 package kr.pletor.nodemetrics.metrics;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -70,7 +69,7 @@ interface SystemAccess {
 
     @Override
     public String readString(Path path) throws IOException {
-      return Files.readString(path, StandardCharsets.UTF_8);
+      return CollectorInput.readString(path, CollectorInput.SMALL);
     }
 
     @Override
@@ -80,7 +79,7 @@ interface SystemAccess {
 
     @Override
     public List<String> readLines(Path path) throws IOException {
-      return LinuxProcFs.readLines(path);
+      return CollectorInput.readLines(path, CollectorInput.SMALL);
     }
 
     @Override

@@ -2,7 +2,6 @@ package kr.pletor.nodemetrics.metrics;
 
 import com.sun.management.OperatingSystemMXBean;
 import java.lang.management.ManagementFactory;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -307,10 +306,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     Path path = procRoot.resolve("stat");
     // Only the aggregate first line is needed. /proc/stat has one line per CPU plus a very long
     // "intr" line, so reading it all would allocate a String per line on every poll.
-    String first;
-    try (java.io.BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.US_ASCII)) {
-      first = reader.readLine();
-    }
+    String first = CollectorInput.readFirstLine(path);
 
     if (first == null) {
       return null;
@@ -449,7 +445,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
   /** Read load averages from /proc/loadavg. */
   private static LoadAverages readLoadAverages() throws java.io.IOException {
     Path path = procRoot.resolve("loadavg");
-    String line = Files.readString(path, StandardCharsets.US_ASCII).trim();
+    String line = CollectorInput.readString(path, CollectorInput.NUMBER).trim();
 
     String[] tokens = line.split("\\s+");
     if (tokens.length < 3) {
@@ -605,9 +601,11 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     // cgroup v1: collect cpu/cpuacct controller paths and probe common mount layouts.
     List<Path> candidates = new ArrayList<>();
     try {
-      for (String ln : Files.readAllLines(selfCgroup, StandardCharsets.US_ASCII)) {
+      for (String ln : CollectorInput.readLines(selfCgroup, CollectorInput.SMALL)) {
         appendV1CpuStatCandidates(baseDir, candidates, ln);
       }
+    } catch (CollectorInput.LimitExceededException e) {
+      throw new java.io.UncheckedIOException(e);
     } catch (Exception ignored) {
       return List.of();
     }
@@ -640,12 +638,14 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
 
   private static String readUnifiedCgroupPath(Path selfCgroup) {
     try {
-      for (String ln : Files.readAllLines(selfCgroup, StandardCharsets.US_ASCII)) {
+      for (String ln : CollectorInput.readLines(selfCgroup, CollectorInput.SMALL)) {
         String[] parts = ln.split(":", 3);
         if (parts.length == 3 && "0".equals(parts[0])) {
           return parts[2];
         }
       }
+    } catch (CollectorInput.LimitExceededException e) {
+      throw new java.io.UncheckedIOException(e);
     } catch (Exception ignored) {
       return "/";
     }
@@ -717,7 +717,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
    * @return parsed stats, or {@code null} when no useful data is found
    */
   private static CgroupCpuStats parseCgroupCpuStats(Path statPath) throws java.io.IOException {
-    List<String> lines = Files.readAllLines(statPath, StandardCharsets.US_ASCII);
+    List<String> lines = CollectorInput.readLines(statPath, CollectorInput.SMALL);
 
     long usageNs = -1L;
     long throttledNs = -1L;
@@ -775,8 +775,10 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     Path scopedPath = findProcessScopedCpuAcctUsagePath(baseDir);
     if (scopedPath != null && Files.isRegularFile(scopedPath)) {
       try {
-        String txt = Files.readString(scopedPath, StandardCharsets.US_ASCII).trim();
+        String txt = CollectorInput.readString(scopedPath, CollectorInput.NUMBER).trim();
         return parseLongStrict(txt);
+      } catch (CollectorInput.LimitExceededException e) {
+        throw new java.io.UncheckedIOException(e);
       } catch (Exception ignored) {
         return -1L;
       }
@@ -785,8 +787,10 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     Path usagePath = baseDir.resolve("cpuacct/cpuacct.usage");
     if (Files.isRegularFile(usagePath)) {
       try {
-        String txt = Files.readString(usagePath, StandardCharsets.US_ASCII).trim();
+        String txt = CollectorInput.readString(usagePath, CollectorInput.NUMBER).trim();
         return parseLongStrict(txt);
+      } catch (CollectorInput.LimitExceededException e) {
+        throw new java.io.UncheckedIOException(e);
       } catch (Exception ignored) {
         return -1L;
       }
@@ -802,7 +806,7 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
 
     try {
-      for (String ln : Files.readAllLines(selfCgroup, StandardCharsets.US_ASCII)) {
+      for (String ln : CollectorInput.readLines(selfCgroup, CollectorInput.SMALL)) {
         String[] parts = ln.split(":", 3);
         if (parts.length != 3) {
           continue;
@@ -820,6 +824,8 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
           return combined.resolve("cpuacct.usage");
         }
       }
+    } catch (CollectorInput.LimitExceededException e) {
+      throw new java.io.UncheckedIOException(e);
     } catch (Exception ignored) {
       return null;
     }

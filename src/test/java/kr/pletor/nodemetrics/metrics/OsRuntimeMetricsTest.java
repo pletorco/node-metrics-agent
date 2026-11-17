@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.io.ByteArrayInputStream;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.lang.reflect.Method;
@@ -50,7 +51,8 @@ class OsRuntimeMetricsTest {
         "/dev/sda1 / ext4 rw,relatime 0 0\n" + "tmpfs /run tmpfs rw,nosuid,nodev 0 0\n";
     List<String> mountLines = mountsText.lines().collect(java.util.stream.Collectors.toList());
 
-    try (MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class);
+    try (MockedStatic<LinuxProcFs> linuxMock =
+            Mockito.mockStatic(LinuxProcFs.class, Mockito.CALLS_REAL_METHODS);
         MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class)) {
 
       // Pretend we are on Linux
@@ -59,8 +61,8 @@ class OsRuntimeMetricsTest {
       // Simulate /proc/uptime existing and containing a valid value
       filesMock.when(() -> Files.isRegularFile(uptimePath)).thenReturn(true);
       filesMock
-          .when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8))
-          .thenReturn("123.0 456.0\n");
+          .when(() -> Files.newInputStream(uptimePath))
+          .thenReturn(new ByteArrayInputStream("123.0 456.0\n".getBytes(StandardCharsets.UTF_8)));
 
       // Simulate /proc/self/mounts existing and containing two lines
       filesMock.when(() -> Files.isRegularFile(selfMountsPath)).thenReturn(true);
@@ -102,7 +104,8 @@ class OsRuntimeMetricsTest {
     List<String> mountLines = mountsText.lines().collect(java.util.stream.Collectors.toList());
 
     try (MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class);
-        MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class)) {
+        MockedStatic<LinuxProcFs> linuxMock =
+            Mockito.mockStatic(LinuxProcFs.class, Mockito.CALLS_REAL_METHODS)) {
 
       // self mount file does not exist, /proc/mounts exists
       filesMock.when(() -> Files.isRegularFile(selfMountsPath)).thenReturn(false);
@@ -128,7 +131,8 @@ class OsRuntimeMetricsTest {
     Path mountsPath = Path.of("/proc/mounts");
 
     try (MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class);
-        MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class)) {
+        MockedStatic<LinuxProcFs> linuxMock =
+            Mockito.mockStatic(LinuxProcFs.class, Mockito.CALLS_REAL_METHODS)) {
 
       // Case 1: neither mounts file exists
       filesMock.when(() -> Files.isRegularFile(selfMountsPath)).thenReturn(false);
@@ -169,20 +173,23 @@ class OsRuntimeMetricsTest {
 
       // Case 2: file exists but empty
       filesMock.when(() -> Files.isRegularFile(uptimePath)).thenReturn(true);
-      filesMock.when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8)).thenReturn("  \n");
+      filesMock
+          .when(() -> Files.newInputStream(uptimePath))
+          .thenReturn(new ByteArrayInputStream("  \n".getBytes(StandardCharsets.UTF_8)));
       long v2 = (long) invokePrivate(metrics, "readUptimeLinux", new Class<?>[0]);
       assertEquals(0L, v2, "Empty content should result in 0");
 
       // Case 3: negative uptime
       filesMock
-          .when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8))
-          .thenReturn("-10.0 0.0\n");
+          .when(() -> Files.newInputStream(uptimePath))
+          .thenReturn(new ByteArrayInputStream("-10.0 0.0\n".getBytes(StandardCharsets.UTF_8)));
       long v3 = (long) invokePrivate(metrics, "readUptimeLinux", new Class<?>[0]);
       assertEquals(0L, v3, "Negative uptime should result in 0");
       // Case 4: invalid number format
       filesMock
-          .when(() -> Files.readString(uptimePath, StandardCharsets.UTF_8))
-          .thenReturn("not-a-number 0.0\n");
+          .when(() -> Files.newInputStream(uptimePath))
+          .thenReturn(
+              new ByteArrayInputStream("not-a-number 0.0\n".getBytes(StandardCharsets.UTF_8)));
       long v4 = (long) invokePrivate(metrics, "readUptimeLinux", new Class<?>[0]);
       assertEquals(0L, v4, "Invalid number should result in 0");
     }
@@ -196,7 +203,8 @@ class OsRuntimeMetricsTest {
   void pollShouldUseNonLinuxPath() {
     OsRuntimeMetrics metrics = new OsRuntimeMetrics();
 
-    try (MockedStatic<LinuxProcFs> linuxMock = Mockito.mockStatic(LinuxProcFs.class);
+    try (MockedStatic<LinuxProcFs> linuxMock =
+            Mockito.mockStatic(LinuxProcFs.class, Mockito.CALLS_REAL_METHODS);
         MockedStatic<ManagementFactory> mgmtMock = Mockito.mockStatic(ManagementFactory.class);
         MockedStatic<FileSystems> fsStaticMock = Mockito.mockStatic(FileSystems.class)) {
 

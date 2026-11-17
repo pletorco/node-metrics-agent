@@ -75,6 +75,9 @@ public class PidsMetrics extends AbstractRefreshingMetric implements PidsMetrics
    * the tightest finite limit, or of {@code dir} itself when no level has one.
    */
   private static long[] read(Path dir, Path root) {
+    if (CollectorInput.excessiveAncestors(dir, root)) {
+      return new long[] {-1L, -1L};
+    }
     long ownCurrent = number(dir.resolve("pids.current"));
     if (ownCurrent < 0L) {
       return new long[] {-1L, -1L};
@@ -105,8 +108,10 @@ public class PidsMetrics extends AbstractRefreshingMetric implements PidsMetrics
   /** A file holding one number; {@code "max"}, a missing file and parse errors give -1. */
   private static long number(Path file) {
     try {
-      String text = Files.readString(file).trim();
+      String text = CollectorInput.readString(file, CollectorInput.NUMBER).trim();
       return "max".equals(text) ? -1L : Long.parseLong(text);
+    } catch (CollectorInput.LimitExceededException e) {
+      throw new java.io.UncheckedIOException(e);
     } catch (IOException | RuntimeException e) {
       return -1L;
     }

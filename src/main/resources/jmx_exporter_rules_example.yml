@@ -103,7 +103,7 @@ rules:
   # Exports internal telemetry pipeline counters/gauges.
   # Note: string attributes (for example, Mode, FailingTasks, StuckTasks) are intentionally excluded here.
   # ============================================================================
-  - pattern: 'kr.pletor.agent<type=(.+?)(?:,(.+))?><>(ProcessedCount|EnqueueCount|DequeueCount|DroppedCount|ErrorCount|SinkSuccessCount|SinkFailureCount|SinkRetryCount|ModeTransitionCount|ThrottledLoggerOverflowCount|DroppedLogCount):'
+  - pattern: 'kr.pletor.agent<type=(.+?)(?:,(.+))?><>(ProcessedCount|EnqueueCount|DequeueCount|DroppedCount|ErrorCount|SinkSuccessCount|SinkFailureCount|SinkRetryCount|ModeTransitionCount|ThrottledLoggerOverflowCount|DroppedLogCount|InputLimitExceededCount):'
     name: pletor_agent_$1_$3
     type: COUNTER
     cache: true

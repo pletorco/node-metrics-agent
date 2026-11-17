@@ -1,7 +1,6 @@
 package kr.pletor.nodemetrics.metrics;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -33,7 +32,18 @@ final class CgroupCpuLimit {
    *     level has a finite limit or the files are unavailable
    */
   static double effectiveCores(Path dir, Path root) {
+    try {
+      return readEffectiveCores(dir, root);
+    } catch (java.io.UncheckedIOException e) {
+      return -1.0; // A rejected level cannot be treated as unlimited in the hierarchy.
+    }
+  }
+
+  private static double readEffectiveCores(Path dir, Path root) {
     if (dir == null) {
+      return -1.0;
+    }
+    if (CollectorInput.excessiveAncestors(dir, root)) {
       return -1.0;
     }
     double best = levelCores(dir);
@@ -95,7 +105,9 @@ final class CgroupCpuLimit {
   /** File content, or {@code null} when the file is absent or cannot be read. */
   private static String read(Path file) {
     try {
-      return Files.readString(file);
+      return CollectorInput.readString(file, CollectorInput.NUMBER);
+    } catch (CollectorInput.LimitExceededException e) {
+      throw new java.io.UncheckedIOException(e);
     } catch (IOException | RuntimeException e) {
       return null;
     }

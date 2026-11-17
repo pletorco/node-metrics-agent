@@ -235,7 +235,9 @@ tasks.jacocoTestCoverageVerification {
             Triple("kr.pletor.nodemetrics.agent.MetricsRefreshEngine", "0.90", "0.80"),
             Triple("kr.pletor.nodemetrics.metrics.CpuMetrics", "0.85", "0.75"),
             Triple("kr.pletor.nodemetrics.metrics.LinuxProcFs", "0.85", "0.75"),
-            Triple("kr.pletor.nodemetrics.metrics.CgroupCpuLimit", "0.90", "0.90")
+            Triple("kr.pletor.nodemetrics.metrics.CgroupCpuLimit", "0.90", "0.90"),
+            Triple("kr.pletor.nodemetrics.metrics.CollectorInput", "0.95", "0.90"),
+            Triple("kr.pletor.nodemetrics.metrics.CollectorInput\$LimitedInput", "0.95", "0.90")
         )
         minimums.forEach { (className, lines, branches) ->
             rule {
@@ -545,7 +547,7 @@ tasks.named<Checkstyle>("checkstyleTest") { maxWarnings = 0 }
 // -----------------------------------------------------------------------------
 spotless {
     java {
-        target("src/**/*.java", "scripts/soak/*.java", "scripts/LauncherFailureProbe.java", "scripts/LateGlobalSetup.java")
+        target("src/**/*.java", "scripts/soak/*.java", "scripts/inputs/*.java", "scripts/LauncherFailureProbe.java", "scripts/LateGlobalSetup.java")
         googleJavaFormat(googleJavaFormatVersion)
     }
 }
