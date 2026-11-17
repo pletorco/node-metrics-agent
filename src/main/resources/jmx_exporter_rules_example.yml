@@ -101,14 +101,14 @@ rules:
   # ----------------------------------------------------------------------------
   # [agent] kr.pletor.agent
   # Exports internal telemetry pipeline counters/gauges.
-  # Note: string attributes (for example, Mode, FailingTasks, StuckTasks) are intentionally excluded here.
+  # String attributes (Mode, RefreshEngineState, FailingTasks, StuckTasks) are excluded here.
   # ============================================================================
-  - pattern: 'kr.pletor.agent<type=(.+?)(?:,(.+))?><>(ProcessedCount|EnqueueCount|DequeueCount|DroppedCount|ErrorCount|SinkSuccessCount|SinkFailureCount|SinkRetryCount|ModeTransitionCount|ThrottledLoggerOverflowCount|DroppedLogCount|InputLimitExceededCount):'
+  - pattern: 'kr.pletor.agent<type=(.+?)(?:,(.+))?><>(ProcessedCount|EnqueueCount|DequeueCount|DroppedCount|ErrorCount|SinkSuccessCount|SinkFailureCount|SinkRetryCount|ModeTransitionCount|ThrottledLoggerOverflowCount|DroppedLogCount|InputLimitExceededCount|RefreshEngineStartFailureCount):'
     name: pletor_agent_$1_$3
     type: COUNTER
     cache: true
 
-  - pattern: 'kr.pletor.agent<type=(.+?)(?:,(.+))?><>(QueueDepth|QueueFillRatio|EndToEndLatencyMillis|MaxTaskStalenessMs|FailingTaskCount|StuckTaskCount):'
+  - pattern: 'kr.pletor.agent<type=(.+?)(?:,(.+))?><>(QueueDepth|QueueFillRatio|EndToEndLatencyMillis|MaxTaskStalenessMs|FailingTaskCount|StuckTaskCount|RefreshEngineRunning|RefreshWorkerCount):'
     name: pletor_agent_$1_$3
     type: GAUGE
     cache: true

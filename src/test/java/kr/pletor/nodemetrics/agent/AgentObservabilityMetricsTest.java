@@ -25,6 +25,10 @@ class AgentObservabilityMetricsTest {
     assertEquals(0L, metrics.getSinkFailureCount());
     assertEquals(0L, metrics.getSinkRetryCount());
     assertEquals("NORMAL", metrics.getMode());
+    assertEquals("UNAVAILABLE", metrics.getRefreshEngineState());
+    assertEquals(0, metrics.getRefreshEngineRunning());
+    assertEquals(0, metrics.getRefreshWorkerCount());
+    assertEquals(0L, metrics.getRefreshEngineStartFailureCount());
     assertEquals(0, metrics.getQueueDepth());
     assertEquals(0.0, metrics.getQueueFillRatio());
     assertEquals(0.0, metrics.getEndToEndLatencyMillis());
@@ -56,6 +60,10 @@ class AgentObservabilityMetricsTest {
       assertEquals(0L, metrics.getSinkFailureCount(), "No sink failure expected for noop metric");
       assertEquals(0L, metrics.getSinkRetryCount(), "Retry strategy is disabled by default");
       assertEquals("NORMAL", metrics.getMode());
+      assertEquals("RUNNING", metrics.getRefreshEngineState());
+      assertEquals(1, metrics.getRefreshEngineRunning());
+      assertEquals(6, metrics.getRefreshWorkerCount());
+      assertEquals(0L, metrics.getRefreshEngineStartFailureCount());
       assertTrue(metrics.getQueueDepth() >= 0);
       assertTrue(metrics.getQueueFillRatio() >= 0.0);
       assertTrue(metrics.getEndToEndLatencyMillis() >= 0.0);

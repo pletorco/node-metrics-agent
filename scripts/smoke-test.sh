@@ -52,6 +52,10 @@ echo "== repeated agent entry must preserve one collector pipeline and host MBea
 python3 "$HERE/duplicate_agent_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"
 
+echo "== partial refresh startup must disable telemetry and preserve host execution"
+python3 "$HERE/engine_startup_check.py" --agent-jar "$JAR" \
+  --java "$JAVA_BIN" --javac "$JAVAC_BIN"
+
 echo "== the agent must not initialize JVM-wide singletons before the application configures them"
 python3 "$HERE/global_isolation_check.py" --agent-jar "$JAR" \
   --java "$JAVA_BIN" --javac "$JAVAC_BIN"

@@ -158,8 +158,10 @@ Prometheus alerting rules; check it with `promtool check rules` and tune the thr
 - `pletor_agent_observability_inputlimitexceededcount_total` increases (a collector source,
   enumeration or cgroup hierarchy exceeded its safety limit)
 - `pletor_agent_observability_queuefillratio >= 0.80`
+- `pletor_agent_observability_refreshenginerunning == 0` or
+  `pletor_agent_observability_refreshworkercount < 6` for a sustained period
 - `pletor_agent_observability_maxtaskstalenessms` rises for a sustained period
-  (seconds behind schedule; healthy tasks stay near `0` whatever their refresh interval)
+  (milliseconds behind schedule; healthy tasks stay near `0` whatever their refresh interval)
 - `pletor_agent_observability_failingtaskcount > 0` for a sustained period
 - `pletor_agent_observability_stucktaskcount > 0` (a filesystem call is blocked, usually a dead mount)
 - filesystem usable bytes drops below service thresholds
@@ -172,11 +174,43 @@ Prometheus alerting rules; check it with `promtool check rules` and tune the thr
 
 ## Troubleshooting
 
+### Refresh engine startup
+
+The `kr.pletor.agent:type=Observability` MBean exposes:
+
+| Attribute | Meaning |
+|---|---|
+| `RefreshEngineState` | `NEW`, `STARTING`, `RUNNING`, `FAILED`, `STOPPED`, or `UNAVAILABLE` if no engine was published |
+| `RefreshEngineRunning` | `1` after the complete thread set starts; `0` in all other lifecycle states |
+| `RefreshWorkerCount` | Live workers of the activated engine, normally `6`; `0` when inactive |
+| `RefreshEngineStartFailureCount` | Failed thread-set startup attempts on this engine, at most `1` |
+
+The dispatcher and six workers wait on an agent-only gate until the complete set has started.
+Thread creation or start failure opens the gate for exit, attempts every interrupt independently,
+and cancels queued work and its pending flags. There is no host-thread wait or join. Both
+`Observability.Mode` and `TelemetryMode.Mode` report `BYPASS` when the engine is inactive.
+Construction failure before publication reports `UNAVAILABLE` with `BYPASS`; no engine-local
+startup counter exists in that case.
+
+`FAILED` and `STOPPED` are terminal: repeated start calls, repeated agent options and config reloads
+do not create replacement workers. Correct the underlying permissions or native-thread resource
+limit and restart the host JVM to enable refresh. This prevents a retry storm or replacement workers
+alongside an old kernel call. Stopping also cancels queued work; a running call retains its ownership
+until it returns. `RefreshEngineRunning` indicates activation, not individual worker liveness; check
+`RefreshWorkerCount` as well. A later worker exit does not trigger automatic replacement.
+
+Never-polled tasks become overdue after the fixed five-second startup grace plus their refresh
+interval, including after a failed start. Tasks already running or failing retain their existing
+staleness calculation. `FailingTaskCount == 0` and an empty `FailingTasks` list describe poll outcomes
+only; they do not prove startup succeeded. String state is available through JMX; the example exporter
+rules expose the numeric attributes and the alert rules check activation and worker count.
+
 Queue pressure:
 
 - Check `QueueFillRatio`, `DroppedCount`, `EndToEndLatencyMillis`, and `MaxTaskStalenessMs`.
 - `DEGRADED` drops low-priority filesystem refresh first.
-- `BYPASS` drops all refresh work until pressure falls.
+- While `RefreshEngineState` is `RUNNING`, overload `BYPASS` drops all refresh work until pressure
+  falls. Lifecycle `BYPASS` after startup failure follows the terminal policy above.
 
 Failing metric refreshes:
 
