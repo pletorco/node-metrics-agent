@@ -19,8 +19,10 @@ import kr.pletor.nodemetrics.metrics.RefreshManagedMetric;
  * that is not listed is never read, so the scrape works with every exporter version, and the
  * attribute appears once its source becomes available.
  *
- * <p>The values are only inspected once the refresh engine owns the metric, so that describing the
- * MBean (which registering it does) never triggers a read of {@code /proc} or cgroup files.
+ * <p>The values are only inspected once read-triggered refresh is disabled. The agent does this
+ * before registering the MBean, so describing it never reads {@code /proc} or cgroup files, even
+ * before the refresh engine starts. Standalone metrics with read-triggered refresh remain
+ * unfiltered.
  */
 final class AbsentValueHider extends StandardMBean {
 

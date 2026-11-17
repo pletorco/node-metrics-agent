@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 ### Reliability and tests
 
+- Disable read-triggered refresh before MBean publication, including filesystem additions during
+  reload and engine startup failures. Expose unavailable filesystem capacity until the first poll.
 - Guard launcher task creation as well as thread startup. Drop failures on the JVM startup thread
   without logging; verify missing launcher helpers and blocked stderr in bounded host JVM tests.
 - Cap config reads at 64 KiB before allocation/parsing, limit YAML nesting and reject collection

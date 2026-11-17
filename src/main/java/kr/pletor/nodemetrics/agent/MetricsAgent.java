@@ -654,6 +654,8 @@ public class MetricsAgent {
           MBeanRegistrationException,
           NotCompliantMBeanException {
     FsMetrics bean = new FsMetrics(path);
+    // Registration notifications can immediately read attributes, before tasks are installed.
+    bean.setReadRefreshEnabled(false);
     ObjectName on = buildFsObjectName(path);
     svr.registerMBean(new StandardMBean(bean, FsMetricsMBean.class), on);
     fsMap.put(configuredPath, new FsEntry(bean, on, path));
@@ -763,6 +765,10 @@ public class MetricsAgent {
   private static void registerStandardMBeanSafely(
       Object bean, Class<?> mbeanInterface, ObjectName objectName) {
     try {
+      if (bean instanceof RefreshManagedMetric) {
+        // Publish only cache reads, even if the refresh engine cannot be created afterwards.
+        ((RefreshManagedMetric) bean).setReadRefreshEnabled(false);
+      }
       StandardMBean wrapped = new AbsentValueHider(bean, (Class) mbeanInterface);
       svr.registerMBean(wrapped, objectName);
     } catch (Throwable e) { // NOSONAR
