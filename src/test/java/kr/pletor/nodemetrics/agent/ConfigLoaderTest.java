@@ -274,14 +274,13 @@ class ConfigLoaderTest {
     Path p = writeYaml("typo.yml", "fsmetric_paths:\n  - /data\n");
     java.util.List<String> warnings = new java.util.ArrayList<>();
     try (var capture =
-        new AgentLogCapture(
-            record -> {
-              if (ConfigLoader.class.getName().equals(record.getLoggerName())
-                  && record.getLevel() == java.util.logging.Level.WARNING) {
-                warnings.add(
-                    java.text.MessageFormat.format(record.getMessage(), record.getParameters()));
-              }
-            })) {
+        new AgentLogCapture(record -> {
+          if (ConfigLoader.class.getName().equals(record.getLoggerName())
+              && record.getLevel() == java.util.logging.Level.WARNING) {
+            warnings.add(
+                java.text.MessageFormat.format(record.getMessage(), record.getParameters()));
+          }
+        })) {
       Config c = assertDoesNotThrow(() -> ConfigLoader.load(p));
       assertEquals(
           java.util.List.of("/"), c.fsmetricsPaths, "Typo key falls back to the default path");

@@ -83,11 +83,10 @@ public final class LauncherFailureProbe {
       require(STDERR_WRITES.get() == 0, "startup failure wrote to stderr");
     } else if ("background-error".equals(scenario)) {
       long before = System.nanoTime();
-      AgentLauncher.start(
-          () -> {
-            require(Thread.currentThread().isDaemon(), "initializer is not a daemon");
-            throw new LinkageError("injected background initialization failure");
-          });
+      AgentLauncher.start(() -> {
+        require(Thread.currentThread().isDaemon(), "initializer is not a daemon");
+        throw new LinkageError("injected background initialization failure");
+      });
       require(System.nanoTime() - before < TimeUnit.SECONDS.toNanos(1), "launcher waited");
       require(WRITING_STDERR.await(3, TimeUnit.SECONDS), "background failure was not exercised");
       // The daemon is still blocked reporting its error; main must finish and the JVM must exit.

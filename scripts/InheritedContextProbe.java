@@ -62,13 +62,12 @@ public final class InheritedContextProbe {
       ManagementFactory.getPlatformMBeanServer();
       CountDownLatch launched = new CountDownLatch(1);
       AtomicReference<Object> launcherContext = new AtomicReference<>(new Object());
-      AgentLauncher.start(
-          () -> {
-            require(Thread.currentThread().isDaemon(), "initializer is not a daemon");
-            require(Thread.currentThread().getPriority() == Thread.MIN_PRIORITY, "init priority");
-            launcherContext.set(HOST_CONTEXT.get());
-            launched.countDown();
-          });
+      AgentLauncher.start(() -> {
+        require(Thread.currentThread().isDaemon(), "initializer is not a daemon");
+        require(Thread.currentThread().getPriority() == Thread.MIN_PRIORITY, "init priority");
+        launcherContext.set(HOST_CONTEXT.get());
+        launched.countDown();
+      });
       require(launched.await(3, TimeUnit.SECONDS), "initializer did not complete");
       require(launcherContext.get() == null, "initializer retained host context");
 

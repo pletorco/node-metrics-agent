@@ -137,12 +137,11 @@ class ConfigContentReloadTest {
             List.of(new ConfigReloaderTest.FakeWatchEvent<>(Path.of("other.yml"))));
     AtomicInteger polls = new AtomicInteger();
     when(service.poll(1, TimeUnit.SECONDS))
-        .thenAnswer(
-            call -> {
-              polls.incrementAndGet();
-              Thread.sleep(unrelatedTraffic ? 10L : 1_000L);
-              return unrelatedTraffic ? other : null;
-            });
+        .thenAnswer(call -> {
+          polls.incrementAndGet();
+          Thread.sleep(unrelatedTraffic ? 10L : 1_000L);
+          return unrelatedTraffic ? other : null;
+        });
     try (Loop loop = new Loop(reloader, service)) {
       AsyncTestSupport.await(() -> polls.get() > 0, 3_000L, "watch loop started");
       write(path, 9, time);
@@ -179,11 +178,10 @@ class ConfigContentReloadTest {
     WatchService service = mock(WatchService.class);
     when(service.poll(1, TimeUnit.SECONDS))
         .thenReturn(key)
-        .thenAnswer(
-            call -> {
-              Thread.sleep(1_000L);
-              return null;
-            });
+        .thenAnswer(call -> {
+          Thread.sleep(1_000L);
+          return null;
+        });
     assertFalse(reloader.pollDue(System.nanoTime()), "Timer is backed off for sixty seconds");
     try (Loop loop = new Loop(reloader, service)) {
       AsyncTestSupport.await(
@@ -204,18 +202,17 @@ class ConfigContentReloadTest {
           ConfigReloader.class.getDeclaredMethod("watchLoop", WatchService.class, boolean.class);
       method.setAccessible(true);
       thread =
-          new Thread(
-              () -> {
-                try {
-                  method.invoke(reloader, service, true);
-                } catch (java.lang.reflect.InvocationTargetException e) {
-                  if (!(e.getCause() instanceof InterruptedException)) {
-                    failure.set(e.getCause());
-                  }
-                } catch (Exception e) {
-                  failure.set(e);
-                }
-              });
+          new Thread(() -> {
+            try {
+              method.invoke(reloader, service, true);
+            } catch (java.lang.reflect.InvocationTargetException e) {
+              if (!(e.getCause() instanceof InterruptedException)) {
+                failure.set(e.getCause());
+              }
+            } catch (Exception e) {
+              failure.set(e);
+            }
+          });
       thread.setDaemon(true);
       thread.start();
     }

@@ -9,7 +9,7 @@ import org.cyclonedx.gradle.CyclonedxDirectTask
 buildscript {
     dependencies {
         // Patch the plugins' shared classpath: CycloneDX brings Jackson and Maven's Guava.
-        classpath(platform("com.fasterxml.jackson:jackson-bom:2.22.3"))
+        classpath(platform("com.fasterxml.jackson:jackson-bom:2.23.0"))
         classpath("com.google.guava:guava:33.7.2-jre") {
             because("CVE-2026-102554: unbounded allocation during deserialization")
         }
@@ -30,7 +30,7 @@ plugins {
     jacoco
 
     // SBOM generation
-    id("org.cyclonedx.bom") version "3.5.1"
+    id("org.cyclonedx.bom") version "3.6.1"
 
     // Checkstyle for linting
     checkstyle
@@ -51,7 +51,7 @@ description = "JVM agent for exposing host and container node metrics through JM
 // -----------------------------------------------------------------------------
 val junitJupiterVersion = "5.10.2"
 val mockitoVersion = "5.24.0"
-val googleJavaFormatVersion = "1.25.2"
+val googleJavaFormatVersion = "2.0.0"
 
 // -----------------------------------------------------------------------------
 // Java / toolchain configuration

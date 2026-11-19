@@ -198,15 +198,14 @@ class EngineStartupTest {
     try {
       for (int i = 0; i < 8; i++) {
         Thread caller =
-            new Thread(
-                () -> {
-                  try {
-                    go.await();
-                    engine.start();
-                  } catch (Throwable error) {
-                    failure.set(error);
-                  }
-                });
+            new Thread(() -> {
+              try {
+                go.await();
+                engine.start();
+              } catch (Throwable error) {
+                failure.set(error);
+              }
+            });
         callers.add(caller);
         caller.start();
       }

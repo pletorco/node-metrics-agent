@@ -14,3 +14,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # JUnit 6+ requires Java 17; the full test suite must also run on Java 11.
+      # Continue receiving compatible JUnit 5 updates.
+      - dependency-name: "org.junit:junit-bom"
+        versions: [">=6.0.0"]
