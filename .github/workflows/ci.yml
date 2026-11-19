@@ -30,7 +30,8 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "21.0.13.1+2"
+          check-latest: true
           cache: gradle
 
       - name: Gate runtime and tooling dependencies
@@ -54,7 +55,8 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "21.0.13.1+2"
+          check-latest: true
           cache: gradle
 
       - name: Test and lint
@@ -81,23 +83,37 @@ jobs:
 
   # The agent targets Java 11+ (Kafka brokers), so run the tests on the older runtimes too.
   test-jdk:
+    name: test-jdk (${{ matrix.java }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        java: ["11", "17"]
+        include:
+          # Temurin 11's November CSPU is not published yet; use the patched Microsoft build.
+          - java: "11"
+            distribution: microsoft
+            version: "11.0.33.1"
+          - java: "17"
+            distribution: temurin
+            version: "17.0.21.1+2"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up JDKs (build JDK last so it stays JAVA_HOME)
+      - name: Set up patched test JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.version }}
+          check-latest: true
+
+      - name: Set up patched build JDK (last so it stays JAVA_HOME)
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: |
-            ${{ matrix.java }}
-            21
+          java-version: "21.0.13.1+2"
+          check-latest: true
           cache: gradle
 
       - name: Test on Java ${{ matrix.java }}
@@ -125,7 +141,8 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "21.0.13.1+2"
+          check-latest: true
           cache: gradle
 
       - name: Build shaded jar
@@ -140,13 +157,23 @@ jobs:
 
   # ...and run it as a real -javaagent on each supported runtime.
   smoke:
+    name: smoke (${{ matrix.java }})
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        java: ["11", "17", "21"]
+        include:
+          - java: "11"
+            distribution: microsoft
+            version: "11.0.33.1"
+          - java: "17"
+            distribution: temurin
+            version: "17.0.21.1+2"
+          - java: "21"
+            distribution: temurin
+            version: "21.0.13.1+2"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -160,8 +187,9 @@ jobs:
       - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v6
         with:
-          distribution: temurin
-          java-version: ${{ matrix.java }}
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.version }}
+          check-latest: true
 
       - name: Smoke test on Java ${{ matrix.java }}
         run: scripts/smoke-test.sh dist/*-all.jar
@@ -197,7 +225,8 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "17.0.21.1+2"
+          check-latest: true
 
       - name: Download JMX exporter ${{ matrix.exporter }}
         run: |
