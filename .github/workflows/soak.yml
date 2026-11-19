@@ -26,26 +26,39 @@ concurrency:
 
 jobs:
   soak:
+    name: soak (${{ matrix.java }})
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-soak'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        java: ["11", "21"]
+        include:
+          - java: "11"
+            distribution: microsoft
+            version: "11.0.33.1"
+          - java: "21"
+            distribution: temurin
+            version: "21.0.13.1+2"
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Set up runtime and build JDKs
+      - name: Set up patched runtime JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.version }}
+          check-latest: true
+
+      - name: Set up patched build JDK (last so it stays JAVA_HOME)
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: |
-            ${{ matrix.java }}
-            21
+          java-version: "21.0.13.1+2"
+          check-latest: true
           cache: gradle
 
       - name: Build packaged candidate and verify probe formatting

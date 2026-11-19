@@ -94,6 +94,38 @@ CI also runs the separate network-backed dependency gate described below.
 
 ## Coverage boundaries
 
+### JDK security baseline (November 2026)
+
+The November 17 OpenJDK advisory includes CVE-2026-114938 (Java4Shell) and additional
+JVM/library/security fixes. The workflows use these reviewed JDK versions:
+
+| Java line | CI distribution and version | Use |
+| --- | --- | --- |
+| 11 | Microsoft OpenJDK 11.0.33.1 | Unit, smoke and soak runtime |
+| 17 | Eclipse Temurin 17.0.21.1+2 | Unit, smoke and exporter runtime |
+| 21 | Eclipse Temurin 21.0.13.1+2 | Build, release, security scans, unit, smoke and soak |
+
+Temurin's patched Java 11 release was not available when these versions were reviewed;
+Microsoft's November CSPU includes the Java 11 fixes. Java 11 is unaffected by Java4Shell
+itself, but still needs the other November security fixes. Java 11 bytecode/API compatibility
+remains the agent's target. Runtime and build JDK setup are separate so the build always uses
+Temurin 21 and the Java 11 tests use the explicitly installed Microsoft runtime.
+
+`check-latest: true` forces remote resolution of the requested patched version before cache
+reuse. These exact versions are a reviewed baseline, not an automatic future JDK update policy;
+update the workflow pins when reviewing later vendor advisories. Major-only selectors such as
+`21` may reuse an older runner-cached JDK. Inspect setup logs and `./gradlew --version` to verify
+the actual JVM. Updating the JDK in CI does not update production JVMs or container images.
+Operators must patch those separately and restart Java processes. An agent JAR update cannot
+repair JVM native memory corruption, and fail-open exception handling cannot contain it.
+
+Sources: [OpenJDK November advisory](https://openjdk.org/groups/vulnerability/advisories/2026-11-17),
+[Temurin guidance](https://adoptium.net/news/2026/11/temurin-november-2026-cspu-java4shell/),
+[Microsoft November release](https://devblogs.microsoft.com/java/java-openjdk-november-2026-critical-patch-update/),
+[Ubuntu 21 fixes](https://ubuntu.com/security/notices/USN-9156-1).
+
+### Dependency scanner scope
+
 This inventories resolved Maven artifacts, not arbitrary cached JARs. It does not claim coverage
 of the host OS/JDK, all libraries bundled within the Gradle distribution, lazily downloaded Sonar
 analyzers, shaded libraries hidden inside plugins, or vendored JavaScript inside GitHub Actions.
