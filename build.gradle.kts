@@ -10,7 +10,7 @@ buildscript {
     dependencies {
         // Patch the plugins' shared classpath: CycloneDX brings Jackson and Maven's Guava.
         classpath(platform("com.fasterxml.jackson:jackson-bom:2.23.0"))
-        classpath("com.google.guava:guava:33.7.2-jre") {
+        classpath("com.google.guava:guava:33.8.0-jre") {
             because("CVE-2026-102554: unbounded allocation during deserialization")
         }
     }
@@ -150,7 +150,7 @@ dependencies {
     components.withModule("com.google.googlejavaformat:google-java-format") {
         allVariants {
             withDependencies {
-                add("com.google.guava:guava:33.7.2-jre")
+                add("com.google.guava:guava:33.8.0-jre")
             }
         }
     }
