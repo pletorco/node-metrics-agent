@@ -70,15 +70,14 @@ class AgentLogTest {
     CountDownLatch entered = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     try (var capture =
-        new AgentLogCapture(
-            record -> {
-              entered.countDown();
-              try {
-                release.await();
-              } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-              }
-            })) {
+        new AgentLogCapture(record -> {
+          entered.countDown();
+          try {
+            release.await();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        })) {
       try {
         AgentLog log = AgentLog.getLogger(name);
         log.log(Level.WARNING, "block the writer");
@@ -101,13 +100,12 @@ class AgentLogTest {
   void failingOutputIsDroppedWithoutStoppingTheWriter() {
     long before = AgentLog.droppedCount();
     try (var capture =
-        new AgentLogCapture(
-            record -> {
-              if (record.getMessage().equals("bad")) {
-                throw new LinkageError("output failed");
-              }
-              published.add(record);
-            })) {
+        new AgentLogCapture(record -> {
+          if (record.getMessage().equals("bad")) {
+            throw new LinkageError("output failed");
+          }
+          published.add(record);
+        })) {
       AgentLog log = AgentLog.getLogger(name);
       assertDoesNotThrow(() -> log.log(Level.WARNING, "bad"));
       log.log(Level.INFO, "recovered");
@@ -130,15 +128,14 @@ class AgentLogTest {
   @Test
   void supplierFailureDoesNotEscape() {
     try (var capture = new AgentLogCapture(published::add)) {
-      assertDoesNotThrow(
-          () ->
-              AgentLog.getLogger(name)
-                  .log(
-                      Level.WARNING,
-                      new RuntimeException(),
-                      () -> {
-                        throw new IllegalStateException("supplier failed");
-                      }));
+      assertDoesNotThrow(() ->
+          AgentLog.getLogger(name)
+              .log(
+                  Level.WARNING,
+                  new RuntimeException(),
+                  () -> {
+                    throw new IllegalStateException("supplier failed");
+                  }));
     }
     assertEquals(List.of("<message unavailable>"), messages());
   }

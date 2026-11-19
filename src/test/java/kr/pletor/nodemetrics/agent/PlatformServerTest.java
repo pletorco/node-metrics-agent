@@ -63,12 +63,11 @@ class PlatformServerTest {
     AtomicReference<MBeanServer> found = new AtomicReference<>();
     AtomicBoolean interrupted = new AtomicBoolean();
     Thread initializer =
-        new Thread(
-            () -> {
-              Thread.currentThread().interrupt();
-              found.set(MetricsAgent.awaitExistingMBeanServer());
-              interrupted.set(Thread.currentThread().isInterrupted());
-            });
+        new Thread(() -> {
+          Thread.currentThread().interrupt();
+          found.set(MetricsAgent.awaitExistingMBeanServer());
+          interrupted.set(Thread.currentThread().isInterrupted());
+        });
     initializer.start();
     initializer.join(2_000L);
     assertTrue(!initializer.isAlive());

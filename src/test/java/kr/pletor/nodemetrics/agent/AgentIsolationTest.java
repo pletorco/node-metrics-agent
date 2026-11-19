@@ -79,16 +79,15 @@ class AgentIsolationTest {
     AtomicInteger threadWasDaemon = new AtomicInteger(-1);
     try {
       long start = System.nanoTime();
-      AgentLauncher.start(
-          () -> {
-            threadWasDaemon.set(Thread.currentThread().isDaemon() ? 1 : 0);
-            started.countDown();
-            try {
-              release.await();
-            } catch (InterruptedException ignored) {
-              // test shutting down
-            }
-          });
+      AgentLauncher.start(() -> {
+        threadWasDaemon.set(Thread.currentThread().isDaemon() ? 1 : 0);
+        started.countDown();
+        try {
+          release.await();
+        } catch (InterruptedException ignored) {
+          // test shutting down
+        }
+      });
       long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 
       assertTrue(elapsedMs < 500L, "premain must not wait for initialization, took " + elapsedMs);
@@ -109,14 +108,13 @@ class AgentIsolationTest {
           new RuntimeException("boom")
         }) {
       CountDownLatch ran = new CountDownLatch(1);
-      AgentLauncher.start(
-          () -> {
-            ran.countDown();
-            if (failure instanceof Error) {
-              throw (Error) failure;
-            }
-            throw (RuntimeException) failure;
-          });
+      AgentLauncher.start(() -> {
+        ran.countDown();
+        if (failure instanceof Error) {
+          throw (Error) failure;
+        }
+        throw (RuntimeException) failure;
+      });
       assertTrue(ran.await(2, TimeUnit.SECONDS));
     }
     Thread.sleep(200L);

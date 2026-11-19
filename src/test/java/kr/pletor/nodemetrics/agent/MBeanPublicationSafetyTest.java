@@ -205,11 +205,10 @@ class MBeanPublicationSafetyTest {
     try (var files = Mockito.mockStatic(Files.class, Mockito.CALLS_REAL_METHODS)) {
       files
           .when(() -> Files.getFileStore(added))
-          .thenAnswer(
-              invocation -> {
-                fileReads.incrementAndGet();
-                return store;
-              });
+          .thenAnswer(invocation -> {
+            fileReads.incrementAndGet();
+            return store;
+          });
       server.addNotificationListener(
           MBeanServerDelegate.DELEGATE_NAME,
           (notification, handback) -> {
@@ -273,11 +272,10 @@ class MBeanPublicationSafetyTest {
       assertEquals(
           -1.0,
           caller
-              .submit(
-                  () -> {
-                    server.getMBeanInfo(name);
-                    return server.getAttribute(name, "SystemCpuLoad");
-                  })
+              .submit(() -> {
+                server.getMBeanInfo(name);
+                return server.getAttribute(name, "SystemCpuLoad");
+              })
               .get(500, TimeUnit.MILLISECONDS));
       assertEquals(1, metric.reads.get(), "only the background worker may enter the collector");
     } finally {

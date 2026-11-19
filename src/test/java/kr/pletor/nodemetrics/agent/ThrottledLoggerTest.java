@@ -102,17 +102,16 @@ class ThrottledLoggerTest {
 
     for (int i = 0; i < threads; i++) {
       final String key = "concurrent-key-" + i;
-      pool.submit(
-          () -> {
-            ready.countDown();
-            try {
-              start.await();
-            } catch (InterruptedException e) {
-              Thread.currentThread().interrupt();
-              return;
-            }
-            throttled.log(Level.WARNING, key, () -> "msg");
-          });
+      pool.submit(() -> {
+        ready.countDown();
+        try {
+          start.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return;
+        }
+        throttled.log(Level.WARNING, key, () -> "msg");
+      });
     }
 
     ready.await();

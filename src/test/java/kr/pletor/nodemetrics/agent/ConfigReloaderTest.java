@@ -565,12 +565,11 @@ class ConfigReloaderTest {
 
     private LogHandlerResource(Handler handler) {
       capture =
-          new AgentLogCapture(
-              record -> {
-                if (ConfigReloader.class.getName().equals(record.getLoggerName())) {
-                  handler.publish(record);
-                }
-              });
+          new AgentLogCapture(record -> {
+            if (ConfigReloader.class.getName().equals(record.getLoggerName())) {
+              handler.publish(record);
+            }
+          });
     }
 
     static LogHandlerResource attach(Handler handler) {

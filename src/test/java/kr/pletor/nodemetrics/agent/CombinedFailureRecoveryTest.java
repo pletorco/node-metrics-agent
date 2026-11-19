@@ -156,19 +156,17 @@ class CombinedFailureRecoveryTest {
       AsyncTestSupport.await(() -> engine.errorCount() > 0L, 5_000L, "collector failure recorded");
       for (int i = 0; i < 2; i++) {
         readers.add(
-            callers.submit(
-                () -> {
-                  while (reading.get()) {
-                    // Exporters use bulk getAttributes; ordinary JMX clients also use getAttribute.
-                    assertEquals(
-                        1, server.getAttributes(snapshotName, new String[] {"Value"}).size());
-                    assertTrue((Long) server.getAttribute(snapshotName, "Value") >= 0L);
-                    int queued = (Integer) server.getAttribute(healthName, "QueueDepth");
-                    assertTrue(queued >= 0 && queued <= capacity * 2);
-                    reads.incrementAndGet();
-                  }
-                  return null;
-                }));
+            callers.submit(() -> {
+              while (reading.get()) {
+                // Exporters use bulk getAttributes; ordinary JMX clients also use getAttribute.
+                assertEquals(1, server.getAttributes(snapshotName, new String[] {"Value"}).size());
+                assertTrue((Long) server.getAttribute(snapshotName, "Value") >= 0L);
+                int queued = (Integer) server.getAttribute(healthName, "QueueDepth");
+                assertTrue(queued >= 0 && queued <= capacity * 2);
+                reads.incrementAndGet();
+              }
+              return null;
+            }));
       }
       Future<Long> host = callers.submit(() -> java.util.stream.LongStream.range(0, 100_000).sum());
       assertEquals(4_999_950_000L, host.get(5, TimeUnit.SECONDS));

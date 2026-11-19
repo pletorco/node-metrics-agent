@@ -248,17 +248,16 @@ class CgroupMigrationTest {
     beans.poll();
     AtomicReference<Throwable> failure = new AtomicReference<>();
     Thread writer =
-        new Thread(
-            () -> {
-              try {
-                for (int i = 0; i < 50; i++) {
-                  Files.writeString(membership, i % 2 == 0 ? "0::/b\n" : "0::/a\n");
-                  beans.expire();
-                }
-              } catch (Throwable error) {
-                failure.set(error);
-              }
-            });
+        new Thread(() -> {
+          try {
+            for (int i = 0; i < 50; i++) {
+              Files.writeString(membership, i % 2 == 0 ? "0::/b\n" : "0::/a\n");
+              beans.expire();
+            }
+          } catch (Throwable error) {
+            failure.set(error);
+          }
+        });
     writer.setDaemon(true);
     writer.start();
     try {
