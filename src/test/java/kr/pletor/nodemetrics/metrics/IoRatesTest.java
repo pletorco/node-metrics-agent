@@ -3,11 +3,17 @@ package kr.pletor.nodemetrics.metrics;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Basic sanity tests for {@link IoRates}.
@@ -102,47 +108,83 @@ class IoRatesTest {
   }
 
   @Test
-  @DisplayName("On non-Linux systems refresh() should reset rates to 0.0")
-  void refreshShouldResetMetricsToZeroOnNonLinux() throws Exception {
-    String originalOs = System.getProperty("os.name");
+  void nonLinuxPollingClearsPreviousLinuxSamples(@TempDir Path tmp) throws Exception {
+    Assumptions.assumeTrue(LinuxProcFs.isLinux());
+    final String originalOs = System.getProperty("os.name");
+    Path proc = tmp.resolve("proc");
+    Files.createDirectories(proc.resolve("net"));
+    LinuxProcFs.setProcRoot(proc);
+    LinuxProcFs.setSysRoot(tmp.resolve("sys"));
     try {
-      IoRates ioRates = new IoRates();
+      AtomicLong clock = new AtomicLong();
+      IoRates ioRates = new IoRates(clock::get);
+      ioRates.setReadRefreshEnabled(false);
+      writeCounters(proc, 10L, 5L, 100L, 200L);
+      ioRates.poll();
+      clock.addAndGet(1_000_000_000L);
+      writeCounters(proc, 20L, 10L, 200L, 400L);
+      ioRates.poll();
+      assertEquals(5120.0, ioRates.getDiskReadBytesPerSec(), 0.001);
+      assertEquals(100.0, ioRates.getNetRxBytesPerSec(), 0.001);
 
-      // 1. Inject non-zero values via reflection to simulate "stale" rates
-      setPrivateField(ioRates, "diskReadBps", 123.0);
-      setPrivateField(ioRates, "diskWriteBps", 456.0);
-      setPrivateField(ioRates, "netRxBps", 789.0);
-      setPrivateField(ioRates, "netTxBps", 321.0);
-
-      // Verify injection worked
-      assertEquals(123.0, ioRates.getDiskReadBytesPerSec(), 0.0001);
-
-      // 2. Switch to non-Linux
       System.setProperty("os.name", "Windows 10");
-
-      // 3. Trigger refresh (force via poll to bypass time check if needed,
-      //    although poll() forces cadence override for refresh)
       ioRates.poll();
 
-      // 4. Verify all reset to 0.0
-      assertEquals(0.0, ioRates.getDiskReadBytesPerSec(), 0.0001, "Should be 0.0 on non-Linux");
-      assertEquals(0.0, ioRates.getDiskWriteBytesPerSec(), 0.0001, "Should be 0.0 on non-Linux");
-      assertEquals(0.0, ioRates.getNetRxBytesPerSec(), 0.0001, "Should be 0.0 on non-Linux");
-      assertEquals(0.0, ioRates.getNetTxBytesPerSec(), 0.0001, "Should be 0.0 on non-Linux");
-
+      assertEquals(0.0, ioRates.getDiskReadBytesPerSec());
+      assertEquals(0.0, ioRates.getNetRxBytesPerSec());
+      assertNull(ioRates.getDiskReadBytesTotal());
+      assertNull(ioRates.getNetRxBytesTotal());
     } finally {
-      if (originalOs != null) {
-        System.setProperty("os.name", originalOs);
-      } else {
-        System.clearProperty("os.name");
-      }
+      System.setProperty("os.name", originalOs);
+      LinuxProcFs.setProcRoot(Path.of("/proc"));
+      LinuxProcFs.setSysRoot(Path.of("/sys"));
     }
   }
 
-  private void setPrivateField(Object target, String fieldName, Object value) throws Exception {
-    java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
-    field.setAccessible(true);
-    field.set(target, value);
+  @Test
+  void missingDiskAndUnreadableNetworkRecoverUsingSeparateSampleTimes(@TempDir Path tmp)
+      throws Exception {
+    Assumptions.assumeTrue(LinuxProcFs.isLinux());
+    Path proc = tmp.resolve("proc");
+    Files.createDirectories(proc.resolve("net"));
+    LinuxProcFs.setProcRoot(proc);
+    LinuxProcFs.setSysRoot(tmp.resolve("sys"));
+    try {
+      AtomicLong clock = new AtomicLong();
+      IoRates ioRates = new IoRates(clock::get);
+      ioRates.setReadRefreshEnabled(false);
+      writeCounters(proc, 1_000_000L, 50L, 10_000L, 20_000L);
+      ioRates.poll();
+
+      clock.addAndGet(1_000_000_000L);
+      writeCounters(proc, 1_000_001L, 51L, 10_100L, 20_200L);
+      Files.delete(proc.resolve("diskstats"));
+      ioRates.poll();
+      assertEquals(512_000_000L, ioRates.getDiskReadBytesTotal());
+      assertEquals(100.0, ioRates.getNetRxBytesPerSec(), 0.001);
+      assertNotNull(ioRates.lastRefreshError());
+
+      clock.addAndGet(1_000_000_000L);
+      writeCounters(proc, 1_000_002L, 52L, 10_200L, 20_400L);
+      // Use a line past the collector limit to cause a deterministic read failure.
+      Files.writeString(proc.resolve("net/dev"), "x".repeat(CollectorInput.TABLE.lineBytes + 1));
+      ioRates.poll();
+      assertEquals(512_001_024L, ioRates.getDiskReadBytesTotal());
+      assertEquals(512.0, ioRates.getDiskReadBytesPerSec(), 0.001);
+      assertEquals(10_100L, ioRates.getNetRxBytesTotal());
+      assertNotNull(ioRates.lastRefreshError());
+
+      clock.addAndGet(1_000_000_000L);
+      writeCounters(proc, 1_000_003L, 53L, 10_300L, 20_600L);
+      ioRates.poll();
+      assertEquals(100.0, ioRates.getNetRxBytesPerSec(), 0.001);
+      assertEquals(200.0, ioRates.getNetTxBytesPerSec(), 0.001);
+      assertEquals(10_300L, ioRates.getNetRxBytesTotal());
+      assertNull(ioRates.lastRefreshError());
+    } finally {
+      LinuxProcFs.setProcRoot(Path.of("/proc"));
+      LinuxProcFs.setSysRoot(Path.of("/sys"));
+    }
   }
 
   @Test
