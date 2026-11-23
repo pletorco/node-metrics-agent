@@ -100,8 +100,7 @@ public class MetricsAgent {
    * Map of configured filesystem paths to their corresponding MBean entries.
    *
    * <p>Key: configured path string (as in {@link Config#fsmetricsPaths})<br>
-   * Value: {@link FsEntry} holding the bean instance, {@link ObjectName}, and resolved {@link
-   * Path}.
+   * Value: the {@link FsEntry} registered for that path.
    */
   private static final Map<String, FsEntry> fsMap = new LinkedHashMap<>();
 
@@ -200,28 +199,28 @@ public class MetricsAgent {
     void apply(Config cfg) throws Exception;
   }
 
-  /** Internal data holder to track filesystem metrics beans and their JMX {@link ObjectName}s. */
-  private static final class FsEntry {
-    private final FsMetrics bean;
+  /** Tracks the lifetime of this registration, including removal by another JMX client. */
+  private static final class FsEntry extends StandardMBean {
     private final ObjectName on;
-    private final Path path;
+    private volatile boolean deregistering;
 
-    FsEntry(FsMetrics bean, ObjectName on, Path path) {
-      this.bean = bean;
+    FsEntry(FsMetrics bean, ObjectName on) throws NotCompliantMBeanException {
+      super(bean, FsMetricsMBean.class);
       this.on = on;
-      this.path = path;
+    }
+
+    @Override
+    public void preDeregister() {
+      // Set before the name can be reused. Never wait for APPLY_LOCK on a JMX caller's thread.
+      deregistering = true;
     }
 
     FsMetrics getBean() {
-      return bean;
+      return (FsMetrics) getImplementation();
     }
 
     ObjectName getOn() {
       return on;
-    }
-
-    Path getPath() {
-      return path;
     }
   }
 
@@ -630,7 +629,7 @@ public class MetricsAgent {
    * @throws NotCompliantMBeanException if an MBean does not comply with JMX requirements
    */
   private static void registerOrReuseFsBeans(LinkedHashSet<String> newPaths) {
-
+    fsMap.values().removeIf(entry -> entry.deregistering);
     for (String p : newPaths) {
       if (!shouldReuseExistingEntry(p)) {
         try {
@@ -660,9 +659,12 @@ public class MetricsAgent {
     // Registration notifications can immediately read attributes, before tasks are installed.
     bean.setReadRefreshEnabled(false);
     ObjectName on = buildFsObjectName(path);
-    svr.registerMBean(new StandardMBean(bean, FsMetricsMBean.class), on);
-    fsMap.put(configuredPath, new FsEntry(bean, on, path));
-    LOGGER.log(Level.INFO, "Registered MBean: {0}", on);
+    FsEntry entry = new FsEntry(bean, on);
+    svr.registerMBean(entry, on);
+    if (!entry.deregistering) {
+      fsMap.put(configuredPath, entry);
+      LOGGER.log(Level.INFO, "Registered MBean: {0}", on);
+    }
   }
 
   /**
@@ -672,7 +674,8 @@ public class MetricsAgent {
    * @return {@code true} if an entry for this key already exists, otherwise {@code false}
    */
   private static boolean shouldReuseExistingEntry(String key) {
-    return fsMap.containsKey(key);
+    FsEntry entry = fsMap.get(key);
+    return entry != null && !entry.deregistering;
   }
 
   /**
@@ -797,12 +800,18 @@ public class MetricsAgent {
     Iterator<Map.Entry<String, FsEntry>> it = fsMap.entrySet().iterator();
     while (it.hasNext()) {
       Map.Entry<String, FsEntry> e = it.next();
-      if (!newPaths.contains(e.getKey())) {
-        try {
-          svr.unregisterMBean(e.getValue().getOn());
-          LOGGER.log(Level.INFO, "Unregistered MBean: {0}", e.getValue().getOn());
-        } catch (InstanceNotFoundException | MBeanRegistrationException | RuntimeException ignore) {
-          // Already unregistered or unregistration failed; safe to proceed.
+      FsEntry entry = e.getValue();
+      if (entry.deregistering || !newPaths.contains(e.getKey())) {
+        // JMX removes by name. Skip any registration we already know has been detached.
+        if (!entry.deregistering) {
+          try {
+            svr.unregisterMBean(entry.getOn());
+            LOGGER.log(Level.INFO, "Unregistered MBean: {0}", entry.getOn());
+          } catch (InstanceNotFoundException
+              | MBeanRegistrationException
+              | RuntimeException ignore) {
+            // Already unregistered or unregistration failed; safe to proceed.
+          }
         }
         it.remove();
       }
@@ -868,7 +877,7 @@ public class MetricsAgent {
 
     for (Map.Entry<String, FsEntry> entry : fsMap.entrySet()) {
       FsMetrics fsBean = entry.getValue().getBean();
-      if (fsBean != null) {
+      if (!entry.getValue().deregistering) {
         fsBean.setReadRefreshEnabled(false);
         tasks.add(
             new MetricsRefreshEngine.RefreshTask(

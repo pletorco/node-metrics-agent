@@ -31,6 +31,7 @@ import javax.management.MBeanServerFactory;
 import javax.management.MBeanServerNotification;
 import javax.management.NotificationListener;
 import javax.management.ObjectName;
+import javax.management.StandardMBean;
 import kr.pletor.nodemetrics.metrics.CpuMetrics;
 import kr.pletor.nodemetrics.metrics.CpuMetricsMBean;
 import kr.pletor.nodemetrics.metrics.RefreshManagedMetric;
@@ -235,6 +236,36 @@ class MBeanPublicationSafetyTest {
       assertEquals(1, observed.get(), "the new filesystem must be read during registration");
       assertEquals(0, fileReads.get(), "registration must not stat the filesystem on its caller");
     }
+  }
+
+  @Test
+  void filesystemReloadPreservesHostReplacementAndReusesFreeName() throws Exception {
+    Path retainedPath = Files.createDirectory(temporary.resolve("retained"));
+    Path removedPath = Files.createDirectory(temporary.resolve("removed"));
+    Config config = Config.defaults();
+    config.fsmetricsPaths = List.of(retainedPath.toString(), removedPath.toString());
+    invoke("applyConfig", new Class<?>[] {Config.class}, config);
+
+    Object originalRetained = filesystems().get(retainedPath.toString());
+    assertNotNull(originalRetained);
+    ObjectName retainedName =
+        (ObjectName) invoke("buildFsObjectName", new Class<?>[] {Path.class}, retainedPath);
+    ObjectName removedName =
+        (ObjectName) invoke("buildFsObjectName", new Class<?>[] {Path.class}, removedPath);
+    server.unregisterMBean(retainedName);
+    server.unregisterMBean(removedName);
+    SlowCpu host = new SlowCpu();
+    host.setReadRefreshEnabled(false);
+    server.registerMBean(new StandardMBean(host, CpuMetricsMBean.class), removedName);
+
+    config.fsmetricsPaths = List.of(retainedPath.toString());
+    invoke("applyConfig", new Class<?>[] {Config.class}, config);
+
+    assertTrue(server.isRegistered(removedName));
+    assertEquals(-1.0, server.getAttribute(removedName, "SystemCpuLoad"));
+    assertFalse(filesystems().containsKey(removedPath.toString()));
+    assertEquals(retainedPath.toString(), server.getAttribute(retainedName, "Path"));
+    assertTrue(filesystems().get(retainedPath.toString()) != originalRetained);
   }
 
   @Test
