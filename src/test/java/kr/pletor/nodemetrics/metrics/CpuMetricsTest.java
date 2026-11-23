@@ -83,72 +83,6 @@ class CpuMetricsTest {
   }
 
   @Test
-  void readCgroupCpuStats_negativeUsageFallback() throws Exception {
-    CpuMetrics.sysRoot = tempDir;
-    java.nio.file.Path cgroupDir = tempDir.resolve("fs/cgroup");
-    Files.createDirectories(cgroupDir);
-
-    // Create cpu.stat that has throttled info but NO usage (or effectively "missing")
-    // Note: implementation expects space-separated key value.
-    java.nio.file.Path cpuStat = cgroupDir.resolve("cpu.stat");
-    Files.writeString(cpuStat, "nr_throttled 5\nthrottled_usec 1000\n");
-
-    // Create cpuacct/cpuacct.usage for fallback
-    java.nio.file.Path cpuAcctDir = cgroupDir.resolve("cpuacct");
-    Files.createDirectories(cpuAcctDir);
-    java.nio.file.Path cpuAcctUsage = cpuAcctDir.resolve("cpuacct.usage");
-    Files.writeString(cpuAcctUsage, "999999");
-
-    Method readCgroupCpuStats = CpuMetrics.class.getDeclaredMethod("readCgroupCpuStats");
-    readCgroupCpuStats.setAccessible(true);
-
-    Object result = readCgroupCpuStats.invoke(null);
-    assertNotNull(result);
-
-    // Check usageNs field via reflection on CgroupCpuStats inner class
-    Class<?> cgroupClass = CpuMetrics.CgroupCpuStats.class;
-
-    Field usageField = cgroupClass.getDeclaredField("usageNs");
-    usageField.setAccessible(true);
-    long usage = usageField.getLong(result);
-
-    assertEquals(999999L, usage, "Should fall back to cpuacct.usage when usage_usec is missing");
-  }
-
-  @Test
-  void findCgroupCpuStatsPath_discovery() throws Exception {
-    CpuMetrics.sysRoot = tempDir;
-    java.nio.file.Path cgroupDir = tempDir.resolve("fs/cgroup");
-    Files.createDirectories(cgroupDir);
-
-    Method findPath =
-        CpuMetrics.class.getDeclaredMethod("findCgroupCpuStatPath", java.nio.file.Path.class);
-    findPath.setAccessible(true);
-
-    // 1. Neither exists -> null
-    assertNull(findPath.invoke(null, cgroupDir));
-
-    // 2. cpuacct/cpu.stat (v1 fallback)
-    java.nio.file.Path v1AcctDir = cgroupDir.resolve("cpuacct");
-    Files.createDirectories(v1AcctDir);
-    java.nio.file.Path v1AcctFile = v1AcctDir.resolve("cpu.stat");
-    Files.createFile(v1AcctFile);
-    assertEquals(v1AcctFile, findPath.invoke(null, cgroupDir));
-
-    // 3. cpu/cpu.stat (v1 priority)
-    java.nio.file.Path v1CpuDir = cgroupDir.resolve("cpu");
-    Files.createDirectories(v1CpuDir);
-    java.nio.file.Path v1CpuFile = v1CpuDir.resolve("cpu.stat");
-    Files.createFile(v1CpuFile);
-    assertEquals(v1CpuFile, findPath.invoke(null, cgroupDir));
-
-    // 4. fs/cgroup/cpu.stat (v2 priority)
-    java.nio.file.Path v2File = cgroupDir.resolve("cpu.stat");
-    Files.createFile(v2File);
-    assertEquals(v2File, findPath.invoke(null, cgroupDir));
-  }
-
-  @Test
   void getSystemLoadAverage1m_precedence() throws Exception {
     CpuMetrics.procRoot = tempDir;
 
@@ -198,33 +132,8 @@ class CpuMetricsTest {
   }
 
   @Test
-  void readCpuAcctUsageIfPresent_direct() throws Exception {
-    CpuMetrics.sysRoot = tempDir;
-
-    Method method =
-        CpuMetrics.class.getDeclaredMethod("readCpuAcctUsageIfPresent", java.nio.file.Path.class);
-    method.setAccessible(true);
-    java.nio.file.Path baseDir = tempDir.resolve("fs/cgroup");
-    Files.createDirectories(baseDir);
-
-    // 1. File missing -> returns -1
-    assertEquals(
-        -1L, method.invoke(null, baseDir), "Should return -1 when cpuacct.usage is missing");
-
-    // 2. File exists but garbage content -> returns -1
-    java.nio.file.Path cpuAcctDir = baseDir.resolve("cpuacct");
-    Files.createDirectories(cpuAcctDir);
-    java.nio.file.Path usageFile = cpuAcctDir.resolve("cpuacct.usage");
-    Files.writeString(usageFile, "not_a_number");
-    assertEquals(-1L, method.invoke(null, baseDir), "Should return -1 when content is invalid");
-
-    // 3. Valid content -> returns parsed long
-    Files.writeString(usageFile, "1234567890");
-    assertEquals(1234567890L, method.invoke(null, baseDir), "Should return valid parsed long");
-  }
-
-  @Test
-  void findProcessScopedCgroupCpuStatPath_shouldPreferScopedV2Path() throws Exception {
+  void pollChoosesProcessScopedV2Counters() throws Exception {
+    org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
     CpuMetrics.procRoot = tempDir.resolve("proc");
     CpuMetrics.sysRoot = tempDir.resolve("sys");
 
@@ -243,12 +152,10 @@ class CpuMetricsTest {
     Path root = baseDir.resolve("cpu.stat");
     Files.writeString(root, "usage_usec 20\n");
 
-    Method method =
-        CpuMetrics.class.getDeclaredMethod("findProcessScopedCgroupCpuStatPath", Path.class);
-    method.setAccessible(true);
-    Object resolved = method.invoke(null, baseDir);
-
-    assertEquals(scoped, resolved, "Should resolve cpu.stat using process cgroup path first");
+    CpuMetrics cpu = new CpuMetrics((OperatingSystemMXBean) null);
+    cpu.setReadRefreshEnabled(false);
+    cpu.poll();
+    assertEquals(10_000L, cpu.getCgroupCpuUsageNanosTotal());
   }
 
   /**
@@ -698,9 +605,12 @@ class CpuMetricsTest {
     org.junit.jupiter.api.Assumptions.assumeTrue(LinuxProcFs.isLinux());
     CpuMetrics.procRoot = tempDir.resolve("proc");
     CpuMetrics.sysRoot = tempDir.resolve("sys");
-    Files.createDirectories(CpuMetrics.procRoot);
+    Path membership = CpuMetrics.procRoot.resolve("self/cgroup");
+    Files.createDirectories(membership.getParent());
+    Files.writeString(membership, "0::/\n");
     java.nio.file.Path cgroupDir = CpuMetrics.sysRoot.resolve("fs/cgroup");
     Files.createDirectories(cgroupDir);
+    final Path controllers = Files.createFile(cgroupDir.resolve("cgroup.controllers"));
     java.nio.file.Path statFile = cgroupDir.resolve("cpu.stat");
 
     CpuMetrics metrics = new CpuMetrics((OperatingSystemMXBean) null);
@@ -721,6 +631,8 @@ class CpuMetricsTest {
     // cpu.stat disappears: the read fails, the cache is dropped, and the next poll re-resolves
     // the location (here it moved to the cgroup v1 layout).
     Files.delete(statFile);
+    Files.delete(controllers);
+    Files.writeString(membership, "3:cpu:/\n");
     java.nio.file.Path v1 = Files.createDirectories(cgroupDir.resolve("cpu")).resolve("cpu.stat");
     Files.writeString(v1, "usage_usec 5000\nnr_periods 30\nnr_throttled 11\nthrottled_usec 1200\n");
     metrics.poll();

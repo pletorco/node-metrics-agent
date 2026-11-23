@@ -1,13 +1,15 @@
 package kr.pletor.nodemetrics.metrics;
 
 import com.sun.management.OperatingSystemMXBean;
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /**
  * Implementation of {@link CpuMetricsMBean} backed by the platform {@link
@@ -235,24 +237,44 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
       recordRefreshFailure(e);
     }
 
-    // Update cgroup CPU throttling metrics, if available
+    updateCgroupCpuMetrics();
+  }
+
+  private void updateCgroupCpuMetrics() {
+    Path baseDir = sysRoot.resolve("fs/cgroup");
     try {
-      CgroupCpuStats cg = readCgroupCpuStatsCached();
-      if (cg != null) {
-        computeCgroupRatios(cg);
+      CgroupCpuPaths paths = cgroupPaths(baseDir);
+      CgroupCpuStats stats = paths.stat == null ? null : parseCgroupCpuStats(paths.stat);
+      long usage = stats == null ? -1L : stats.usageNs;
+      if (usage < 0L && paths.accounting != null) {
+        usage = parseLongStrict(CollectorInput.readString(paths.accounting, CollectorInput.NUMBER));
       }
-    } catch (Exception e) {
-      // Keep previous values.
+      if (stats == null && usage < 0L) {
+        clearCgroupMetrics();
+        return;
+      }
+      computeCgroupRatios(
+          new CgroupCpuStats(
+              usage,
+              stats == null ? -1L : stats.throttledNs,
+              stats == null ? -1L : stats.throttledPeriods));
+      cgroupCpuLimitCores =
+          stats == null ? -1.0 : CgroupCpuLimit.effectiveCores(paths.stat.getParent(), baseDir);
+    } catch (IOException | RuntimeException e) {
+      cachedCgroupBaseDir = null; // Re-resolve after an I/O failure, such as a removed group.
+      clearCgroupMetrics();
       recordRefreshFailure(e);
     }
+  }
 
-    // The CPU limit lives in the same cgroup directory as cpu.stat; unreadable files just mean
-    // "no limit known", so this cannot fail.
-    Path statPath = cachedCgroupStatPath;
-    cgroupCpuLimitCores =
-        statPath == null
-            ? -1.0
-            : CgroupCpuLimit.effectiveCores(statPath.getParent(), sysRoot.resolve("fs/cgroup"));
+  private void clearCgroupMetrics() {
+    cgroupCpuInitialized = false;
+    cgroupThrottledRatio = -1.0;
+    cgroupThrottledCount = 0L;
+    cgroupCpuLimitCores = -1.0;
+    cgroupUsageNanosTotal = -1L;
+    cgroupThrottledTimeNanosTotal = -1L;
+    cgroupThrottledPeriodsTotal = -1L;
   }
 
   /** Lightweight OS check so we do not attempt to read /proc on non-Linux systems. */
@@ -483,228 +505,94 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     }
   }
 
-  /**
-   * Read cgroup CPU statistics from common v2/v1 locations.
-   *
-   * <p>This method delegates to small helper methods to keep complexity low:
-   *
-   * <ul>
-   *   <li>{@link #findCgroupCpuStatPath(Path)} locates the cpu.stat file
-   *   <li>{@link #parseCgroupCpuStats(Path)} parses the counters
-   *   <li>{@link #readCpuAcctUsageIfPresent(Path)} optionally fills usage
-   * </ul>
-   *
-   * <p>If no meaningful counters are found, this method returns {@code null}.
-   */
-  private static CgroupCpuStats readCgroupCpuStats() throws java.io.IOException {
-    Path baseDir = sysRoot.resolve("fs/cgroup");
-    return readCgroupCpuStatsFrom(baseDir, locateCgroupCpuStatPath(baseDir));
+  private static final class CgroupCpuPaths {
+    private final Path stat;
+    private final Path accounting;
+
+    private CgroupCpuPaths(Path stat, Path accounting) {
+      this.stat = stat;
+      this.accounting = accounting;
+    }
   }
 
-  // A process rarely changes cgroup, so where cpu.stat lives is resolved once and re-resolved
-  // only every minute or after a read failure, instead of probing /proc/self/cgroup and the
-  // cgroup mount on every poll.
-  private static final long CGROUP_PATH_TTL_NANOS = CgroupBinding.TTL_NANOS;
+  // Membership is resolved at most once per TTL unless a read fails. Counters are read every poll.
+  private static final CgroupCpuPaths NO_CGROUP_CPU_PATHS = new CgroupCpuPaths(null, null);
   private Path cachedCgroupBaseDir;
-  private Path cachedCgroupStatPath;
+  private CgroupCpuPaths cachedCgroupPaths = NO_CGROUP_CPU_PATHS;
   private long cachedCgroupStatPathAtNanos;
 
-  private CgroupCpuStats readCgroupCpuStatsCached() throws java.io.IOException {
-    Path baseDir = sysRoot.resolve("fs/cgroup");
+  private CgroupCpuPaths cgroupPaths(Path baseDir) throws IOException {
     long now = System.nanoTime();
     if (!baseDir.equals(cachedCgroupBaseDir)
-        || now - cachedCgroupStatPathAtNanos >= CGROUP_PATH_TTL_NANOS) {
-      Path next = locateCgroupCpuStatPath(baseDir);
-      if (!java.util.Objects.equals(next, cachedCgroupStatPath)) {
-        cgroupCpuInitialized = false; // A new group has a different cumulative-counter baseline.
-        cgroupThrottledRatio = -1.0;
-        cgroupThrottledCount = 0L;
+        || now - cachedCgroupStatPathAtNanos >= CgroupBinding.TTL_NANOS) {
+      CgroupCpuPaths next = locateCgroupCpuPaths(baseDir);
+      if (!Objects.equals(next.stat, cachedCgroupPaths.stat)
+          || !Objects.equals(next.accounting, cachedCgroupPaths.accounting)) {
+        clearCgroupMetrics();
       }
-      cachedCgroupStatPath = next;
+      cachedCgroupPaths = next;
       cachedCgroupBaseDir = baseDir;
       cachedCgroupStatPathAtNanos = now;
     }
+    return cachedCgroupPaths;
+  }
+
+  private static CgroupCpuPaths locateCgroupCpuPaths(Path baseDir) throws IOException {
+    List<String> lines;
     try {
-      return readCgroupCpuStatsFrom(baseDir, cachedCgroupStatPath);
-    } catch (java.io.IOException e) {
-      cachedCgroupBaseDir = null; // force re-resolution on the next poll
-      throw e;
+      lines = CollectorInput.readLines(procRoot.resolve("self/cgroup"), CollectorInput.SMALL);
+    } catch (NoSuchFileException missingMembership) {
+      return NO_CGROUP_CPU_PATHS;
     }
-  }
-
-  /**
-   * Locate cpu.stat: the current process's cgroup first, then the common mount locations.
-   *
-   * @return the cpu.stat path, or {@code null} when none exists
-   */
-  private static Path locateCgroupCpuStatPath(Path baseDir) {
-    Path statPath = findProcessScopedCgroupCpuStatPath(baseDir);
-    return statPath != null ? statPath : findCgroupCpuStatPath(baseDir);
-  }
-
-  private static CgroupCpuStats readCgroupCpuStatsFrom(Path baseDir, Path statPath)
-      throws java.io.IOException {
-    if (statPath == null) {
-      return null;
-    }
-
-    CgroupCpuStats rawStats = parseCgroupCpuStats(statPath);
-    if (rawStats == null) {
-      return null;
-    }
-
-    long usageNs = rawStats.usageNs;
-    if (usageNs < 0L) {
-      // Try to fill usage from cpuacct.usage if available
-      long acctUsage = readCpuAcctUsageIfPresent(baseDir);
-      if (acctUsage >= 0L) {
-        usageNs = acctUsage;
+    boolean unified = Files.isRegularFile(baseDir.resolve("cgroup.controllers"));
+    Path stat = null;
+    Path accounting = null;
+    for (String line : lines) {
+      String[] fields = line.split(":", 3);
+      if (fields.length != 3 || !fields[2].startsWith("/")) {
+        continue;
+      }
+      Path relative = Path.of(fields[2].substring(1));
+      if (relative.isAbsolute()
+          || !relative.equals(relative.normalize())
+          || relative.startsWith("..")) {
+        continue;
+      }
+      if (unified && "0".equals(fields[0]) && fields[1].isEmpty()) {
+        return new CgroupCpuPaths(baseDir.resolve(relative).resolve(CPU_STAT_FILE), null);
+      }
+      if (unified || parseLongStrict(fields[0]) <= 0L) {
+        continue;
+      }
+      List<String> controllers = List.of(fields[1].split(","));
+      boolean cpu = controllers.contains(CPU_CONTROLLER);
+      boolean cpuacct = controllers.contains(CPUACCT_CONTROLLER);
+      boolean combined = cpu && cpuacct;
+      if (cpu && stat == null) {
+        stat = findV1CpuFile(baseDir, CPU_CONTROLLER, relative, CPU_STAT_FILE, combined);
+      }
+      if (cpuacct && accounting == null) {
+        accounting =
+            findV1CpuFile(baseDir, CPUACCT_CONTROLLER, relative, "cpuacct.usage", combined);
       }
     }
-
-    // If we still have no useful values, return null to signal "unsupported"
-    if (usageNs < 0L && rawStats.throttledNs < 0L && rawStats.throttledPeriods < 0L) {
-      return null;
-    }
-
-    return new CgroupCpuStats(usageNs, rawStats.throttledNs, rawStats.throttledPeriods);
+    return new CgroupCpuPaths(stat, accounting);
   }
 
-  /**
-   * Try to locate cpu.stat under the current process cgroup path first. This avoids reporting
-   * host-level values inside containers.
-   */
-  private static Path findProcessScopedCgroupCpuStatPath(Path baseDir) {
-    Path selfCgroup = procRoot.resolve("self/cgroup");
-    if (!Files.isRegularFile(selfCgroup)) {
-      return null;
+  private static Path findV1CpuFile(
+      Path baseDir, String controller, Path relative, String name, boolean combined) {
+    Path candidate = baseDir.resolve(controller).resolve(relative).resolve(name);
+    if (Files.isRegularFile(candidate)) {
+      return candidate;
     }
-
-    Path v2Controllers = baseDir.resolve("cgroup.controllers");
-    if (Files.isRegularFile(v2Controllers)) {
-      return findV2ProcessScopedCpuStatPath(baseDir, selfCgroup);
-    }
-
-    List<Path> candidates = collectV1ProcessScopedCpuStatCandidates(baseDir, selfCgroup);
-    for (Path p : candidates) {
-      if (Files.isRegularFile(p)) {
-        return p;
-      }
-    }
-    return null;
-  }
-
-  private static Path findV2ProcessScopedCpuStatPath(Path baseDir, Path selfCgroup) {
-    // cgroup v2: look up "0::<path>" in /proc/self/cgroup.
-    String rel = readUnifiedCgroupPath(selfCgroup);
-    Path scopedDir = resolveCgroupSubdir(baseDir, rel);
-    Path scopedStat = scopedDir.resolve(CPU_STAT_FILE);
-    return Files.isRegularFile(scopedStat) ? scopedStat : null;
-  }
-
-  private static List<Path> collectV1ProcessScopedCpuStatCandidates(Path baseDir, Path selfCgroup) {
-    // cgroup v1: collect cpu/cpuacct controller paths and probe common mount layouts.
-    List<Path> candidates = new ArrayList<>();
-    try {
-      for (String ln : CollectorInput.readLines(selfCgroup, CollectorInput.SMALL)) {
-        appendV1CpuStatCandidates(baseDir, candidates, ln);
-      }
-    } catch (CollectorInput.LimitExceededException e) {
-      throw new java.io.UncheckedIOException(e);
-    } catch (Exception ignored) {
-      return List.of();
-    }
-    return candidates;
-  }
-
-  private static void appendV1CpuStatCandidates(
-      Path baseDir, List<Path> candidates, String cgroupLine) {
-    String[] parts = cgroupLine.split(":", 3);
-    if (parts.length != 3) {
-      return;
-    }
-    String controllers = parts[1];
-    String rel = parts[2];
-
-    if (hasController(controllers, CPU_CONTROLLER)) {
-      Path cpuDir = resolveCgroupSubdir(baseDir.resolve(CPU_CONTROLLER), rel);
-      candidates.add(cpuDir.resolve(CPU_STAT_FILE));
-    }
-    if (hasController(controllers, CPUACCT_CONTROLLER)) {
-      Path cpuAcctDir = resolveCgroupSubdir(baseDir.resolve(CPUACCT_CONTROLLER), rel);
-      candidates.add(cpuAcctDir.resolve(CPU_STAT_FILE));
-    }
-    if (hasController(controllers, CPU_CONTROLLER)
-        && hasController(controllers, CPUACCT_CONTROLLER)) {
-      Path combined = resolveCgroupSubdir(baseDir.resolve(CPU_CPUACCT_CONTROLLER), rel);
-      candidates.add(combined.resolve(CPU_STAT_FILE));
-    }
-  }
-
-  private static String readUnifiedCgroupPath(Path selfCgroup) {
-    try {
-      for (String ln : CollectorInput.readLines(selfCgroup, CollectorInput.SMALL)) {
-        String[] parts = ln.split(":", 3);
-        if (parts.length == 3 && "0".equals(parts[0])) {
-          return parts[2];
+    if (combined) {
+      for (String mount : List.of(CPU_CPUACCT_CONTROLLER, "cpuacct,cpu")) {
+        Path merged = baseDir.resolve(mount).resolve(relative).resolve(name);
+        if (Files.isRegularFile(merged)) {
+          return merged;
         }
       }
-    } catch (CollectorInput.LimitExceededException e) {
-      throw new java.io.UncheckedIOException(e);
-    } catch (Exception ignored) {
-      return "/";
     }
-    return "/";
-  }
-
-  private static boolean hasController(String controllers, String target) {
-    String[] parts = controllers.split(",");
-    for (String p : parts) {
-      if (target.equals(p.trim())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static Path resolveCgroupSubdir(Path baseDir, String cgroupPath) {
-    if (cgroupPath == null || cgroupPath.isEmpty() || "/".equals(cgroupPath)) {
-      return baseDir;
-    }
-    String relative = cgroupPath.replaceFirst("^/", "");
-    return baseDir.resolve(relative);
-  }
-
-  /**
-   * Find a cpu.stat file for cgroup v2 or common v1 layouts.
-   *
-   * <p>The search order is:
-   *
-   * <ol>
-   *   <li>/sys/fs/cgroup/cpu.stat (cgroup v2 unified hierarchy)
-   *   <li>/sys/fs/cgroup/cpu/cpu.stat (cgroup v1 cpu controller)
-   *   <li>/sys/fs/cgroup/cpuacct/cpu.stat (cgroup v1 cpuacct controller)
-   * </ol>
-   *
-   * @param baseDir base cgroup directory, typically {@code /sys/fs/cgroup}
-   * @return existing cpu.stat path, or {@code null} when none is found
-   */
-  private static Path findCgroupCpuStatPath(Path baseDir) {
-    Path v2Stat = baseDir.resolve(CPU_STAT_FILE);
-    if (Files.isRegularFile(v2Stat)) {
-      return v2Stat;
-    }
-
-    Path v1Cpu = baseDir.resolve(CPU_CONTROLLER + "/" + CPU_STAT_FILE);
-    if (Files.isRegularFile(v1Cpu)) {
-      return v1Cpu;
-    }
-
-    Path v1CpuAcct = baseDir.resolve(CPUACCT_CONTROLLER + "/" + CPU_STAT_FILE);
-    if (Files.isRegularFile(v1CpuAcct)) {
-      return v1CpuAcct;
-    }
-
     return null;
   }
 
@@ -769,74 +657,6 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
     return new CgroupCpuStats(usageNs, throttledNs, throttledPeriods);
   }
 
-  /**
-   * Attempt to read CPU usage from {@code cpuacct.usage} when cpu.stat does not provide a usage
-   * counter.
-   *
-   * @param baseDir base cgroup directory
-   * @return usage in nanoseconds, or {@code -1L} when not available
-   */
-  private static long readCpuAcctUsageIfPresent(Path baseDir) {
-    Path scopedPath = findProcessScopedCpuAcctUsagePath(baseDir);
-    if (scopedPath != null && Files.isRegularFile(scopedPath)) {
-      try {
-        String txt = CollectorInput.readString(scopedPath, CollectorInput.NUMBER).trim();
-        return parseLongStrict(txt);
-      } catch (CollectorInput.LimitExceededException e) {
-        throw new java.io.UncheckedIOException(e);
-      } catch (Exception ignored) {
-        return -1L;
-      }
-    }
-
-    Path usagePath = baseDir.resolve("cpuacct/cpuacct.usage");
-    if (Files.isRegularFile(usagePath)) {
-      try {
-        String txt = CollectorInput.readString(usagePath, CollectorInput.NUMBER).trim();
-        return parseLongStrict(txt);
-      } catch (CollectorInput.LimitExceededException e) {
-        throw new java.io.UncheckedIOException(e);
-      } catch (Exception ignored) {
-        return -1L;
-      }
-    }
-
-    return -1L;
-  }
-
-  private static Path findProcessScopedCpuAcctUsagePath(Path baseDir) {
-    Path selfCgroup = procRoot.resolve("self/cgroup");
-    if (!Files.isRegularFile(selfCgroup)) {
-      return null;
-    }
-
-    try {
-      for (String ln : CollectorInput.readLines(selfCgroup, CollectorInput.SMALL)) {
-        String[] parts = ln.split(":", 3);
-        if (parts.length != 3) {
-          continue;
-        }
-        String controllers = parts[1];
-        String rel = parts[2];
-
-        if (hasController(controllers, CPUACCT_CONTROLLER)) {
-          Path cpuAcctDir = resolveCgroupSubdir(baseDir.resolve(CPUACCT_CONTROLLER), rel);
-          return cpuAcctDir.resolve("cpuacct.usage");
-        }
-        if (hasController(controllers, CPU_CONTROLLER)
-            && hasController(controllers, CPUACCT_CONTROLLER)) {
-          Path combined = resolveCgroupSubdir(baseDir.resolve(CPU_CPUACCT_CONTROLLER), rel);
-          return combined.resolve("cpuacct.usage");
-        }
-      }
-    } catch (CollectorInput.LimitExceededException e) {
-      throw new java.io.UncheckedIOException(e);
-    } catch (Exception ignored) {
-      return null;
-    }
-    return null;
-  }
-
   private static long parseLongStrict(String s) {
     try {
       return Long.parseLong(s.trim());
@@ -859,41 +679,23 @@ public class CpuMetrics extends AbstractRefreshingMetric implements CpuMetricsMB
       return;
     }
 
-    long usageDelta = current.usageNs - prevCgroupUsageNs;
-    long throttledDelta = current.throttledNs - prevCgroupThrottledNs;
-    long periodsDelta = current.throttledPeriods - prevCgroupThrottledPeriods;
-
-    if (usageDelta < 0L) {
-      usageDelta = 0L;
-    }
-    if (throttledDelta < 0L) {
-      throttledDelta = 0L;
-    }
-    if (periodsDelta < 0L) {
-      periodsDelta = 0L;
-    }
-
-    long denom = usageDelta + throttledDelta;
-    if (denom > 0L) {
-      double ratio = (double) throttledDelta / (double) denom;
-      if (ratio < 0.0) {
-        ratio = 0.0;
-      }
-      if (ratio > 1.0) {
-        ratio = 1.0;
-      }
-      cgroupThrottledRatio = ratio;
-    } else {
-      // No CPU used and nothing throttled in this window (idle): report 0 instead of
-      // leaving the previous window's ratio stuck.
-      cgroupThrottledRatio = 0.0;
-    }
-
-    cgroupThrottledCount = periodsDelta;
+    long usageDelta = cgroupDelta(prevCgroupUsageNs, current.usageNs);
+    long throttledDelta = cgroupDelta(prevCgroupThrottledNs, current.throttledNs);
+    double totalDelta = (double) usageDelta + throttledDelta;
+    cgroupThrottledRatio =
+        usageDelta < 0L || throttledDelta < 0L
+            ? -1.0
+            : totalDelta == 0.0 ? 0.0 : throttledDelta / totalDelta;
+    cgroupThrottledCount =
+        Math.max(0L, cgroupDelta(prevCgroupThrottledPeriods, current.throttledPeriods));
 
     prevCgroupUsageNs = current.usageNs;
     prevCgroupThrottledNs = current.throttledNs;
     prevCgroupThrottledPeriods = current.throttledPeriods;
+  }
+
+  private static long cgroupDelta(long previous, long current) {
+    return previous < 0L || current < 0L ? -1L : Math.max(0L, current - previous);
   }
 
   // ------------------------------------------------------------------------
