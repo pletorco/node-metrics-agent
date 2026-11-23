@@ -178,8 +178,11 @@ class CgroupCpuLimitTest {
     Assumptions.assumeTrue(LinuxProcFs.isLinux());
     CpuMetrics.procRoot = root.resolve("proc");
     CpuMetrics.sysRoot = root.resolve("sys");
-    Files.createDirectories(CpuMetrics.procRoot);
+    Path membership = CpuMetrics.procRoot.resolve("self/cgroup");
+    Files.createDirectories(membership.getParent());
+    Files.writeString(membership, "0::/\n");
     Path cgroupDir = Files.createDirectories(CpuMetrics.sysRoot.resolve("fs/cgroup"));
+    Files.createFile(cgroupDir.resolve("cgroup.controllers"));
     write(
         cgroupDir,
         "cpu.stat",

@@ -4,64 +4,19 @@ import java.io.IOException;
 import java.util.function.LongSupplier;
 
 /**
- * Implementation of {@link IoRatesMBean} that computes simple I/O throughput rates based on Linux
- * {@code /proc} and {@code /sys} counters.
- *
- * <p>This class:
- *
- * <ul>
- *   <li>Aggregates disk read/write bytes across block devices
- *   <li>Aggregates network RX/TX bytes across interfaces (typically excluding loopback)
- *   <li>Computes bytes-per-second using a previous snapshot and {@link System#nanoTime()}
- * </ul>
- *
- * <p>On non-Linux platforms, all metrics are reported as {@code 0.0}.
+ * Disk and network throughput and cumulative byte counters. Each source keeps its own last valid
+ * sample and monotonic timestamp, so one unavailable source cannot stall the other or reset its
+ * baseline.
  */
 public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
+  private static final long SECTOR_SIZE_BYTES = 512L;
+  private static final double NANOS_PER_SECOND = 1_000_000_000.0;
+  private static final Sample UNSAMPLED = new Sample(-1L, -1L, 0L, 0.0, 0.0);
 
-  /** Last computed disk read throughput (bytes per second). */
-  private volatile double diskReadBps = 0.0;
-
-  /** Last computed disk write throughput (bytes per second). */
-  private volatile double diskWriteBps = 0.0;
-
-  /** Last computed network RX throughput (bytes per second). */
-  private volatile double netRxBps = 0.0;
-
-  /** Last computed network TX throughput (bytes per second). */
-  private volatile double netTxBps = 0.0;
-
-  /** Cumulative byte counters as of the last successful read; -1 until the first one. */
-  private volatile long diskReadTotal = -1L;
-
-  private volatile long diskWriteTotal = -1L;
-  private volatile long netRxTotal = -1L;
-  private volatile long netTxTotal = -1L;
-
-  /** Previous cumulative disk/network counters and timestamp used to compute deltas. */
-  private long prevReadBytes = -1L;
-
-  private long prevWriteBytes = -1L;
-  private long prevRxBytes = -1L;
-  private long prevTxBytes = -1L;
-  private long prevTimeNanos;
-
-  /** {@code System.nanoTime()} may be zero or negative, so track the baseline explicitly. */
-  private boolean baselineStored = false;
-
+  private volatile Sample disk = UNSAMPLED;
+  private volatile Sample network = UNSAMPLED;
   private final LongSupplier nanoClock;
 
-  /** Default sector size used to convert disk sectors to bytes. */
-  private static final long SECTOR_SIZE_BYTES = 512L;
-
-  /** Constant for converting nanoseconds to seconds. */
-  private static final double NANOS_PER_SECOND = 1_000_000_000.0;
-
-  /**
-   * Creates a new {@code IoRates} instance with zeroed counters.
-   *
-   * <p>Metric values will be populated on the first JMX query (if you have one).
-   */
   public IoRates() {
     this(System::nanoTime);
   }
@@ -71,205 +26,134 @@ public class IoRates extends AbstractRefreshingMetric implements IoRatesMBean {
     this.nanoClock = nanoClock;
   }
 
-  // ------------------------------------------------------------------------
-  // Polling / Refreshing
-  // ------------------------------------------------------------------------
-
-  /** Refresh the I/O rates. */
   @Override
   protected void doRefresh() {
-    // If the current OS is not Linux, we cannot read /proc or /sys,
-    // so simply reset the rates and return.
     if (!LinuxProcFs.isLinux()) {
-      resetRates();
+      disk = UNSAMPLED;
+      network = UNSAMPLED;
       return;
     }
+    refreshDisk();
+    refreshNetwork();
+  }
 
+  private void refreshDisk() {
     try {
-      refreshLinuxSnapshot();
-    } catch (SnapshotReadException e) {
-      // On snapshot read failure, keep the last known rates.
+      LinuxProcFs.DiskTotals totals = LinuxProcFs.readDiskTotals();
+      if (totals.deviceCount > 0) {
+        disk =
+            nextSample(
+                disk,
+                Math.multiplyExact(totals.readSectors, SECTOR_SIZE_BYTES),
+                Math.multiplyExact(totals.writtenSectors, SECTOR_SIZE_BYTES));
+      } else if (disk != UNSAMPLED) {
+        recordRefreshFailure(new IOException("Disk counters unavailable"));
+      }
+    } catch (IOException | RuntimeException e) {
       recordRefreshFailure(e);
-    } catch (Exception e) {
-      // Never propagate metric refresh failures to JMX callers.
-      recordRefreshFailure(e);
-      resetRates();
     }
   }
 
-  private void refreshLinuxSnapshot() throws SnapshotReadException {
-    // Read current snapshot, compute new rates, and store snapshot for the next poll.
-    Snapshot snapshot = readSnapshot();
-    diskReadTotal = snapshot.readBytes;
-    diskWriteTotal = snapshot.writeBytes;
-    netRxTotal = snapshot.rxBytes;
-    netTxTotal = snapshot.txBytes;
-    updateRates(snapshot);
-    storeSnapshot(snapshot);
-  }
-
-  /** Reset all rate metrics to zero. */
-  private void resetRates() {
-    diskReadBps = 0.0;
-    diskWriteBps = 0.0;
-    netRxBps = 0.0;
-    netTxBps = 0.0;
-  }
-
-  /**
-   * Read the current cumulative byte counters and time as a single snapshot.
-   *
-   * @return a {@link Snapshot} containing disk and network byte counters and current time
-   * @throws SnapshotReadException when disk or network counters cannot be read
-   */
-  private Snapshot readSnapshot() throws SnapshotReadException {
+  private void refreshNetwork() {
     try {
-      // Disk totals (sectors -> bytes)
-      LinuxProcFs.DiskTotals d = LinuxProcFs.readDiskTotals();
-      long readBytes = d.readSectors * SECTOR_SIZE_BYTES;
-      long writeBytes = d.writtenSectors * SECTOR_SIZE_BYTES;
-
-      // Network totals (already in bytes)
-      LinuxProcFs.NetTotals n = LinuxProcFs.readNetTotals();
-      long rxBytes = n.rxBytes;
-      long txBytes = n.txBytes;
-
-      long nowNanos = nanoClock.getAsLong();
-      return new Snapshot(readBytes, writeBytes, rxBytes, txBytes, nowNanos);
-    } catch (IOException e) {
-      // If more specific error context is needed, this message can be adjusted.
-      throw new SnapshotReadException("Failed to read I/O counters from /proc or /sys", e);
+      LinuxProcFs.NetTotals totals = LinuxProcFs.readNetTotals();
+      if (totals.available) {
+        network = nextSample(network, totals.rxBytes, totals.txBytes);
+      } else if (network != UNSAMPLED) {
+        recordRefreshFailure(new IOException("Network counters unavailable"));
+      }
+    } catch (IOException | RuntimeException e) {
+      recordRefreshFailure(e);
     }
   }
 
-  /**
-   * Update rate metrics based on the difference between the previous snapshot and the newly read
-   * snapshot.
-   *
-   * @param s current snapshot containing cumulative counters and timestamp
-   */
-  private void updateRates(Snapshot s) {
-    // If there is no previous timestamp, this is the first invocation.
-    // In this case, we only record the baseline snapshot and skip rate calculation.
-    if (!baselineStored) {
-      return;
+  private Sample nextSample(Sample previous, long read, long written) throws IOException {
+    if (read < 0L || written < 0L) {
+      throw new IOException("I/O byte counter overflow");
     }
-
-    double dtSeconds = (s.timeNanos - prevTimeNanos) / NANOS_PER_SECOND;
-    if (dtSeconds <= 0.0) {
-      // If time did not move forward, do not update rates.
-      return;
+    long now = nanoClock.getAsLong();
+    if (previous == UNSAMPLED) {
+      return new Sample(read, written, now, 0.0, 0.0);
     }
-
-    if (prevReadBytes >= 0) {
-      diskReadBps = computeRate(prevReadBytes, s.readBytes, dtSeconds);
+    long elapsed = now - previous.timeNanos;
+    if (elapsed <= 0L) {
+      return previous;
     }
-    if (prevWriteBytes >= 0) {
-      diskWriteBps = computeRate(prevWriteBytes, s.writeBytes, dtSeconds);
-    }
-    if (prevRxBytes >= 0) {
-      netRxBps = computeRate(prevRxBytes, s.rxBytes, dtSeconds);
-    }
-    if (prevTxBytes >= 0) {
-      netTxBps = computeRate(prevTxBytes, s.txBytes, dtSeconds);
-    }
+    double seconds = elapsed / NANOS_PER_SECOND;
+    return new Sample(
+        read,
+        written,
+        now,
+        Math.max(0L, read - previous.readBytes) / seconds,
+        Math.max(0L, written - previous.writtenBytes) / seconds);
   }
 
-  /**
-   * Compute a non-negative rate from two cumulative counters and an elapsed time.
-   *
-   * @param prev previous cumulative value
-   * @param current current cumulative value
-   * @param dtSeconds elapsed time in seconds
-   * @return computed rate in units per second, clamped to a minimum of 0.0
-   */
-  private static double computeRate(long prev, long current, double dtSeconds) {
-    return Math.max(0.0, (current - prev) / dtSeconds);
-  }
-
-  /**
-   * Store the current snapshot as the baseline for the next poll.
-   *
-   * @param s snapshot to store
-   */
-  private void storeSnapshot(Snapshot s) {
-    prevReadBytes = s.readBytes;
-    prevWriteBytes = s.writeBytes;
-    prevRxBytes = s.rxBytes;
-    prevTxBytes = s.txBytes;
-    prevTimeNanos = s.timeNanos;
-    baselineStored = true;
-  }
-
-  /** Immutable container for disk/network counters and timestamp. */
-  private static final class Snapshot {
+  private static final class Sample {
     final long readBytes;
-    final long writeBytes;
-    final long rxBytes;
-    final long txBytes;
+    final long writtenBytes;
     final long timeNanos;
+    final double readBytesPerSecond;
+    final double writtenBytesPerSecond;
 
-    Snapshot(long readBytes, long writeBytes, long rxBytes, long txBytes, long timeNanos) {
+    Sample(
+        long readBytes,
+        long writtenBytes,
+        long timeNanos,
+        double readBytesPerSecond,
+        double writtenBytesPerSecond) {
       this.readBytes = readBytes;
-      this.writeBytes = writeBytes;
-      this.rxBytes = rxBytes;
-      this.txBytes = txBytes;
+      this.writtenBytes = writtenBytes;
       this.timeNanos = timeNanos;
-    }
-  }
-
-  /** Custom checked exception used when snapshot reading fails. */
-  private static class SnapshotReadException extends Exception {
-    SnapshotReadException(String message, Throwable cause) {
-      super(message, cause);
+      this.readBytesPerSecond = readBytesPerSecond;
+      this.writtenBytesPerSecond = writtenBytesPerSecond;
     }
   }
 
   @Override
   public double getDiskReadBytesPerSec() {
     refreshOnRead();
-    return diskReadBps;
+    return disk.readBytesPerSecond;
   }
 
   @Override
   public double getDiskWriteBytesPerSec() {
     refreshOnRead();
-    return diskWriteBps;
+    return disk.writtenBytesPerSecond;
   }
 
   @Override
   public double getNetRxBytesPerSec() {
     refreshOnRead();
-    return netRxBps;
+    return network.readBytesPerSecond;
   }
 
   @Override
   public double getNetTxBytesPerSec() {
     refreshOnRead();
-    return netTxBps;
+    return network.writtenBytesPerSecond;
   }
 
   @Override
   public Long getDiskReadBytesTotal() {
     refreshOnRead();
-    return counterOrNull(diskReadTotal);
+    return counterOrNull(disk.readBytes);
   }
 
   @Override
   public Long getDiskWriteBytesTotal() {
     refreshOnRead();
-    return counterOrNull(diskWriteTotal);
+    return counterOrNull(disk.writtenBytes);
   }
 
   @Override
   public Long getNetRxBytesTotal() {
     refreshOnRead();
-    return counterOrNull(netRxTotal);
+    return counterOrNull(network.readBytes);
   }
 
   @Override
   public Long getNetTxBytesTotal() {
     refreshOnRead();
-    return counterOrNull(netTxTotal);
+    return counterOrNull(network.writtenBytes);
   }
 }

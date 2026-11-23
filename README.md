@@ -175,6 +175,9 @@ Agent threads must neither invoke those callbacks nor inherit host thread-local 
 checks run in smoke CI on Java 11, 17 and 21; the fixture classes are not packaged in the agent.
 The same smoke suite checks repeated/concurrent agent entry, first-argument selection, config reload,
 host-owned MBean collisions and interrupted initialization in bounded subprocesses.
+Filesystem reloads discard registrations already removed by another JMX client. When replacing a
+filesystem MBean with one owned by the application, coordinate that change with config reloads.
+JMX removes MBeans by name and offers no atomic comparison of the name and registration.
 It checks same-size/same-mtime edits, atomic replacement, duplicate suppression and rejected-edit
 recovery through the real packaged agent watcher. To reproduce the unchanged-main control and
 compare watcher CPU/allocation/p99 cost at 512 bytes and 64 KiB, run

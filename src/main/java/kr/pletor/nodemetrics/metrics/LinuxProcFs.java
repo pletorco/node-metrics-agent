@@ -313,6 +313,9 @@ final class LinuxProcFs {
 
   /** Aggregated network I/O totals across interfaces. */
   static class NetTotals {
+    /** At least one interface was readable, even if only loopback was present. */
+    boolean available;
+
     /** Sum of received bytes over the counted interfaces (see {@link #readNetTotals()}). */
     long rxBytes = 0;
 
@@ -361,12 +364,6 @@ final class LinuxProcFs {
       }
 
       String[] kv = ln.split(":", 2);
-      String iface = kv[0].trim();
-      if ("lo".equals(iface)) {
-        // Skip loopback
-        continue;
-      }
-
       String[] nums = kv[1].trim().split("\\s+");
       if (nums.length < 16) {
         continue;
@@ -374,8 +371,16 @@ final class LinuxProcFs {
 
       // Layout: rx bytes (0), rx packets (1), ..., tx bytes (8), ...
       // rx errs (2), rx drop (3), tx errs (10), tx drop (11)
-      long rx = parseLongSafe(nums[0]);
-      long tx = parseLongSafe(nums[8]);
+      long rx = parseCounter(nums[0]);
+      long tx = parseCounter(nums[8]);
+      if (rx < 0L || tx < 0L) {
+        continue;
+      }
+      all.available = true;
+      String iface = kv[0].trim();
+      if ("lo".equals(iface)) {
+        continue;
+      }
       long rxErrs = parseLongSafe(nums[2]);
       long rxDrop = parseLongSafe(nums[3]);
       long txErrs = parseLongSafe(nums[10]);
@@ -384,10 +389,19 @@ final class LinuxProcFs {
       add(all, rx, tx, rxErrs, rxDrop, txErrs, txDrop);
       if (isPhysicalInterface(iface)) {
         anyPhysical = true;
+        physical.available = true;
         add(physical, rx, tx, rxErrs, rxDrop, txErrs, txDrop);
       }
     }
     return anyPhysical ? physical : all;
+  }
+
+  private static long parseCounter(String text) {
+    try {
+      return Long.parseLong(text);
+    } catch (NumberFormatException e) {
+      return -1L;
+    }
   }
 
   private static void add(

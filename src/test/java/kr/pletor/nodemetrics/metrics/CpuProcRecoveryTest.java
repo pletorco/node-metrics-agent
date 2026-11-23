@@ -36,7 +36,7 @@ class CpuProcRecoveryTest {
   }
 
   @Test
-  void missingProcAndRelocatedCgroupKeepSnapshotsThenRediscoverAndRecover() throws Exception {
+  void missingProcPreservesHostSnapshotButClearsMissingCgroupBeforeRecovery() throws Exception {
     Path base = setupCpu();
     Files.writeString(base.resolve("cgroup.controllers"), "cpu memory");
     Path first = Files.createDirectories(base.resolve("pod/first"));
@@ -57,7 +57,10 @@ class CpuProcRecoveryTest {
     assertNotNull(cpu.lastRefreshError());
     assertEquals(ticks, cpu.getSystemCpuTotalTicks());
     assertEquals(1.0, cpu.getSystemLoadAverage1m());
-    assertEquals(1_000_000L, cpu.getCgroupCpuUsageNanosTotal());
+    assertNull(cpu.getCgroupCpuUsageNanosTotal());
+    assertNull(cpu.getCgroupCpuThrottledTimeNanosTotal());
+    assertNull(cpu.getCgroupCpuThrottledPeriodsTotal());
+    assertEquals(-1.0, cpu.getCgroupCpuLimitCores());
 
     Path moved = Files.createDirectories(base.resolve("pod/moved"));
     Files.writeString(CpuMetrics.procRoot.resolve("self/cgroup"), "malformed\n0::/pod/moved\n");
@@ -69,6 +72,8 @@ class CpuProcRecoveryTest {
     cpu.poll();
     assertNull(cpu.lastRefreshError());
     assertEquals(3_000_000L, cpu.getCgroupCpuUsageNanosTotal());
+    assertEquals(0L, cpu.getCgroupCpuThrottledCount());
+    assertEquals(-1.0, cpu.getCgroupCpuThrottledRatio());
     assertEquals(0.5, cpu.getCgroupCpuLimitCores());
     assertEquals(4.0, cpu.getSystemLoadAverage1m());
     assertTrue(cpu.getSystemCpuTotalTicks() > ticks);
@@ -77,6 +82,8 @@ class CpuProcRecoveryTest {
   @Test
   void cgroupCounterResetAndMalformedLinesDoNotProduceNegativeRates() throws Exception {
     Path base = setupCpu();
+    Files.createFile(base.resolve("cgroup.controllers"));
+    Files.writeString(CpuMetrics.procRoot.resolve("self/cgroup"), "0::/\n");
     Path stat = base.resolve("cpu.stat");
     CpuMetrics cpu = new CpuMetrics((OperatingSystemMXBean) null);
     cpu.setReadRefreshEnabled(false);
@@ -112,6 +119,51 @@ class CpuProcRecoveryTest {
     Files.writeString(acct.resolve("cpuacct.usage"), "12345\n");
     cpu.poll();
     assertEquals(12345L, cpu.getCgroupCpuUsageNanosTotal());
+    assertEquals(-1.0, cpu.getCgroupCpuThrottledRatio(), "Wait for a valid usage baseline");
+  }
+
+  @Test
+  void v2MissingMembershipOrChildStatsNeverUseRootCounters() throws Exception {
+    Path base = setupCpu();
+    Files.createFile(base.resolve("cgroup.controllers"));
+    Files.writeString(base.resolve("cpu.stat"), "usage_usec 12345\nnr_throttled 7\n");
+    Files.writeString(base.resolve("cpu.max"), "100000 100000\n");
+    final Path membership = CpuMetrics.procRoot.resolve("self/cgroup");
+    CpuMetrics noMembership = new CpuMetrics((OperatingSystemMXBean) null);
+    noMembership.setReadRefreshEnabled(false);
+    noMembership.poll();
+    assertNull(noMembership.getCgroupCpuUsageNanosTotal());
+    for (String value :
+        new String[] {"0::/workload\n", "0::\n", "0::/workload/..\n", "0:cpu:/\n"}) {
+      Files.writeString(membership, value);
+      CpuMetrics cpu = new CpuMetrics((OperatingSystemMXBean) null);
+      cpu.setReadRefreshEnabled(false);
+      cpu.poll();
+      assertNull(cpu.getCgroupCpuUsageNanosTotal(), value);
+      assertNull(cpu.getCgroupCpuThrottledPeriodsTotal(), value);
+      assertEquals(-1.0, cpu.getCgroupCpuLimitCores(), value);
+    }
+  }
+
+  @Test
+  void v1UsesScopedCombinedMountInsteadOfRootAccounting() throws Exception {
+    Path base = setupCpu();
+    Path group = Files.createDirectories(base.resolve("cpu,cpuacct/workload"));
+    Path acctRoot = Files.createDirectories(base.resolve("cpuacct"));
+    Files.writeString(CpuMetrics.procRoot.resolve("self/cgroup"), "3:cpu,cpuacct:/workload\n");
+    Files.writeString(group.resolve("cpu.stat"), "nr_throttled 2\nthrottled_time 100\n");
+    Files.writeString(acctRoot.resolve("cpuacct.usage"), "999999\n");
+    CpuMetrics withoutAccounting = new CpuMetrics((OperatingSystemMXBean) null);
+    withoutAccounting.setReadRefreshEnabled(false);
+    withoutAccounting.poll();
+    assertNull(withoutAccounting.getCgroupCpuUsageNanosTotal());
+    assertEquals(2L, withoutAccounting.getCgroupCpuThrottledPeriodsTotal());
+
+    Files.writeString(group.resolve("cpuacct.usage"), "12345\n");
+    CpuMetrics withAccounting = new CpuMetrics((OperatingSystemMXBean) null);
+    withAccounting.setReadRefreshEnabled(false);
+    withAccounting.poll();
+    assertEquals(12345L, withAccounting.getCgroupCpuUsageNanosTotal());
   }
 
   @Test

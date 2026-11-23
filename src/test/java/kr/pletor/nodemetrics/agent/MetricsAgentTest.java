@@ -427,8 +427,11 @@ class MetricsAgentTest {
     Map<String, Object> fsMap = (Map<String, Object>) getStaticField("fsMap");
     fsMap.clear();
 
-    String presentKey = "/present";
-    fsMap.put(presentKey, new Object());
+    setStaticField("svr", javax.management.MBeanServerFactory.newMBeanServer());
+    Path path = Files.createDirectory(tempDir.resolve("present"));
+    String presentKey = path.toString();
+    invokePrivateStatic(
+        "registerFsBean", new Class<?>[] {String.class, Path.class}, presentKey, path);
 
     Object result =
         invokePrivateStatic("shouldReuseExistingEntry", new Class<?>[] {String.class}, presentKey);
@@ -547,18 +550,14 @@ class MetricsAgentTest {
     Map<String, Object> fsMap = (Map<String, Object>) getStaticField("fsMap");
     fsMap.clear();
 
-    // Construct FsEntry via reflection: FsEntry(FsMetrics, ObjectName, Path)
+    // Construct the registration without contacting the mocked server.
     Class<?> fsEntryClass = Class.forName("kr.pletor.nodemetrics.agent.MetricsAgent$FsEntry");
-    Constructor<?> ctor =
-        fsEntryClass.getDeclaredConstructor(
-            kr.pletor.nodemetrics.metrics.FsMetrics.class, ObjectName.class, Path.class);
+    Constructor<?> ctor = fsEntryClass.getDeclaredConstructor(FsMetrics.class, ObjectName.class);
     ctor.setAccessible(true);
 
     FsMetrics dummyBean = Mockito.mock(FsMetrics.class);
     ObjectName on = new ObjectName("kr.pletor.node:type=FsMetrics,path=/dummy");
-    Path path = Paths.get("/dummy");
-
-    Object fsEntry = ctor.newInstance(dummyBean, on, path);
+    Object fsEntry = ctor.newInstance(dummyBean, on);
     String key = "/dummy";
     fsMap.put(key, fsEntry);
 
@@ -576,6 +575,7 @@ class MetricsAgentTest {
         "unregisterRemovedFsBeans should swallow MBeanRegistrationException");
 
     assertTrue(fsMap.isEmpty(), "Entry should be removed from fsMap even when unregister fails");
+    Mockito.verify(mockSvr).unregisterMBean(on);
   }
 
   // ------------------------------------------------------------------------
